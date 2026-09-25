@@ -429,6 +429,7 @@ const routingSignalValues = [
   "repeated-failure",
   "increased-risk-or-scope",
   "high-severity-review-uncertainty",
+  "model-unavailable",
 ];
 
 const routingShapeProperties = {
@@ -538,7 +539,7 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
       type: "object",
       properties: {
         sufficient: { type: "boolean" },
-        signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+        signals: { type: "array", maxItems: 7, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
         units: {
           type: "array",
           minItems: 1,
@@ -548,7 +549,7 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
             properties: {
               unitId: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern },
               sufficient: { type: "boolean" },
-              signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+              signals: { type: "array", maxItems: 7, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
             },
             required: ["unitId", "sufficient", "signals"],
             additionalProperties: false,
@@ -632,11 +633,11 @@ const routingOutput = fromJsonSchema({
           type: "object",
           properties: {
             attempt: { type: "integer", minimum: 2, maximum: 3 },
-            signals: { type: "array", minItems: 1, maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+            signals: { type: "array", minItems: 1, maxItems: 7, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
             unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
-            escalation: { type: "string", enum: ["next-stable-tier", "selector-unsupported", "prior-tier-unknown", "top-tier"], description: "The lever this retry pulls. `next-stable-tier` advances one stable tier; the other three name why no tier lever applied and the narrowed units re-run under the prior attempt's own selection." },
+            escalation: { type: "string", enum: ["next-stable-tier", "selector-unsupported", "prior-tier-unknown", "top-tier", "lower-stable-tier"], description: "The lever this retry pulls. `next-stable-tier` advances one stable tier; `lower-stable-tier` is the shipper-only `model-unavailable` step-down one stable tier below; the other three name why no tier lever applied and the narrowed units re-run under the prior attempt's own selection." },
             priorTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "The tier the attempt that already ran mapped to, reported whenever it resolves. Evidence about the past; carries no invariant." },
-            nextTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "Non-null exactly when the resolver advanced the selection one stable tier above priorTier. Null means no advance was requested and the narrowed units re-run at the prior selection, re-resolved through the ordinary precedence chain — so a host pin may still change the model even when this is null." },
+            nextTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "Non-null exactly when the resolver moved the selection one stable tier: above priorTier on next-stable-tier, below it on lower-stable-tier. Null means no advance was requested and the narrowed units re-run at the prior selection, re-resolved through the ordinary precedence chain — so a host pin may still change the model even when this is null." },
             escalationOrigin: { type: "string", minLength: 1, maxLength: 256, pattern: safeRoutingStringPattern },
             priorExecutionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
             shapeChanged: { type: "boolean" },
@@ -921,7 +922,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     "resolve_routing",
     {
       title: "resolve routing",
-      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned retry for only insufficient units, or stops on invalid/exhausted state. The model tier is one escalation lever, not the gate: when the lever does not apply — the edge cannot honor a model selector, the prior model maps to no stable tier, or it is already at the highest one — the gate still opens and the narrowed units re-run under the prior attempt's own selection, re-resolved through the ordinary precedence chain so a host pin still binds, with `retry.escalation` naming why and `retry.nextTier` null exactly when no advance was requested. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, whether the selection was carried from an earlier item-level decision rather than derived here, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are independent axes: `dispatch` at `effectiveParallelism: 1` runs `unitIds` one at a time, never nothing. `unitCount` is authoritative and `atomicity` normalizes to it; `basis`/`escalationOrigin` are bounded at 256 characters, a hard rejection and never a truncation. Full rules: `_contracts/invocation-runtime.ops.md` §\"Resolver call root\". Body-free.",
+      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned retry for only insufficient units, or stops on invalid/exhausted state. The model tier is one escalation lever, not the gate: when the lever does not apply — the edge cannot honor a model selector, the prior model maps to no stable tier, or it is already at the highest one — the gate still opens and the narrowed units re-run under the prior attempt's own selection, re-resolved through the ordinary precedence chain so a host pin still binds, with `retry.escalation` naming why and `retry.nextTier` null exactly when no tier move was requested. A `shipper` prior that the host could not run may instead report `model-unavailable` (alone or beside a sibling unit's other signal), which steps its shipped-default selection down exactly one stable tier for the whole retry (`escalation: lower-stable-tier`) and spends the item's one retry; any other role submitting it is an invalid stop. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, whether the selection was carried from an earlier item-level decision rather than derived here, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are independent axes: `dispatch` at `effectiveParallelism: 1` runs `unitIds` one at a time, never nothing. `unitCount` is authoritative and `atomicity` normalizes to it; `basis`/`escalationOrigin` are bounded at 256 characters, a hard rejection and never a truncation. Full rules: `_contracts/invocation-runtime.ops.md` §\"Resolver call root\". Body-free.",
       inputSchema: routingInput,
       outputSchema: routingOutput,
       _meta: RESIDENT,

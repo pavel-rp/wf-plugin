@@ -13,9 +13,16 @@ import type {
   RoutingSource,
 } from "./types.js";
 
+// WF-743: `shipper` is the one static TOP-tier default. An unpinned fleet shipper
+// drives a whole item to a merged pull request, and the derivation ladder below is
+// bounded to the tiers it will itself mint, so a derived shipper could never reach
+// the top tier however demanding the item. A host that genuinely lacks the tier is
+// handled by the shipper-only `model-unavailable` step-down in `resolveRouting`, so
+// no item fails solely for want of it; an operator pin still outranks this row.
 const DEFAULTS: RoutingProjectConfig = {
   classify: { model: "haiku", effort: null },
   branch: { model: "haiku", effort: null },
+  shipper: { model: "opus", effort: null },
 };
 
 const MODEL_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -35,24 +42,23 @@ const MODEL_TIERS = ["haiku", "sonnet", "opus"] as const;
 // CLOSED, EXPLICIT set rather than "every role that has no static default":
 // every role named here has a matching published disposition row that says so,
 // and a role holding no such row must never silently start receiving a derived
-// value. `branch` and `classify` are absent because their `DEFAULTS` entry
-// already wins above this tier — which is precisely how this change leaves the
-// two shipped-static rows byte-identical in behaviour. `pr` and `commit` are
+// value. `branch`, `classify` and `shipper` are absent because their `DEFAULTS`
+// entry already wins above this tier — which is precisely how WF-498 left the
+// `classify`/`branch` rows byte-identical in behaviour. `pr` and `commit` are
 // absent because their published matrix rows still read `inherit`; and `index` is
 // absent because its published inlined-role entry claims no static default. The
 // matrix and the runtime may never disagree, so a role earns a derived value only
 // once something published says it does.
 //
-// WF-499 added `shipper` under exactly that rule: it now holds a published
-// inlined-role entry recording `complexity-derived` as its mechanism, so the
-// runtime and the matrix still agree. Like `finalize` it backs no agent file, so
-// its entry lives in the matrix's inlined-roles section rather than the
-// eighteen-row agent table. `pr` deliberately did NOT come with it: `CAL-pr`
-// records `current: inherit`, and the calibration gate permits only
-// `adopt`/`retain`/`defer` — so deriving there would falsify a durable record
-// through an operation that gate does not allow. `shipper` hits no such wall
-// because it holds no `CAL-` record at all.
-const DERIVATION_ELIGIBLE_ROLES = new Set(["phase-runner", "finalize", "shipper"]);
+// WF-499 added `shipper` under exactly that rule; WF-743 took it back out. The
+// ladder's ceiling is the tiers `DERIVABLE_MODELS` names, so a derived shipper could
+// never reach the top tier — and a shipper drives an entire item to merge, which is
+// the one role where that ceiling was the wrong trade. It now holds a static top-tier
+// `DEFAULTS` row instead, and its published inlined-role entry says so. `pr`
+// deliberately never joined this set: `CAL-pr` records `current: inherit`, and the
+// calibration gate permits only `adopt`/`retain`/`defer` — so deriving there would
+// falsify a durable record through an operation that gate does not allow.
+const DERIVATION_ELIGIBLE_ROLES = new Set(["phase-runner", "finalize"]);
 // WF-499: the range the ladder below can actually mint. A CARRIED selection must
 // fall inside it — that is what stops a caller smuggling a tier this resolver
 // never derives (notably `opus`) in wearing resolver provenance, since a carried
@@ -84,7 +90,12 @@ const INSUFFICIENCY_SIGNALS = new Set<RoutingInsufficiencySignal>([
   "repeated-failure",
   "increased-risk-or-scope",
   "high-severity-review-uncertainty",
+  "model-unavailable",
 ]);
+// WF-743: the one role that may report `model-unavailable`. It is the only role
+// holding a static TOP-tier default, so it is the only role whose selection can
+// meet a host that lacks the tier it asked for.
+const MODEL_UNAVAILABLE_ROLE = "shipper";
 
 type ModelTier = (typeof MODEL_TIERS)[number];
 type ShapeDecision = Pick<RoutingDecision, "executionShape" | "normalizedEvidence" | "shapeReason" | "effectiveParallelism"> & {
@@ -916,12 +927,35 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     ...evaluation.signals,
     ...(evaluation.units ?? []).flatMap((unit) => unit.sufficient ? [] : unit.signals),
   ])];
+  // WF-743: validated BEFORE the budget, like every other role/shape guard, so a
+  // role that may never submit this signal is refused as invalid rather than
+  // reported `exhausted` — a caller must learn it sent a signal it cannot send.
+  const modelUnavailable = signals.includes("model-unavailable");
+  if (modelUnavailable && inputs.role !== MODEL_UNAVAILABLE_ROLE) {
+    return stopDecision(
+      current, "invalid-stop",
+      `post-attempt signal \`model-unavailable\` is valid only for role \`${MODEL_UNAVAILABLE_ROLE}\`, not \`${inputs.role}\``,
+    );
+  }
+  // It MAY travel beside other signals — a bounded-parallel wave where one unit met
+  // a host without the tier and a sibling failed for another reason. The retry
+  // carries one selection for every retried unit, so the whole retry steps down:
+  // the tier that could not run is never re-requested, and the sibling still gets
+  // its ordinary retry, on a tier the host can actually run. Refusing the mix would
+  // block both items for a failure the step-down already answers.
   const maxAttempts = inputs.role === "security-auditor" &&
     signals.length === 1 && signals[0] === "high-severity-review-uncertainty" ? 3 : 2;
+  // The step-down shares this budget with no exemption and no counter of its own:
+  // it spends the item's one retry, so a second `model-unavailable` — or any later
+  // failure of a stepped-down item — lands here `exhausted` rather than stepping
+  // down again. That is how "at most once per item" is enforced.
   if (evaluation.prior.attempt >= maxAttempts) {
     return priorTerminalDecision(
       current, evaluation.prior, priorShape, "stop", "exhausted",
-      `retry limit exhausted after ${evaluation.prior.attempt} attempts`, retainedUnitIds,
+      modelUnavailable
+        ? `retry limit exhausted after ${evaluation.prior.attempt} attempts; \`model-unavailable\` steps down at most once per item`
+        : `retry limit exhausted after ${evaluation.prior.attempt} attempts`,
+      retainedUnitIds,
     );
   }
 
@@ -951,22 +985,71 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
   // retry could claim `top-tier` while silently routing BELOW the prior selection.
   const priorSelector = evaluation.prior.model.value ?? evaluation.prior.actualModel;
   const priorTier = modelTier(priorSelector);
-  const nextTier = priorTier !== null ? MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1] ?? null : null;
+  // WF-743: the step-down is a SECOND lever, distinct from the upward one. It is
+  // pulled only by the caller's explicit `model-unavailable` report — a masked or
+  // mismatched `actualModel` never pulls it — and it degrades only a selection the
+  // resolver itself defaulted: an operator pin or project row is stated intent and
+  // is never silently lowered. The DELIVERED source is checked, not the requested
+  // one: a host-masked prior never dispatched the default tier, so it has nothing
+  // to report unavailable.
+  if (modelUnavailable) {
+    const stepDownProblem = !inputs.supportsModelSelector
+      ? "`model-unavailable` requires a runtime that can honor a model selector"
+      : evaluation.prior.model.source !== "shipped-default"
+        ? `\`model-unavailable\` steps down only a delivered shipped-default selection; the prior was \`${evaluation.prior.model.source}\``
+        // The prior is caller-restated evidence, so a `shipped-default` claim is
+        // checked against the one value this resolver ships for the role — the same
+        // stance the carried-provenance guard takes. A forged lower "default" must
+        // never be walked further down under resolver provenance.
+        : evaluation.prior.model.requested !== (DEFAULTS[inputs.role]?.model ?? null)
+          ? `\`model-unavailable\` prior claims a shipped default of \`${evaluation.prior.model.requested}\`, but role \`${inputs.role}\` ships \`${DEFAULTS[inputs.role]?.model ?? "none"}\``
+        // A delivered shipped default is only ever produced on `choose`'s success
+        // path: requested from the shipped default, delivered value equal to the
+        // requested one, unmasked, no fallback. `priorTier` is read from the
+        // delivered value, so a prior asserting anything else would step down a
+        // tier the default never dispatched, or relabel a pin as the default.
+        : evaluation.prior.model.requestedSource !== "shipped-default" ||
+            evaluation.prior.model.value !== evaluation.prior.model.requested ||
+            evaluation.prior.model.masked || evaluation.prior.model.fallback
+          ? "`model-unavailable` prior claims a delivered shipped-default selection but reports a different requested source, a different delivered value, masking, or a fallback"
+        : priorTier === null
+          ? "`model-unavailable` requires a prior attempt that maps to a stable tier"
+          : MODEL_TIERS.indexOf(priorTier) === 0
+            ? `\`model-unavailable\` has no tier below \`${priorTier}\` to step down to`
+            : null;
+    if (stepDownProblem) {
+      return priorTerminalDecision(
+        current, evaluation.prior, priorShape, "stop", "invalid-stop", stepDownProblem, retainedUnitIds,
+      );
+    }
+  }
+  const nextTier = priorTier === null
+    ? null
+    : MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + (modelUnavailable ? -1 : 1)] ?? null;
   // ONE classification, and the guard below is DERIVED from it — never a second
   // boolean holding the same rule, which is the drift shape WF-496 collapsed for
   // count-derived evidence. Most-causal first: an edge that cannot honor a selector
   // reports that, even though its prior tier is also unusable as a consequence.
-  const escalation: RoutingRetryInstruction["escalation"] = !inputs.supportsModelSelector
+  const escalation: RoutingRetryInstruction["escalation"] = modelUnavailable
+    ? "lower-stable-tier"
+    : !inputs.supportsModelSelector
     ? "selector-unsupported"
     : priorTier === null
       ? "prior-tier-unknown"
       : nextTier === null
         ? "top-tier"
         : "next-stable-tier";
-  const tierAdvanceAvailable = escalation === "next-stable-tier";
+  // "Advance" here means any tier MOVE the resolver requests — up one, or the
+  // step-down's one below. Both flow through the same validated `choose()` request
+  // and the same integrity guard, so host masking or an unavailable tier still stops.
+  const tierAdvanceAvailable = escalation === "next-stable-tier" || escalation === "lower-stable-tier";
 
   const attempt = evaluation.prior.attempt + 1;
-  const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
+  // The step-down's record: `retry.escalation` names the lever and the origin names
+  // the signal. It is deliberately NOT `diagnostic` — a non-null diagnostic on a
+  // retry makes every conforming caller stop and drop the work.
+  const escalationOrigin = evaluation.prior.escalationOrigin ??
+    `routing:${inputs.role}:attempt-${evaluation.prior.attempt}${modelUnavailable ? ":model-unavailable" : ""}`;
   const insufficientUnitIds = new Set(evaluation.units
     ? evaluation.units.filter((unit) => !unit.sufficient).map((unit) => unit.unitId)
     : evaluation.prior.unitIds);
@@ -1051,7 +1134,9 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
       ? "next model tier was masked by host enforcement"
       : retryDecision.model.fallback
         ? `next model tier fell back: ${retryDecision.model.fallback}`
-        : "next model tier did not advance exactly one stable tier");
+        : modelUnavailable
+          ? "model tier did not step down exactly one stable tier"
+          : "next model tier did not advance exactly one stable tier");
     return priorTerminalDecision(
       retryDecision, evaluation.prior, priorShape, "stop", "invalid-stop", reason, retainedUnitIds,
     );

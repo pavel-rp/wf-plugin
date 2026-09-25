@@ -114,9 +114,10 @@ test("WF-498: the two shipped-static defaults are unaffected by derivation", () 
 });
 
 test("WF-498: derivation reaches only the eligible roles", () => {
-  // `shipper` left this list in WF-499, which published its inlined-role entry and
-  // added it to the eligible set. `pr` and `commit` stay because their matrix rows
-  // still read `inherit` — `pr`'s is pinned there by `CAL-pr`.
+  // `pr` and `commit` stay here because their matrix rows still read `inherit` —
+  // `pr`'s is pinned there by `CAL-pr`. `shipper` is absent for a different reason:
+  // since WF-743 it holds a static top-tier default rather than inheriting, which the
+  // shipped-static test above and `routing-shipper-degrade.test.ts` cover.
   for (const role of ["pr", "commit", "index", "context-distiller", "charter-writer"]) {
     const decision = resolveRouting({}, {
       role, shapeEvidence: runPhaseEvidence, unitIds: [`${role}:single`],

@@ -14,7 +14,7 @@ keys, safety rules).
 `/wf:fleet` — resume: re-read the scoreboard and continue.
 
 Flags, in any of the three forms: `[--model <name>]` (pin one model for every shipper subagent;
-omitted, each item's model is resolved from its own complexity evidence), `[--max-parallel <N>]`
+omitted, each shipper resolves to the top tier, stepping down one tier once if the host lacks it), `[--max-parallel <N>]`
 (positive integer cap on concurrent shippers, bounded by the core maximum of 4; default 4), and
 `[--after "<id>:<blocker>,<blocker>; …"]` (extra dependency edges beyond the tracker graph, used to
 encode same-file contention).

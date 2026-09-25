@@ -286,10 +286,11 @@ try {
     routingSchema.properties?.postAttempt?.properties?.units?.items?.properties?.unitId?.maxLength !== 128 ||
     routingSchema.properties?.postAttempt?.properties?.prior?.properties?.unitIds?.maxItems !== 4 ||
     routingSchema.properties?.postAttempt?.properties?.prior?.properties?.unitIds?.items?.maxLength !== 128 ||
-    routingSchema.properties?.postAttempt?.properties?.signals?.maxItems !== 6 ||
-    routingSchema.properties?.postAttempt?.properties?.units?.items?.properties?.signals?.maxItems !== 6 ||
+    routingSchema.properties?.postAttempt?.properties?.signals?.maxItems !== 7 ||
+    routingSchema.properties?.postAttempt?.properties?.units?.items?.properties?.signals?.maxItems !== 7 ||
     routingSchema.properties?.postAttempt?.properties?.prior?.properties?.effort?.properties?.value?.maxLength !== 16 ||
     !routingSchema.properties?.postAttempt?.properties?.signals?.items?.enum?.includes("high-severity-review-uncertainty") ||
+    !routingSchema.properties?.postAttempt?.properties?.signals?.items?.enum?.includes("model-unavailable") ||
     !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("role") ||
     !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("basis") ||
     routingSchema.properties?.attempt?.maximum !== 3 ||

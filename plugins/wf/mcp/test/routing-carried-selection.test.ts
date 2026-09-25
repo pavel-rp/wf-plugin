@@ -9,14 +9,16 @@ const pkgDir = process.env.WF_MCP_DIR;
 if (!pkgDir) throw new Error("WF_MCP_DIR is required");
 const repoRoot = resolve(pkgDir, "../../..");
 
-// WF-499. The acceptance bar is the fleet wave handoff: each item's model is
-// resolved by the RESOLVER from that item's own complexity evidence before wave
-// formation, and the wave-level decision carries that selection forward with its
-// provenance intact instead of laundering it back in as an ordinary caller pin.
+// WF-499. The acceptance bar was the fleet wave handoff: each item's model is
+// resolved by the RESOLVER from that item's own complexity evidence, and a later
+// topology-only decision carries that selection forward with its provenance intact
+// instead of laundering it back in as an ordinary caller pin.
 //
-// These fixtures model the real call shapes: a per-item resolution (role
-// `shipper`, the item's own evidence) followed by the wave decision (role
-// `shipper`, the wave's own cardinality evidence, carrying the selection).
+// WF-743 moved `shipper` — the role these fixtures were written against — onto a
+// static top-tier default, so it no longer derives and may no longer carry. The
+// carried channel itself is unchanged for every derivation-eligible role, so these
+// fixtures now exercise it under `finalize`, and the last test below pins the
+// refusal of a carried `shipper` selection.
 
 /** An item whose work is mechanical — the shape a small, well-templated change
  *  presents. Scores 0 on the ladder. */
@@ -49,7 +51,7 @@ const oneItemWaveEvidence = designItemEvidence;
 
 const resolveItem = (shapeEvidence: RoutingShapeEvidence, unitId: string) =>
   resolveRouting({}, {
-    role: "shipper",
+    role: "finalize",
     shapeEvidence,
     unitIds: [unitId],
     supportsModelSelector: true,
@@ -84,7 +86,7 @@ test("WF-499: the wave decision CARRIES the item selection with provenance intac
   // The wave call: topology evidence only, carrying the already-resolved
   // selection and the originating basis — and passing NO invocationModel.
   const wave = resolveRouting({}, {
-    role: "shipper",
+    role: "finalize",
     shapeEvidence: oneItemWaveEvidence,
     unitIds: ["unit-b2"],
     supportsModelSelector: true,
@@ -116,7 +118,7 @@ test("WF-499: the wave decision CARRIES the item selection with provenance intac
 
 test("WF-499: a carried wave states its own basis when the caller forwards none", () => {
   const wave = resolveRouting({}, {
-    role: "shipper",
+    role: "finalize",
     shapeEvidence: oneItemWaveEvidence,
     unitIds: ["unit-a1"],
     supportsModelSelector: true,
@@ -135,14 +137,14 @@ test("WF-499: the carry supersedes a fresh derive off the wave's own evidence", 
   // The wave evidence scores 6 and would derive `sonnet` on its own. A carried
   // `haiku` — the item's OWN answer — must win, or the whole handoff is pointless.
   const fresh = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: false,
   });
   assert.equal(fresh.model.value, "sonnet", "the flat wave evidence alone derives sonnet");
   assert.equal(fresh.carried, false);
 
   const carried = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: false,
     carriedModel: "haiku",
   });
@@ -152,7 +154,7 @@ test("WF-499: the carry supersedes a fresh derive off the wave's own evidence", 
 
 test("WF-499: an explicit operator pin still outranks a carried selection", () => {
   const pinned = resolveRouting({}, {
-    role: "shipper",
+    role: "finalize",
     shapeEvidence: oneItemWaveEvidence,
     unitIds: ["unit-b2"],
     supportsModelSelector: true,
@@ -172,7 +174,7 @@ test("WF-499: an explicit operator pin still outranks a carried selection", () =
 
 test("WF-499: host enforcement still masks a carried selection", () => {
   const hosted = resolveRouting({}, {
-    role: "shipper",
+    role: "finalize",
     shapeEvidence: oneItemWaveEvidence,
     unitIds: ["unit-b2"],
     supportsModelSelector: true,
@@ -204,13 +206,13 @@ test("WF-499: every carriedModel integrity bound STOPS rather than degrading", (
   assert.equal(ineligible.carried, false);
 
   // (b) An edge that cannot honor a model selector could not have received one.
-  const unsupported = resolveRouting({}, { ...base, role: "shipper", supportsModelSelector: false });
+  const unsupported = resolveRouting({}, { ...base, role: "finalize", supportsModelSelector: false });
   assert.equal(unsupported.status, "stop");
   assert.match(unsupported.diagnostic ?? "", /can honor a model selector/);
 
   // (c) A value outside the range this resolver derives is a forged provenance
   // claim — this is the bound that stops `opus` arriving dressed as resolver work.
-  const smuggled = resolveRouting({}, { ...base, role: "shipper", carriedModel: "opus" });
+  const smuggled = resolveRouting({}, { ...base, role: "finalize", carriedModel: "opus" });
   assert.equal(smuggled.status, "stop");
   assert.match(smuggled.diagnostic ?? "", /`opus` is outside the range this resolver derives/);
   assert.equal(smuggled.model.value, null);
@@ -220,7 +222,7 @@ test("WF-499: every carriedModel integrity bound STOPS rather than degrading", (
   // same NaN hazard the derivation path guards against.
   const badEvidence = resolveRouting({}, {
     ...base,
-    role: "shipper",
+    role: "finalize",
     shapeEvidence: { ...oneItemWaveEvidence, ambiguity: "bogus" as unknown as "none" },
   });
   assert.equal(badEvidence.status, "stop");
@@ -232,7 +234,7 @@ test("WF-499: the carried channel is model-only by construction", () => {
   // unrepresentable rather than merely rejected — the stronger guarantee. Effort
   // continues to inherit on a carried decision.
   const wave = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     carriedModel: "haiku",
   });
@@ -269,7 +271,7 @@ test("WF-499: DERIVABLE_MODELS and the ladder agree across its whole score range
   const mintedTiers = new Set<string>();
   for (const dimension of dimensions) {
     const derived = resolveRouting({}, {
-      role: "shipper",
+      role: "finalize",
       shapeEvidence: { ...oneItemWaveEvidence, ...dimension },
       unitIds: ["unit-a1"],
       supportsModelSelector: true,
@@ -279,7 +281,7 @@ test("WF-499: DERIVABLE_MODELS and the ladder agree across its whole score range
     mintedTiers.add(derived.model.value ?? "");
     // Every value the ladder mints must round-trip through the carried channel.
     const roundTrip = resolveRouting({}, {
-      role: "shipper",
+      role: "finalize",
       shapeEvidence: oneItemWaveEvidence,
       unitIds: ["unit-a1"],
       supportsModelSelector: true,
@@ -299,7 +301,7 @@ test("WF-499: DERIVABLE_MODELS and the ladder agree across its whole score range
   assert.deepEqual([...mintedTiers].sort(), ["haiku", "sonnet"], "the ladder's full range");
   for (const tier of ["opus", "claude-sonnet-4-6", "gpt", ""]) {
     const refused = resolveRouting({}, {
-      role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+      role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
       supportsModelSelector: true, supportsEffortSelector: false,
       carriedModel: tier,
     });
@@ -347,7 +349,7 @@ test("WF-499: a `model=false` edge derives nothing and carries nothing", () => {
   // model is always a tier the ladder mints, so `priorTier` always resolves and
   // `nextTier` is always non-null. The genuine retry case is the next test.
   const initial = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: false, supportsEffortSelector: false,
   });
   assert.equal(initial.model.value, null);
@@ -372,7 +374,7 @@ function priorFrom(decision: ReturnType<typeof resolveRouting>) {
 
 test("WF-499: a carried prior escalates one tier, and the advance is not a carry", () => {
   const initial = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     carriedModel: "haiku",
   });
@@ -380,7 +382,7 @@ test("WF-499: a carried prior escalates one tier, and the advance is not a carry
   assert.equal(initial.carried, true);
 
   const retry = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     carriedModel: "haiku",
     basis: initial.basis,
@@ -403,7 +405,7 @@ test("WF-499: `carried` never contradicts the model it is published beside", () 
   // (or `"host"`, masked) together with `carried: true` — exactly the combination
   // this field's own published contract rules out.
   const pinned = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     invocationModel: "opus", carriedModel: "haiku",
   });
@@ -412,7 +414,7 @@ test("WF-499: `carried` never contradicts the model it is published beside", () 
   // The caller restates `carriedModel` on the post-attempt call — the shape that
   // triggered the defect — while the prior was actually chosen by the pin.
   const retained = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     invocationModel: "opus", carriedModel: "haiku",
     basis: pinned.basis,
@@ -426,13 +428,13 @@ test("WF-499: `carried` never contradicts the model it is published beside", () 
 
   // The host-masked variant, which the published contract names explicitly.
   const hosted = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     hostModel: "sonnet", carriedModel: "haiku",
   });
   assert.equal(hosted.model.masked, true);
   const retainedHost = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     hostModel: "sonnet", carriedModel: "haiku",
     basis: hosted.basis,
@@ -444,12 +446,12 @@ test("WF-499: `carried` never contradicts the model it is published beside", () 
   // A genuinely carried prior still round-trips as carried, so the fix narrows
   // rather than blanket-falsifies.
   const carried = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     carriedModel: "haiku",
   });
   const retainedCarry = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     carriedModel: "haiku",
     basis: carried.basis,
@@ -467,13 +469,13 @@ test("WF-499: a forged post-attempt prior cannot claim a tier the ladder never m
   // resolver could not have produced into the ledger wearing resolver provenance,
   // and would suppress the escalation lever by making the prior look top-tier.
   const forged = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     postAttempt: {
       sufficient: true,
       signals: [],
       prior: {
-        role: "shipper",
+        role: "finalize",
         attempt: 1,
         executionShape: "isolated" as const,
         shapeEvidence: oneItemWaveEvidence,
@@ -503,13 +505,13 @@ test("WF-499: a HOST-MASKED derived prior is retained, not refused as forged", (
   // `value` and `requested`. `choose`'s host branch legitimately emits a
   // delivered host value beside a requested derived one, so under any host pin
   // outside the ladder's range the resolver refused a prior IT HAD MINTED —
-  // `phase-runner`, `finalize` and `shipper` all returning `invalid-stop` on
+  // `phase-runner` and `finalize` both returning `invalid-stop` on
   // every post-attempt call.
   //
   // The whole suite stayed green because every host fixture used a bare
   // `haiku`/`sonnet`, which is inside the range. A pin outside it is the only
   // shape that exposes the bug, and it is what this fixture pins.
-  for (const role of ["phase-runner", "finalize", "shipper"]) {
+  for (const role of ["phase-runner", "finalize"]) {
     const initial = resolveRouting({}, {
       role, shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
       supportsModelSelector: true, supportsEffortSelector: true,
@@ -537,12 +539,12 @@ test("WF-499: a HOST-MASKED derived prior is retained, not refused as forged", (
 
   // The forgery it must still catch: the DELIVERED value claiming derivation.
   const forged = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: true,
     postAttempt: {
       sufficient: true, signals: [],
       prior: {
-        role: "shipper", attempt: 1, executionShape: "isolated" as const,
+        role: "finalize", attempt: 1, executionShape: "isolated" as const,
         shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
         model: {
           value: "opus", source: "complexity-derived" as const, requested: "opus",
@@ -565,7 +567,7 @@ test("WF-499: an empty carriedModel is refused, never silently downgraded", () =
   // would then deliver a FRESH derive off its own evidence — a different model than
   // the caller meant to carry, with no diagnostic and no fallback token.
   const empty = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: false,
     carriedModel: "",
   });
@@ -597,9 +599,31 @@ test("WF-499: the MCP tool schema exposes the new input and the new ledger field
   // And the runtime must actually produce it on an ordinary decision, so the
   // schema's `required` is satisfiable rather than aspirational.
   const decision = resolveRouting({}, {
-    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    role: "finalize", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: true, supportsEffortSelector: false,
   });
   assert.equal(typeof decision.carried, "boolean");
   assert.equal(typeof projectRoutingMeasurement(decision).carried, "boolean");
+});
+
+test("WF-743: a carried `shipper` selection is refused — shipper no longer derives", () => {
+  for (const carriedModel of ["haiku", "sonnet"]) {
+    const decision = resolveRouting({}, {
+      role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+      supportsModelSelector: true, supportsEffortSelector: false, carriedModel,
+    });
+    assert.equal(decision.status, "stop");
+    assert.equal(decision.disposition, "invalid-stop");
+    assert.match(decision.diagnostic ?? "", /never derives/);
+    assert.equal(decision.carried, false);
+  }
+  // Without the forged claim the same call resolves the static top tier.
+  const unpinned = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.equal(unpinned.status, "dispatch");
+  assert.equal(unpinned.model.value, "opus");
+  assert.equal(unpinned.model.source, "shipped-default");
+  assert.equal(unpinned.carried, false);
 });

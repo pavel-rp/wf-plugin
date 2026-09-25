@@ -1942,7 +1942,12 @@ export type RoutingInsufficiencySignal =
   | "conflicting-or-incomplete-evidence"
   | "repeated-failure"
   | "increased-risk-or-scope"
-  | "high-severity-review-uncertainty";
+  | "high-severity-review-uncertainty"
+  /** WF-743: the host could not run the tier the prior attempt requested. Valid only
+   *  for `shipper`, and only against a prior whose model came from the shipped static
+   *  default; it steps the whole retry's selection down exactly one stable tier (also
+   *  when a sibling unit reports another signal) and spends the item's one retry. Any other role submitting it is refused. */
+  | "model-unavailable";
 export interface RoutingUnitEvaluation {
   unitId: string;
   sufficient: boolean;
@@ -1977,14 +1982,17 @@ export interface RoutingRetryInstruction {
    *  cannot honor a model selector, the prior attempt maps to no stable tier, or the
    *  prior attempt already sits at the highest one. The model tier is ONE lever, not
    *  the gate itself — an inapplicable lever narrows and re-dispatches the failed
-   *  units rather than refusing to acknowledge the failure. */
-  escalation: "next-stable-tier" | "selector-unsupported" | "prior-tier-unknown" | "top-tier";
+   *  units rather than refusing to acknowledge the failure. `lower-stable-tier` is
+   *  the WF-743 shipper-only step-down pulled by a `model-unavailable` signal: the
+   *  selection moves exactly one stable tier BELOW `priorTier`. */
+  escalation: "next-stable-tier" | "selector-unsupported" | "prior-tier-unknown" | "top-tier" | "lower-stable-tier";
   /** The tier the attempt that ALREADY RAN mapped to, reported whenever it resolves
    *  — including when no advance was requested. Null only when the prior model maps
    *  to no stable tier. It is evidence about the past, and carries no invariant. */
   priorTier: "haiku" | "sonnet" | "opus" | null;
-  /** THE CALLER INVARIANT: `nextTier` is non-null exactly when the resolver advanced
-   *  the selection one stable tier above `priorTier`; null means it requested no
+  /** THE CALLER INVARIANT: `nextTier` is non-null exactly when the resolver moved
+   *  the selection one stable tier — above `priorTier` on `next-stable-tier`, below it
+   *  on `lower-stable-tier`; null means it requested no
    *  advance and the narrowed units re-run at the prior attempt's own selection,
    *  re-resolved through the ordinary precedence chain so host enforcement still
    *  wins. A null `nextTier` together with `shapeChanged: false` is a deliberate
