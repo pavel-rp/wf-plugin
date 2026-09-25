@@ -72,7 +72,7 @@ contained under the store root. **On unrecognized** (whole-store or per-record l
 return `LOCATE ERROR: unrecognized record shape — <path> — <what did not match>` and stop; the caller
 writes no report. Never a per-record skip. **Store root unreadable** (permission denied or
 inaccessible): `LOCATE ERROR: session store unreadable — <cause>`, stop, no report. A store root that
-simply does not exist is zero located sessions, not an error. **A single record's denied read**
+simply does not exist (`ENOENT`) is zero located sessions, not an error. **A single record's denied read**
 (store lists successfully, one candidate's own read is denied): not a shape mismatch, not a
 whole-run stop — record that session `skipped (access denied)` and continue.
 

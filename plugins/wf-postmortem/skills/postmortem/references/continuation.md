@@ -12,11 +12,11 @@ context through Phase 4 (Part E is a second, independent check, not a second fet
 Runs before Phase 1, only when `--report <path>` was passed; absent → skip straight to Phase 1.
 
 1. **Existence.** `Bash`: `test -e '<path>'` (`'` → `'\''`, single-quoted — same primitive as
-   `--session`, Phase 1 step 5). Fails → stop `POSTMORTEM — stopped`, reason `"--report <path> does
-   not resolve to an existing file"`. Write nothing.
+   `--session`, Phase 1 step 5); fails → stop `POSTMORTEM — stopped`, reason `"--report <path> does
+   not resolve to an existing file"`, write nothing.
 2. **Path confinement — gates step 3's `Read`, nothing else** (rationale:
-   `continuation-rationale.md` §"Why confinement gates the read"). Canonicalize filesystem-side, never
-   string comparison: `Bash`: `cd '<dirname of --report path>' && pwd -P` (same escaping) for the
+   `continuation-rationale.md` §"Why confinement gates the read"). Canonicalize filesystem-side (never
+   string comparison): `Bash`: `cd '<dirname of --report path>' && pwd -P` (same escaping) for the
    parent, and resolved `{task-root}` (`resolve_config`'s `workspaceRoot` + `coreConfig.taskRoot`) the
    same way. Require **all**: basename exactly `report.md`; `Bash`: `test -L '<path>'` **fails** (not
    a symlink); canonicalized parent's basename matches `^PM[0-9]+__.+$` (Phase 3's minting shape);
@@ -105,13 +105,13 @@ full (a `read in part` supersedes an earlier `read` too); failure over a prior `
 → **keep the prior entry**, log `Retry failed, prior evidence retained: <path> — <failure verdict and
 reason>`; both failures → replace (fresher reason, nothing lost either way).
 **Recompute over the full accumulated set.** Run `SKILL.md` Phase 3.5 steps 5-8 (version resolution,
-two-sided check, section composition, fix-direction/recommendation) as a first run would, but over
+two-sided check, section composition, fix-direction/recommendation — `version-resolution.md` and
+`recommendation.md`) as a first run would, but over
 **every** accumulated hypothesis/observation post-upsert — every section restated fresh each time; a
 factor is never dropped for lack of new evidence, and a re-read session replaces its own prior
 contribution rather than duplicating it. **`H<n>` ids are never recomputed** — a carried-over entry
 (step 4) keeps its id; only a genuinely new entry mints the next unused `H<n>`
 (`report-template.md`'s minting rule).
-
 ## Part D: Write in place and log the Continuation entry
 
 Phase 3 (folder minting) is skipped — reuse the prior folder path (step A4). Phase 4 overwrites the
