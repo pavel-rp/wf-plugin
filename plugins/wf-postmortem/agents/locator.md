@@ -75,7 +75,8 @@ n/a — named session`; (5) emit the block below and nothing else.
    → zero candidates, not an error. Exists but unlistable → `LOCATE ERROR: session store unreadable —
    <cause>` — stop, return nothing else.
 2. **Enumerate every candidate top-level record**, per the seam's record-layout rule, shape-check each.
-   First unrecognized shape (top-level or attached subagent entry) → stop the entire operation, return
+   First unrecognized shape (top-level or attached subagent entry; an empty header-only record is
+   recognized, not a failure — seam §2) → stop the entire operation, return
    `LOCATE ERROR: unrecognized record shape — <path> — <what did not match>`. A denied read of one
    candidate's first line, store root still listable, is **not** this failure — status
    `skipped (access denied)`, keep enumerating.

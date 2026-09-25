@@ -57,14 +57,14 @@ that it completes its pair. **Recognized** — all hold: the candidate is a real
 canonicalized path must additionally be contained under the derived store root (component-boundary
 comparison, never string-prefix); **in attach-only mode** there is no store root, so containment is
 `n/a — named session`. The name ends `.jsonl`; the first line is well-formed JSON carrying
-`sessionId` (a `timestamp` is **not** required on it — header lines carry `sessionId` but no
-`timestamp`); at least one line carries a `timestamp` (found by the same forward scan §3 uses, no
-size cap of its own — §6 governs); when a sibling subagent-record directory exists, every file
-directly inside its `subagents/` is one half of a complete `agent-<id>.jsonl` +
-`agent-<id>.meta.json` pair.
+`sessionId` (header lines carry no `timestamp`); at least one line carries a `timestamp` (§3's
+forward scan, §6's bound) — or the record is **empty**: every line well-formed JSON carrying a `type`,
+none carrying `timestamp` (a header-only stub, e.g. a lone `bridge-session` line) — recognized, never
+a shape failure, and dateless, so §3's window excludes it (no coverage entry); when a sibling subagent-record directory exists, every file
+directly inside its `subagents/` is one half of a complete `agent-<id>.jsonl` + `.meta.json` pair.
 
 **Unrecognized** — a record: wrong extension, malformed/missing-`sessionId` first line, or no line
-carries `timestamp`. A pair: either half missing. Also unrecognized: a `subagents/` entry that is
+carries `timestamp` and it is not empty. A pair: either half missing. Also unrecognized: a `subagents/` entry that is
 neither a `.jsonl` record nor a `.meta.json` sidecar; a sibling directory with no `subagents/` folder
 at all where the top-level record's own first line implies subagent activity; any candidate/directory/
 entry that is a symlink or fails its shape test; in locate mode, one whose path is not canonically
