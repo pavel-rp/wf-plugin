@@ -45,5 +45,15 @@ else
 fi
 
 echo ""
+echo "=== Gate-map drift fixture ==="
+if bash "$DIR/gate-map-drift.sh"; then
+  printf 'PASS: %s\n' "gate-map drift fixture"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "gate-map drift fixture"
+  fail=$((fail + 1))
+fi
+
+echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
