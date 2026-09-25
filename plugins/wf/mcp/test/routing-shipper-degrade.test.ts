@@ -202,9 +202,10 @@ test("WF-743: a host-masked prior never dispatched the default tier, so it canno
   assert.match(refused.diagnostic ?? "", /the prior was `host`/);
 });
 
-test("WF-743: a forged shipped-default prior with a divergent delivered value, masking, or a fallback cannot step down", () => {
+test("WF-743: a forged shipped-default prior with a divergent requested source, delivered value, masking, or a fallback cannot step down", () => {
   const genuine = initial();
   const forgeries = [
+    { ...genuine.model, requestedSource: "invocation" as const },
     { ...genuine.model, value: "sonnet" },
     { ...genuine.model, masked: true },
     { ...genuine.model, fallback: "unavailable" as const },
@@ -213,7 +214,7 @@ test("WF-743: a forged shipped-default prior with a divergent delivered value, m
     const refused = report({ ...genuine, model }, ["model-unavailable"]);
     assert.equal(refused.status, "stop");
     assert.equal(refused.disposition, "invalid-stop");
-    assert.match(refused.diagnostic ?? "", /different delivered value, masking, or a fallback/);
+    assert.match(refused.diagnostic ?? "", /different requested source, a different delivered value, masking, or a fallback/);
   }
 });
 
