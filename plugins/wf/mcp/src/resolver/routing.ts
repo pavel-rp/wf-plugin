@@ -989,12 +989,14 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
   // pulled only by the caller's explicit `model-unavailable` report — a masked or
   // mismatched `actualModel` never pulls it — and it degrades only a selection the
   // resolver itself defaulted: an operator pin or project row is stated intent and
-  // is never silently lowered.
+  // is never silently lowered. The DELIVERED source is checked, not the requested
+  // one: a host-masked prior never dispatched the default tier, so it has nothing
+  // to report unavailable.
   if (modelUnavailable) {
     const stepDownProblem = !inputs.supportsModelSelector
       ? "`model-unavailable` requires a runtime that can honor a model selector"
-      : evaluation.prior.model.requestedSource !== "shipped-default"
-        ? `\`model-unavailable\` steps down only a shipped-default selection; the prior was \`${evaluation.prior.model.requestedSource}\``
+      : evaluation.prior.model.source !== "shipped-default"
+        ? `\`model-unavailable\` steps down only a delivered shipped-default selection; the prior was \`${evaluation.prior.model.source}\``
         // The prior is caller-restated evidence, so a `shipped-default` claim is
         // checked against the one value this resolver ships for the role — the same
         // stance the carried-provenance guard takes. A forged lower "default" must

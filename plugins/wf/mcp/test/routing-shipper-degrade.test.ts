@@ -159,7 +159,7 @@ test("WF-743: a `--model` pin outranks the static default and is never stepped d
   const refused = report(pinned, ["model-unavailable"], { invocationModel: "opus" });
   assert.equal(refused.status, "stop");
   assert.equal(refused.disposition, "invalid-stop");
-  assert.match(refused.diagnostic ?? "", /only a shipped-default selection/);
+  assert.match(refused.diagnostic ?? "", /only a delivered shipped-default selection/);
 
   const cheaper = initial({ invocationModel: "sonnet" });
   assert.equal(cheaper.model.value, "sonnet");
@@ -188,6 +188,18 @@ test("WF-743: the step-down never lowers past the bottom tier or reaches past ho
   assert.equal(masked.status, "stop");
   assert.equal(masked.disposition, "invalid-stop");
   assert.match(masked.diagnostic ?? "", /masked by host enforcement/);
+});
+
+test("WF-743: a host-masked prior never dispatched the default tier, so it cannot step down", () => {
+  // The host delivered `sonnet` although the shipped default requested `opus`; a
+  // `model-unavailable` report must not walk that delivered tier further down.
+  const hostMasked = initial({ hostModel: "sonnet" });
+  assert.equal(hostMasked.model.source, "host");
+  assert.equal(hostMasked.model.requestedSource, "shipped-default");
+  const refused = report(hostMasked, ["model-unavailable"]);
+  assert.equal(refused.status, "stop");
+  assert.equal(refused.disposition, "invalid-stop");
+  assert.match(refused.diagnostic ?? "", /the prior was `host`/);
 });
 
 test("WF-743: a bounded-parallel wave steps down only the units that reported it", () => {
