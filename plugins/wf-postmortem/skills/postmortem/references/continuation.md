@@ -76,8 +76,13 @@ skips straight to Phase 1, unchanged by anything below.
    - **Evidence Record** — every Supporting and Disconfirming observation, each with its locator and
      tier.
    - **Contributing Factors** — both the confirmed half (mechanism, version, `file:line`, locator,
-     tier) and the Hypotheses half (mechanism, locator or "no locator", the reason it was not
-     promoted).
+     tier) and the Hypotheses half (its `H<n>` id, mechanism, locator or "no locator", the reason it
+     was not promoted — **including, when present, its `fallback evidence` label and the Continuation
+     draw-key material that produced it**: the resolved source/locator pairing
+     `coverage-cross-check.md`'s dedup table describes for whichever disposition produced that entry).
+     Parsing the `H<n>` id, the label, and the draw-key material is what lets a re-parsed report
+     support the same dedup guard a same-run in-memory state does — the guard reads them from here on
+     every follow-up, never only on a first run.
    - **Measured Effect** — each session's counts and their tiers.
    - **The report's own folder path** — the parent directory of the resolved `report.md`, already
      confirmed by step 2 above — for Phase 3's reuse (Part C below).
@@ -255,6 +260,14 @@ set every time a follow-up runs — a hypothesis or a confirmed factor from an e
 dropped simply because this run read nothing new about it, and a session this run re-read replaces its
 own prior contribution rather than duplicating it.
 
+**A Hypotheses entry's `H<n>` id is never recomputed here.** Every entry carried over from the parse
+(step 4 above) keeps the id it already had — restating a section fresh means restating its content,
+not reassigning its identity. Only a genuinely new entry, introduced for the first time this run (a
+newly-checked mechanism with no prior entry, or a fresh trigger-(b) draw for a candidate this report
+has never listed before), mints the next unused `H<n>` per `report-template.md`'s minting rule. This
+is what keeps `coverage-cross-check.md`'s trigger-(a) draw key stable across follow-ups even when the
+Hypotheses list's own merge order shifts run to run.
+
 ## Part D: Write in place and log the Continuation entry
 
 `SKILL.md` Phase 3 (folder minting) is skipped entirely on a validated follow-up — reuse the prior
@@ -281,6 +294,11 @@ Recommendation and before the fenced final-output block) stating:
   from sessions alone after previously carrying fallback evidence, a dated note beside that finding's
   existing fallback-evidence entries recording the confirmation — the fallback entries stay in the
   report, still labelled, and no further fallback evidence is drawn for that finding afterward;
+- **fallback evidence suppressed this run** (`coverage-cross-check.md`'s dedup-key guard): one
+  `Fallback evidence suppressed (duplicate key): <key>` line per dedup hit this run, or "none" —
+  without this a maintainer reading the Continuation trail cannot tell "no draw was attempted" from
+  "a draw was attempted and discarded", exactly the distinction `coverage-cross-check.md`'s own
+  "Follow-up behaviour" section requires this entry to preserve;
 - which sections changed relative to the version this run overwrote — Summary, Contributing Factors,
   Component and Version, Localisation, and Measured Effect are compared by content, Recommendation by
   its **fired rule**: if the rule number is unchanged from the version overwritten, state

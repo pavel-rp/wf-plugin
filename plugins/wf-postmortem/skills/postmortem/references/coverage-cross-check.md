@@ -140,6 +140,19 @@ its `n/a` reason, so a reader never mistakes a narrowed cross-check for an exhau
 subsection renders even when empty (`- none`) and even when Part B never fires — it is a coverage
 fact, not a symptom of a thin finding.
 
+**5. Group unmatched candidates by run, for Part B's trigger (b) only.** The "Runs with no session
+record" list above stays one line per raw candidate — that is a coverage fact, and grouping it would
+hide how many delivery entries a reader is actually looking at. But **a single run can produce several
+delivery entries** — multiple commits, or a commit plus its pull request, all carrying the same
+extracted task id — and Part B's trigger (b) is about *runs*, not entries. So, immediately before Part
+B evaluates trigger (b), partition this step's unmatched candidates into groups: every task-folder
+candidate is its own singleton group (one folder per task id, by construction); every unmatched
+delivery entry joins the group keyed by its own extracted task id, alongside every other unmatched
+delivery entry (and, when one exists and is itself unmatched, the task-folder candidate) sharing that
+same id. A delivery entry with no extractable id (the `inferred`-tier, date-only case) forms its own
+singleton group — it has no id to share a group on. Trigger (b) below evaluates and fires **per
+group**, never per raw entry.
+
 This cross-check **draws no evidence, promotes no factor, and confirms nothing** — it only names
 which in-scope runs have no matching session. Everything past this point belongs to Part B.
 
@@ -152,20 +165,23 @@ capped hunt still has in-scope sessions it has not yet read, the honest remedy i
 reaching for a weaker source — see the capped-hunt rule below. Sourcing (below) draws corroborating
 material for the mechanism this existing hypothesis already names.
 
-**Trigger (b) — no-session-record run.** Part A names an in-scope, in-window task folder or delivery
-entry that carries no matching session — by construction, since no session was ever read for it, no
-existing hypothesis in this report is already tied to it (a hypothesis's only provenance is a session
-locator or "no locator"; nothing ties one to an unread run). Trigger (b) is therefore not tied to a
-pre-existing finding **by provenance** — but sourcing below may still file the draw against one on a
-content match: it draws fallback evidence **about that specific unmatched candidate** and
-either (i) files it as corroborating/disconfirming material alongside an existing hypothesis when the
-drawn text plausibly describes the same mechanism that hypothesis already names, or (ii), the ordinary
-case, enters it as its **own** new Hypotheses entry — mechanism described from the fallback text,
-"suggested from" the candidate's own path (task folder or delivery entry, not a session locator),
-"why not promoted": "fallback evidence only — trigger (b): matched run left no session record". This
-reading is exactly Success Criterion 4's own wording: evidence *for that run*, drawn independently of
-whether some other finding in the report is confirmed — never evidence manufactured for a finding the
-cross-check has no way to have already produced. Trigger (b) fires once per unmatched candidate,
+**Trigger (b) — no-session-record run.** Part A step 5 names an in-scope, in-window **run** (a
+task-folder candidate, or a group of one or more delivery entries sharing the same extracted task id)
+that carries no matching session — by construction, since no session was ever read for it, no existing
+hypothesis in this report is already tied to it (a hypothesis's only provenance is a session locator or
+"no locator"; nothing ties one to an unread run). Trigger (b) is therefore not tied to a pre-existing
+finding **by provenance** — but sourcing below may still file the draw against one on a content match:
+it draws fallback evidence **about that specific unmatched run** and either (i) files it as
+corroborating/disconfirming material alongside an existing hypothesis when the drawn text plausibly
+describes the same mechanism that hypothesis already names, or (ii), the ordinary case, enters it as
+its **own** new Hypotheses entry — mechanism described from the fallback text, "suggested from" the
+run's own identity (its extracted task id when the group has one, or the sole candidate's own
+task-folder path / delivery-entry id for a singleton group with no extractable id — never a session
+locator, since none exists for this run), "why not promoted": "fallback evidence only — trigger (b):
+matched run left no session record". This reading is exactly Success Criterion 4's own wording:
+evidence *for that run*, drawn independently of whether some other finding in the report is confirmed
+— never evidence manufactured for a finding the cross-check has no way to have already produced.
+**Trigger (b) fires once per run (per Part A step 5's group), never once per raw delivery entry** —
 regardless of budget state — a run that left no session behind will never be helped by reading more
 sessions, so the capped-hunt suppression below does not apply to it.
 
@@ -191,27 +207,45 @@ Draw additional Evidence Record / Contributing Factors → Hypotheses entries fr
 
 - the matched (trigger (a): the task folder that matches the hypothesis's own session locator under
   Part A step 3's own rule, applied unchanged — never a looser one improvised here; trigger (b): the
-  unmatched candidate itself) task folder's own artifacts — read directly in this skill's own context
-  (Safety Rules Allowed; neither a session nor a subagent record);
-- `_local/fleet/scoreboard.md`, when present;
-- a project-configured eval-log path, read only when `_local/config.md` names one under this
-  project's own `postmortem` config section, on the **verbatim** heading `**Eval Log Path:**` (that
-  exact spelling — any other heading is simply not this key, and resolves to "not configured");
-  absent today in every project this pack ships against, so this source contributes nothing until a
-  project adds that key; never an error, never a placeholder path. **The configured value is an
+  matched run's own candidate(s), per Part A step 5's group) task folder's own artifacts — read
+  directly in this skill's own context (Safety Rules Allowed; neither a session nor a subagent record);
+- `_local/fleet/scoreboard.md`, when present — sized before reading and read at most the same
+  200,000-character window the eval-log source below and the sibling reader are bound by, oldest-first,
+  so a large scoreboard cannot stall or flood the run exactly as every other untrusted source here is
+  bounded. When the read is cut short by that window, Coverage states `scoreboard truncated — read <n>
+  of <total> characters` on its own line, the same shape as the eval-log truncation notice below;
+- **`Eval Log Path`, resolved through the postmortem capability's own config, never a hand-read
+  heading.** Resolve it via `resolve_profile({ workspaceRoot, capability: "postmortem" })`; when that
+  call returns a present, non-empty `eval-log-path` value, use it. **Read-through fallback, for a
+  project configured before this mechanism existed:** when `resolve_profile` reports the value absent
+  or unset, fall back to reading `_local/config.md`'s own `## Postmortem` section for the **verbatim**
+  heading `**Eval Log Path:**` (that exact spelling — any other heading is simply not this key); when
+  that fallback finds a value, use it and state once in Coverage that the value should move onto the
+  postmortem capability's own profile (resolved via `resolve_profile`, not this heading) — never a
+  stop, never a silent migration. Neither source configured → resolves to "not configured", exactly
+  as before; never an error, never a placeholder path. **Whichever source produced it, the value is an
   arbitrary untrusted string and is gated exactly as `--report`/`--folder`/`--repo`/`--session` are
   (`SKILL.md` Phase 1), never less:** canonicalize it to an absolute real path, resolving every
   symlink; **refuse** it unless the canonical result lies inside the resolved `workspaceRoot`, so a
   `..`-traversal or an absolute path to `~/.ssh/`, a credentials file or a dotfile can never be read
-  here; then size it before reading and read at most the same 200,000-character window the sibling
-  reader is bound by, oldest-first, so a huge or blocking file cannot stall or flood the run.
-  Confinement comes **before** redaction, not instead of it: `redaction.md` covers four fixed
-  credential shapes and is a backstop against an unlucky value, never a licence to read an arbitrary
-  file. **A refusal is not a stop:** the source contributes nothing and Coverage states `eval log
-  refused — outside the workspace` on its own line. **When the path is allowed but cannot be read**
-  (it does not exist, has moved, or the read is denied), likewise not a stop, and not the same
-  silence as an absent key: Coverage states `eval log unreadable — <the reason>`, so a project that
-  configured the key learns its configuration is stale instead of reading a quietly thinner report;
+  here; then size it before reading. **Immediately before the `Read`, and only then** (back-to-back
+  tool calls — the same narrowing discipline `continuation.md` Part E applies to the `--report`
+  overwrite target, here applied to a read rather than a write): re-run `test -L` on the canonicalized
+  path and refuse if it now reports a symlink, closing the practical window between the confinement
+  check and the read to the same two-consecutive-tool-calls bound Part E accepts as its own residual.
+  Then read at most the same 200,000-character window the sibling reader is bound by, oldest-first, so
+  a huge or blocking file cannot stall or flood the run. Confinement comes **before** redaction, not
+  instead of it: `redaction.md` covers four fixed credential shapes and is a backstop against an
+  unlucky value, never a licence to read an arbitrary file. **A refusal is not a stop:** the source
+  contributes nothing and Coverage states `eval log refused — outside the workspace` (or `eval log
+  refused — symlinked` for the immediate-pre-read check) on its own line. **When the path is allowed
+  but cannot be read** (it does not exist, has moved, or the read is denied), likewise not a stop, and
+  not the same silence as an absent key: Coverage states `eval log unreadable — <the reason>`, so a
+  project that configured the value learns its configuration is stale instead of reading a quietly
+  thinner report. **When the 200,000-character window cuts the log short**, Coverage states `eval log
+  truncated — read <n> of <total> characters` on its own line, distinct from both refusal and
+  unreadable — a project reading a partial log learns it is partial rather than mistaking it for the
+  whole;
 - the matched delivery entry's own commit/PR text, when Part A matched one.
 
 Redact every value pulled from any of these sources through the existing redacting write path
@@ -271,23 +305,26 @@ fallback-evidence entry**. Before writing any such entry, compute its **draw key
 the report already carries a `fallback evidence` entry with that same key, compared exactly as
 strings:
 
-**Every draw key is built from resolved paths and ids only — never from mechanism prose.** Part C's
-own session upsert keys "by resolved session path" for exactly this reason (`continuation.md`), and
-this table follows it deliberately. A mechanism line is free text this skill regenerates from a
-reader's or fetcher's return on every run; an explicit `--session` retry that reads the same record
-again is not guaranteed to reproduce it byte-for-byte, so a key containing it would silently change
-and re-draw the very entry it exists to suppress. For this reason the trigger-(a) key's own third
-component (below) is the hypothesis's **merge-order index** — a stable, numeric position, never the
-mechanism text or a hash of it — added because the locator/source pair alone collides: two distinct
-hypotheses that both carry `no locator` (an ordinary documented state) and draw from the same source
-(e.g. both from `_local/fleet/scoreboard.md`) would otherwise produce an identical key, silently
-discarding the second draw as a false duplicate.
+**Every draw key is built from resolved paths, ids, and stable minted ids only — never from mechanism
+prose or a per-run position.** Part C's own session upsert keys "by resolved session path" for exactly
+this reason (`continuation.md`), and this table follows it deliberately. A mechanism line is free text
+this skill regenerates from a reader's or fetcher's return on every run; an explicit `--session` retry
+that reads the same record again is not guaranteed to reproduce it byte-for-byte, so a key containing
+it would silently change and re-draw the very entry it exists to suppress. For the same reason the
+trigger-(a) key's own third component (below) is the hypothesis's own **`H<n>` id**
+(`report-template.md`) — minted once and carried forward unchanged by every later parse
+(`continuation.md` Part A step 4), never a merge-order position, which is recomputed fresh every run
+and therefore not stable across them. The id exists because the locator/source pair alone collides:
+two distinct hypotheses that both carry `no locator` (an ordinary documented state) and draw from the
+same source (e.g. both from `_local/fleet/scoreboard.md`) would otherwise produce an identical key,
+silently discarding the second draw as a false duplicate — the `H<n>` id each was minted with the first
+time it was created disambiguates them, and stays the same disambiguator on every subsequent run.
 
 | Disposition | Draw key |
 |---|---|
-| Trigger (b), case (ii) — a new Hypotheses entry for an unmatched candidate | that candidate's own resolved path/id, as its "suggested from" states it |
-| Trigger (b), case (i) — corroborating/disconfirming material filed against an **existing** hypothesis | that candidate's own resolved path/id, paired with **the resolved session path in that hypothesis's own locator** (or the literal `no locator` when it has none) |
-| Trigger (a) — corroborating material for a hypothesis that stays unconfirmed | **the resolved session path in that hypothesis's own locator** (or `no locator`), paired with the resolved source the material was drawn from (task-folder path, `_local/fleet/scoreboard.md`, the configured eval-log path, or the delivery-entry id), paired with **the hypothesis's own merge-order index** (its stable position in this run's merged Hypotheses list) |
+| Trigger (b), case (ii) — a new Hypotheses entry for an unmatched **run** (Part A step 5's group) | that run's own resolved identity, as its "suggested from" states it (the group's extracted task id, or the sole candidate's own path/id for a singleton group with none) |
+| Trigger (b), case (i) — corroborating/disconfirming material filed against an **existing** hypothesis | that run's own resolved identity (as above), paired with **the resolved session path in that hypothesis's own locator** (or the literal `no locator` when it has none) |
+| Trigger (a) — corroborating material for a hypothesis that stays unconfirmed | **the resolved session path in that hypothesis's own locator** (or `no locator`), paired with the resolved source the material was drawn from (task-folder path, `_local/fleet/scoreboard.md`, the configured eval-log path, or the delivery-entry id), paired with **the hypothesis's own `H<n>` id** (minted once, never a merge-order position) |
 
 **Already present** → keep the existing entry unchanged and draw nothing further for that key this
 run. **Not present** → draw it fresh, exactly as on a first run. Without this, a candidate that stays
