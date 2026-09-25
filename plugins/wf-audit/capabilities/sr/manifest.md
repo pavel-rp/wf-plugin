@@ -1,6 +1,6 @@
 # Self-review (sr) capability manifest
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md`
 **Capability:** sr (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -41,6 +41,14 @@ kind (aggregated **with provenance**, order cosmetic), so it carries no ownershi
 The commit agent, firing `pre-commit`, reads `fragments/self-review.md` and follows it in-context
 (`inline` dispatch: read-and-follow, no subagent), passing the staged change set as the artifact
 under review. It is reached only through this registry row; core never spawns it by name.
+
+## Gate maps
+
+gate-map: gate-maps/sr.gate-map.md
+
+The self-review's gate-eligibility map (schema: `gate-map.contract.md` beside the registry
+contract), checked against this capability's own `fragments/self-review.md` grammar — not the audit
+lenses' finding contract. Documentation only — no finding's blocking status changes.
 
 Read-off detail, the rubric-reuse rationale, and the dependency notes:
 [`references/onboarding.md`](references/onboarding.md) — read by `init` and authors, never at

@@ -1,6 +1,6 @@
 # Audit capability manifest
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md`
 **Capability:** audit (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -35,6 +35,20 @@ Task dispatch, and passes the generic finding contract inline to every enabled r
 read-only, resolves only its own rubric, and returns only its final block. The shared contract reference
 is `fragments/finding-contract.md`; it is not fetched at runtime. No auditor is spawned by name from
 core — each is reached only through these registry rows.
+
+## Gate maps
+
+gate-map: gate-maps/correctness.gate-map.md
+gate-map: gate-maps/security.gate-map.md
+gate-map: gate-maps/convention.gate-map.md
+gate-map: gate-maps/consistency.gate-map.md
+gate-map: gate-maps/operational.gate-map.md
+gate-map: gate-maps/audit-retrospective.gate-map.md
+
+One gate-eligibility map per layer this capability owns (schema: `gate-map.contract.md` beside the
+registry contract). Each states which of the layer's labels may block and which are advisory; the
+lens maps check `fragments/finding-contract.md`, the retrospective map `fragments/retrospective.md`.
+Documentation only — no finding's blocking status changes.
 
 ## Profile seed template
 
