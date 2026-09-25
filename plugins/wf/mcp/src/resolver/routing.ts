@@ -1003,6 +1003,13 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
         // never be walked further down under resolver provenance.
         : evaluation.prior.model.requested !== (DEFAULTS[inputs.role]?.model ?? null)
           ? `\`model-unavailable\` prior claims a shipped default of \`${evaluation.prior.model.requested}\`, but role \`${inputs.role}\` ships \`${DEFAULTS[inputs.role]?.model ?? "none"}\``
+        // A delivered shipped default is only ever produced on `choose`'s success
+        // path: delivered value equal to the requested one, unmasked, no fallback.
+        // `priorTier` is read from the delivered value, so a prior asserting
+        // anything else would step down a tier the default never dispatched.
+        : evaluation.prior.model.value !== evaluation.prior.model.requested ||
+            evaluation.prior.model.masked || evaluation.prior.model.fallback
+          ? "`model-unavailable` prior claims a delivered shipped-default selection but reports a different delivered value, masking, or a fallback"
         : priorTier === null
           ? "`model-unavailable` requires a prior attempt that maps to a stable tier"
           : MODEL_TIERS.indexOf(priorTier) === 0

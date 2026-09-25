@@ -202,6 +202,21 @@ test("WF-743: a host-masked prior never dispatched the default tier, so it canno
   assert.match(refused.diagnostic ?? "", /the prior was `host`/);
 });
 
+test("WF-743: a forged shipped-default prior with a divergent delivered value, masking, or a fallback cannot step down", () => {
+  const genuine = initial();
+  const forgeries = [
+    { ...genuine.model, value: "sonnet" },
+    { ...genuine.model, masked: true },
+    { ...genuine.model, fallback: "unavailable" as const },
+  ];
+  for (const model of forgeries) {
+    const refused = report({ ...genuine, model }, ["model-unavailable"]);
+    assert.equal(refused.status, "stop");
+    assert.equal(refused.disposition, "invalid-stop");
+    assert.match(refused.diagnostic ?? "", /different delivered value, masking, or a fallback/);
+  }
+});
+
 test("WF-743: a bounded-parallel wave steps down only the units that reported it", () => {
   const waveEvidence: RoutingShapeEvidence = {
     ...singletonEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true, requestedParallelism: 2,
