@@ -23026,7 +23026,8 @@ var routingSignalValues = [
   "conflicting-or-incomplete-evidence",
   "repeated-failure",
   "increased-risk-or-scope",
-  "high-severity-review-uncertainty"
+  "high-severity-review-uncertainty",
+  "model-unavailable"
 ];
 var routingShapeProperties = {
   workSurface: { type: "string", enum: ["caller-context", "external-context"] },
@@ -23127,7 +23128,7 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
       type: "object",
       properties: {
         sufficient: { type: "boolean" },
-        signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+        signals: { type: "array", maxItems: 7, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
         units: {
           type: "array",
           minItems: 1,
@@ -23137,7 +23138,7 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
             properties: {
               unitId: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern },
               sufficient: { type: "boolean" },
-              signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true }
+              signals: { type: "array", maxItems: 7, items: { type: "string", enum: routingSignalValues }, uniqueItems: true }
             },
             required: ["unitId", "sufficient", "signals"],
             additionalProperties: false
@@ -23217,11 +23218,11 @@ var routingOutput = fromJsonSchema2({
           type: "object",
           properties: {
             attempt: { type: "integer", minimum: 2, maximum: 3 },
-            signals: { type: "array", minItems: 1, maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+            signals: { type: "array", minItems: 1, maxItems: 7, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
             unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
-            escalation: { type: "string", enum: ["next-stable-tier", "selector-unsupported", "prior-tier-unknown", "top-tier"], description: "The lever this retry pulls. `next-stable-tier` advances one stable tier; the other three name why no tier lever applied and the narrowed units re-run under the prior attempt's own selection." },
+            escalation: { type: "string", enum: ["next-stable-tier", "selector-unsupported", "prior-tier-unknown", "top-tier", "lower-stable-tier"], description: "The lever this retry pulls. `next-stable-tier` advances one stable tier; `lower-stable-tier` is the shipper-only `model-unavailable` step-down one stable tier below; the other three name why no tier lever applied and the narrowed units re-run under the prior attempt's own selection." },
             priorTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "The tier the attempt that already ran mapped to, reported whenever it resolves. Evidence about the past; carries no invariant." },
-            nextTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "Non-null exactly when the resolver advanced the selection one stable tier above priorTier. Null means no advance was requested and the narrowed units re-run at the prior selection, re-resolved through the ordinary precedence chain \u2014 so a host pin may still change the model even when this is null." },
+            nextTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "Non-null exactly when the resolver moved the selection one stable tier: above priorTier on next-stable-tier, below it on lower-stable-tier. Null means no advance was requested and the narrowed units re-run at the prior selection, re-resolved through the ordinary precedence chain \u2014 so a host pin may still change the model even when this is null." },
             escalationOrigin: { type: "string", minLength: 1, maxLength: 256, pattern: safeRoutingStringPattern },
             priorExecutionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
             shapeChanged: { type: "boolean" }
@@ -23445,7 +23446,7 @@ function registerResolverTools(server, selectService) {
     "resolve_routing",
     {
       title: "resolve routing",
-      description: 'Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned retry for only insufficient units, or stops on invalid/exhausted state. The model tier is one escalation lever, not the gate: when the lever does not apply \u2014 the edge cannot honor a model selector, the prior model maps to no stable tier, or it is already at the highest one \u2014 the gate still opens and the narrowed units re-run under the prior attempt\'s own selection, re-resolved through the ordinary precedence chain so a host pin still binds, with `retry.escalation` naming why and `retry.nextTier` null exactly when no advance was requested. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, whether the selection was carried from an earlier item-level decision rather than derived here, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are independent axes: `dispatch` at `effectiveParallelism: 1` runs `unitIds` one at a time, never nothing. `unitCount` is authoritative and `atomicity` normalizes to it; `basis`/`escalationOrigin` are bounded at 256 characters, a hard rejection and never a truncation. Full rules: `_contracts/invocation-runtime.ops.md` \xA7"Resolver call root". Body-free.',
+      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned retry for only insufficient units, or stops on invalid/exhausted state. The model tier is one escalation lever, not the gate: when the lever does not apply \u2014 the edge cannot honor a model selector, the prior model maps to no stable tier, or it is already at the highest one \u2014 the gate still opens and the narrowed units re-run under the prior attempt's own selection, re-resolved through the ordinary precedence chain so a host pin still binds, with `retry.escalation` naming why and `retry.nextTier` null exactly when no tier move was requested. A `shipper` prior that the host could not run may instead report `model-unavailable` (alone or beside a sibling unit's other signal), which steps its shipped-default selection down exactly one stable tier for the whole retry (`escalation: lower-stable-tier`) and spends the item's one retry; any other role submitting it is an invalid stop. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, whether the selection was carried from an earlier item-level decision rather than derived here, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are independent axes: `dispatch` at `effectiveParallelism: 1` runs `unitIds` one at a time, never nothing. `unitCount` is authoritative and `atomicity` normalizes to it; `basis`/`escalationOrigin` are bounded at 256 characters, a hard rejection and never a truncation. Full rules: `_contracts/invocation-runtime.ops.md` \xA7\"Resolver call root\". Body-free.",
       inputSchema: routingInput,
       outputSchema: routingOutput,
       _meta: RESIDENT
@@ -26661,7 +26662,8 @@ function pruneEmptyBackupDirs(workspaceRoot, backupPaths) {
 // src/resolver/routing.ts
 var DEFAULTS = {
   classify: { model: "haiku", effort: null },
-  branch: { model: "haiku", effort: null }
+  branch: { model: "haiku", effort: null },
+  shipper: { model: "opus", effort: null }
 };
 var MODEL_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 var UNIT_ID_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
@@ -26675,7 +26677,7 @@ var MAX_EFFORT_LENGTH = 16;
 var MAX_ROUTING_METADATA_LENGTH = 256;
 var MAX_ROLE_LENGTH = 64;
 var MODEL_TIERS = ["haiku", "sonnet", "opus"];
-var DERIVATION_ELIGIBLE_ROLES = /* @__PURE__ */ new Set(["phase-runner", "finalize", "shipper"]);
+var DERIVATION_ELIGIBLE_ROLES = /* @__PURE__ */ new Set(["phase-runner", "finalize"]);
 var DERIVABLE_MODELS = /* @__PURE__ */ new Set(["haiku", "sonnet"]);
 var AMBIGUITY_WEIGHT = { none: 0, bounded: 1, material: 2 };
 var TOOL_WORK_WEIGHT = { none: 0, bounded: 1, material: 2 };
@@ -26685,8 +26687,10 @@ var INSUFFICIENCY_SIGNALS = /* @__PURE__ */ new Set([
   "conflicting-or-incomplete-evidence",
   "repeated-failure",
   "increased-risk-or-scope",
-  "high-severity-review-uncertainty"
+  "high-severity-review-uncertainty",
+  "model-unavailable"
 ]);
+var MODEL_UNAVAILABLE_ROLE = "shipper";
 function derivedCountEvidence(unitCount, unitsIndependent) {
   return {
     atomicity: unitCount === 1 ? "atomic" : "composite",
@@ -27167,6 +27171,14 @@ function resolveRouting(project, inputs) {
     ...evaluation.signals,
     ...(evaluation.units ?? []).flatMap((unit) => unit.sufficient ? [] : unit.signals)
   ])];
+  const modelUnavailable = signals.includes("model-unavailable");
+  if (modelUnavailable && inputs.role !== MODEL_UNAVAILABLE_ROLE) {
+    return stopDecision(
+      current,
+      "invalid-stop",
+      `post-attempt signal \`model-unavailable\` is valid only for role \`${MODEL_UNAVAILABLE_ROLE}\`, not \`${inputs.role}\``
+    );
+  }
   const maxAttempts = inputs.role === "security-auditor" && signals.length === 1 && signals[0] === "high-severity-review-uncertainty" ? 3 : 2;
   if (evaluation.prior.attempt >= maxAttempts) {
     return priorTerminalDecision(
@@ -27175,17 +27187,31 @@ function resolveRouting(project, inputs) {
       priorShape,
       "stop",
       "exhausted",
-      `retry limit exhausted after ${evaluation.prior.attempt} attempts`,
+      modelUnavailable ? `retry limit exhausted after ${evaluation.prior.attempt} attempts; \`model-unavailable\` steps down at most once per item` : `retry limit exhausted after ${evaluation.prior.attempt} attempts`,
       retainedUnitIds
     );
   }
   const priorSelector = evaluation.prior.model.value ?? evaluation.prior.actualModel;
   const priorTier = modelTier(priorSelector);
-  const nextTier = priorTier !== null ? MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1] ?? null : null;
-  const escalation = !inputs.supportsModelSelector ? "selector-unsupported" : priorTier === null ? "prior-tier-unknown" : nextTier === null ? "top-tier" : "next-stable-tier";
-  const tierAdvanceAvailable = escalation === "next-stable-tier";
+  if (modelUnavailable) {
+    const stepDownProblem = !inputs.supportsModelSelector ? "`model-unavailable` requires a runtime that can honor a model selector" : evaluation.prior.model.requestedSource !== "shipped-default" ? `\`model-unavailable\` steps down only a shipped-default selection; the prior was \`${evaluation.prior.model.requestedSource}\`` : evaluation.prior.model.requested !== (DEFAULTS[inputs.role]?.model ?? null) ? `\`model-unavailable\` prior claims a shipped default of \`${evaluation.prior.model.requested}\`, but role \`${inputs.role}\` ships \`${DEFAULTS[inputs.role]?.model ?? "none"}\`` : priorTier === null ? "`model-unavailable` requires a prior attempt that maps to a stable tier" : MODEL_TIERS.indexOf(priorTier) === 0 ? `\`model-unavailable\` has no tier below \`${priorTier}\` to step down to` : null;
+    if (stepDownProblem) {
+      return priorTerminalDecision(
+        current,
+        evaluation.prior,
+        priorShape,
+        "stop",
+        "invalid-stop",
+        stepDownProblem,
+        retainedUnitIds
+      );
+    }
+  }
+  const nextTier = priorTier === null ? null : MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + (modelUnavailable ? -1 : 1)] ?? null;
+  const escalation = modelUnavailable ? "lower-stable-tier" : !inputs.supportsModelSelector ? "selector-unsupported" : priorTier === null ? "prior-tier-unknown" : nextTier === null ? "top-tier" : "next-stable-tier";
+  const tierAdvanceAvailable = escalation === "next-stable-tier" || escalation === "lower-stable-tier";
   const attempt = evaluation.prior.attempt + 1;
-  const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
+  const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}${modelUnavailable ? ":model-unavailable" : ""}`;
   const insufficientUnitIds = new Set(evaluation.units ? evaluation.units.filter((unit) => !unit.sufficient).map((unit) => unit.unitId) : evaluation.prior.unitIds);
   const retryUnitIds = evaluation.prior.unitIds.filter((id) => insufficientUnitIds.has(id));
   const retryUnitCount = retryUnitIds.length;
@@ -27240,7 +27266,7 @@ function resolveRouting(project, inputs) {
     masked: retryDecision.model.masked || retryEffort.masked
   };
   if (retryDecision.status === "stop" || tierAdvanceAvailable && (retryDecision.model.masked || retryDecision.model.fallback || modelTier(retryDecision.model.value) !== nextTier)) {
-    const reason = retryDecision.diagnostic ?? (retryDecision.model.masked ? "next model tier was masked by host enforcement" : retryDecision.model.fallback ? `next model tier fell back: ${retryDecision.model.fallback}` : "next model tier did not advance exactly one stable tier");
+    const reason = retryDecision.diagnostic ?? (retryDecision.model.masked ? "next model tier was masked by host enforcement" : retryDecision.model.fallback ? `next model tier fell back: ${retryDecision.model.fallback}` : modelUnavailable ? "model tier did not step down exactly one stable tier" : "next model tier did not advance exactly one stable tier");
     return priorTerminalDecision(
       retryDecision,
       evaluation.prior,

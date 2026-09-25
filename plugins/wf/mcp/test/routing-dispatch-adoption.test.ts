@@ -182,15 +182,15 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /excess ready items outside the decision[^\n]*`queued`[^\n]*fresh initial routing/);
   assert.match(fleet, /`--max-parallel <N>`.*Positive integer.*core maximum of 4/);
   assert.match(fleet, /model-homogeneous groups/);
-  // WF-499 retired the laundering this line used to pin. The initial call no
-  // longer hands fleet's OWN per-item judgment over as `invocationModel`; it
-  // states two channels and never both — an operator pin still travels as
-  // `invocationModel`, while an unpinned, resolver-derived selection travels as
-  // `carriedModel` so the ledger records it as resolver-derived rather than as a
-  // caller pin. Asserting the old phrase here would now pin the defect itself.
-  assert.match(fleet, /initial[\s\S]{0,300}exactly two channels, never both/);
+  // WF-499 retired the laundering this line used to pin: fleet's own per-item
+  // judgment is never handed over as `invocationModel`. WF-743 then moved `shipper`
+  // onto a static top-tier default, so an unpinned wave passes NEITHER channel and
+  // re-resolves that default itself — `carriedModel` is refused for `shipper` now.
+  // An operator pin still travels as `invocationModel`.
+  assert.match(fleet, /initial[\s\S]{0,300}exactly one of two ways, never both/);
   assert.match(fleet, /\*\*Pinned\*\*[\s\S]{0,200}as `invocationModel`/);
-  assert.match(fleet, /\*\*Unpinned\*\*[\s\S]{0,400}as `carriedModel`[\s\S]{0,300}`invocationModel` at all/);
+  assert.match(fleet, /\*\*Unpinned\*\*[\s\S]{0,200}no\*\* `invocationModel` and \*\*no\*\* `carriedModel` at all/);
+  assert.match(fleet, /report `model-unavailable` in place of `repeated-failure`/);
   assert.match(fleet, /same agent id once under the retained routing decision/);
   assert.match(fleet, /`isolated` singleton:[\s\S]{0,300}signals: \["repeated-failure"\][\s\S]{0,200}omit `postAttempt\.units`/);
   assert.match(fleet, /`bounded-parallel` wave:[\s\S]{0,300}complete retained launch wave[\s\S]{0,500}`postAttempt\.units`/);
