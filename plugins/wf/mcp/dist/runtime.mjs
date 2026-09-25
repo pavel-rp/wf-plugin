@@ -26663,7 +26663,8 @@ function pruneEmptyBackupDirs(workspaceRoot, backupPaths) {
 var DEFAULTS = {
   classify: { model: "haiku", effort: null },
   branch: { model: "haiku", effort: null },
-  shipper: { model: "opus", effort: null }
+  shipper: { model: "opus", effort: null },
+  "phase-runner": { model: "opus", effort: null }
 };
 var MODEL_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 var UNIT_ID_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;

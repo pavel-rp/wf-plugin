@@ -8,8 +8,9 @@ import { resolveRouting } from "../src/resolver/routing.js";
 // against the shapes the real call sites pass, so a mechanism that only works in
 // a synthetic fixture cannot pass them.
 
-/** The evidence `/wf:run` passes at `run:phase` — the edge that dispatches the
- *  real `wf:phase-runner` subagent. Isolation-worthy, so it selects `isolated`. */
+/** The evidence `/wf:run` passes at `run:phase`. Isolation-worthy, so it selects
+ *  `isolated`. `phase-runner` now holds a static top-tier default, so these
+ *  fixtures exercise the ladder through `finalize`, the remaining derived role. */
 const runPhaseEvidence = {
   workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
   ambiguity: "material", risk: "elevated", toolWork: "material", validation: "judgment",
@@ -31,7 +32,7 @@ function shipEdgeEvidence(returnContract: "mechanically-judgeable" | "judgment")
 
 test("WF-498: a complexity-derived model reaches a DISPATCHED shipper-path agent unmasked", () => {
   const decision = resolveRouting({}, {
-    role: "phase-runner",
+    role: "finalize",
     shapeEvidence: runPhaseEvidence,
     unitIds: ["run:phase"],
     supportsModelSelector: true,
@@ -65,7 +66,7 @@ test("WF-498: a complexity-derived model reaches a DISPATCHED shipper-path agent
 test("WF-498: two shipper-path edges with differing evidence receive differing selections", () => {
   const route = (returnContract: "mechanically-judgeable" | "judgment", unitId: string) =>
     resolveRouting({}, {
-      role: "phase-runner",
+      role: "finalize",
       shapeEvidence: shipEdgeEvidence(returnContract),
       unitIds: [unitId],
       supportsModelSelector: true,
@@ -92,7 +93,7 @@ test("WF-498: two shipper-path edges with differing evidence receive differing s
   // `phase-runner` is also reached by the INTERACTIVE `/wf:run` path and no core
   // call site supplies `availableModels` to degrade against.
   const hardest = resolveRouting({}, {
-    role: "phase-runner", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
+    role: "finalize", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
     supportsModelSelector: true, supportsEffortSelector: false,
   });
   assert.match(hardest.basis ?? "", /score 6:/, "the score still reflects the harder evidence");
@@ -139,7 +140,7 @@ test("WF-498: derivation reaches only the eligible roles", () => {
 
 test("WF-498: every stated choice still outranks derivation, and host enforcement still masks", () => {
   const base = {
-    role: "phase-runner", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
+    role: "finalize", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
     supportsModelSelector: true, supportsEffortSelector: false,
   } as const;
 
@@ -149,7 +150,7 @@ test("WF-498: every stated choice still outranks derivation, and host enforcemen
   assert.equal(invocation.model.source, "invocation");
   assert.equal(invocation.basis, null, "a stated choice derives nothing, so it reports no basis");
 
-  const project = resolveRouting({ "phase-runner": { model: "sonnet", effort: null } }, base);
+  const project = resolveRouting({ finalize: { model: "sonnet", effort: null } }, base);
   assert.equal(project.model.value, "sonnet");
   assert.equal(project.model.source, "project");
 
@@ -165,7 +166,7 @@ test("WF-498: every stated choice still outranks derivation, and host enforcemen
 
 test("WF-498: an edge that cannot honor a selector is left exactly as it was", () => {
   const decision = resolveRouting({}, {
-    role: "phase-runner", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
+    role: "finalize", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
     supportsModelSelector: false, supportsEffortSelector: false,
   });
   // Derivation is strictly ADDITIVE to edges that can use a selector. Deriving
@@ -187,7 +188,7 @@ test("WF-498: rejected shape evidence derives nothing, and never falls through t
   // most expensive tier — chosen by malformed input. Assert the rejection path
   // supplies no model at all.
   const decision = resolveRouting({}, {
-    role: "phase-runner",
+    role: "finalize",
     shapeEvidence: { ...runPhaseEvidence, ambiguity: "bogus" as unknown as "material" },
     unitIds: ["run:phase"],
     supportsModelSelector: true,
@@ -250,18 +251,18 @@ test("WF-498: a caller cannot forge complexity-derived provenance on a post-atte
   // tier the ladder cannot mint, so a prior claiming the resolver derived one is
   // forged whatever role it names. This assertion previously read `retain`, which
   // encoded exactly the gap — the role gate passed and nothing checked the value.
-  const forgedTier = forge("phase-runner");
+  const forgedTier = forge("finalize");
   assert.equal(forgedTier.status, "stop");
   assert.match(forgedTier.diagnostic ?? "", /`opus`, which is outside the range this resolver derives/);
 
   // A genuine prior — an eligible role AND a tier the ladder actually mints — still
   // round-trips, so the guard rejects forgery without breaking the seam a consumer
   // needs to carry provenance.
-  assert.equal(forge("phase-runner", "sonnet").status, "retain");
+  assert.equal(forge("finalize", "sonnet").status, "retain");
 
   // Effort is never derived, so claiming it on the effort choice is also refused.
   const forgedEffort = resolveRouting({}, {
-    role: "phase-runner",
+    role: "finalize",
     shapeEvidence: runPhaseEvidence,
     unitIds: ["run:phase"],
     supportsModelSelector: true,
@@ -270,7 +271,7 @@ test("WF-498: a caller cannot forge complexity-derived provenance on a post-atte
       sufficient: true,
       signals: [],
       prior: {
-        role: "phase-runner",
+        role: "finalize",
         attempt: 1,
         executionShape: "isolated" as const,
         shapeEvidence: runPhaseEvidence,
@@ -297,13 +298,13 @@ test("WF-498: the escalation lever still outranks derivation on a retry that can
   // lever has somewhere to go and must win over a fresh derivation.
   const evidence = shipEdgeEvidence("judgment");
   const initial = resolveRouting({}, {
-    role: "phase-runner", shapeEvidence: evidence, unitIds: ["ship:phase"],
+    role: "finalize", shapeEvidence: evidence, unitIds: ["ship:phase"],
     supportsModelSelector: true, supportsEffortSelector: true,
   });
   assert.equal(initial.model.value, "sonnet");
 
   const retry = resolveRouting({}, {
-    role: "phase-runner",
+    role: "finalize",
     shapeEvidence: evidence,
     unitIds: ["ship:phase"],
     supportsModelSelector: true,
@@ -312,7 +313,7 @@ test("WF-498: the escalation lever still outranks derivation on a retry that can
       sufficient: false,
       signals: ["low-confidence"],
       prior: {
-        role: "phase-runner",
+        role: "finalize",
         attempt: 1,
         executionShape: initial.executionShape,
         shapeEvidence: evidence,
@@ -330,4 +331,25 @@ test("WF-498: the escalation lever still outranks derivation on a retry that can
   assert.equal(retry.retry?.nextTier, "opus");
   assert.equal(retry.model.value, "opus", "the lever's tier must beat a fresh derivation");
   assert.equal(retry.model.source, "invocation", "the advance is a resolver-stated request, not a derivation");
+});
+
+test("an unpinned phase-runner resolves the static top tier, and a project row still overrides it", () => {
+  const base = {
+    role: "phase-runner", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
+    supportsModelSelector: true, supportsEffortSelector: false,
+  } as const;
+  const unpinned = resolveRouting({}, base);
+  assert.equal(unpinned.executionShape, "isolated");
+  assert.equal(unpinned.model.value, "opus");
+  assert.equal(unpinned.model.source, "shipped-default");
+  assert.equal(unpinned.basis, null, "a static default records no derivation basis");
+  assert.equal(unpinned.effort.source, "inheritance");
+
+  const project = resolveRouting({ "phase-runner": { model: "sonnet", effort: null } }, base);
+  assert.equal(project.model.value, "sonnet");
+  assert.equal(project.model.source, "project");
+
+  const pinned = resolveRouting({}, { ...base, invocationModel: "haiku" });
+  assert.equal(pinned.model.value, "haiku");
+  assert.equal(pinned.model.source, "invocation");
 });

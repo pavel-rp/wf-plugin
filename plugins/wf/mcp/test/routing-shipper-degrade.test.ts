@@ -277,7 +277,7 @@ test("WF-743: a mixed-failure wave retries every failed unit one tier down", () 
 test("WF-743: every other role's ordinary retry is unchanged", () => {
   // The upward lever still advances one tier for a derivation-eligible role.
   const first = resolveRouting({}, {
-    role: "phase-runner", shapeEvidence: singletonEvidence, unitIds: ["run:phase"],
+    role: "finalize", shapeEvidence: singletonEvidence, unitIds: ["run:phase"],
     supportsModelSelector: true, supportsEffortSelector: false,
   });
   const retry = report(first, ["failed-validation"]);
