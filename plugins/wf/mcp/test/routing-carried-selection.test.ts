@@ -511,7 +511,7 @@ test("WF-499: a HOST-MASKED derived prior is retained, not refused as forged", (
   // The whole suite stayed green because every host fixture used a bare
   // `haiku`/`sonnet`, which is inside the range. A pin outside it is the only
   // shape that exposes the bug, and it is what this fixture pins.
-  for (const role of ["phase-runner", "finalize"]) {
+  for (const role of ["finalize"]) {
     const initial = resolveRouting({}, {
       role, shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
       supportsModelSelector: true, supportsEffortSelector: true,

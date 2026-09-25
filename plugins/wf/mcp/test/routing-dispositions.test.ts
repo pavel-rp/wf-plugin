@@ -231,11 +231,13 @@ test("compact measurement projection preserves routing evidence without artifact
   assert.equal(projectRoutingMeasurement(carried).escalation, "selector-unsupported");
 });
 
-test("matrix pins only the WF-394 bootstrap Haiku defaults", () => {
+test("matrix pins the WF-394 Haiku defaults and the phase-runner top-tier default", () => {
   const matrix = parseMatrix();
   const staticRows = matrix.filter((row) => row.disposition === "shipped-static");
-  assert.deepEqual(staticRows.map((row) => row.role).sort(), ["branch", "classify"]);
-  assert.deepEqual(staticRows.map((row) => row.model), ["haiku", "haiku"], "WF-394 shipped defaults must remain Haiku");
+  assert.deepEqual(staticRows.map((row) => row.role).sort(), ["branch", "classify", "phase-runner"]);
+  for (const row of staticRows) {
+    assert.equal(row.model, row.role === "phase-runner" ? "opus" : "haiku", `${row.role} shipped default disagrees`);
+  }
 
   for (const row of matrix) {
     const decision = resolveRouting({}, {
@@ -275,7 +277,9 @@ test("matrix pins only the WF-394 bootstrap Haiku defaults", () => {
       assert.equal(decision.model.value, expectedModel, `${row.role} model disagrees with its disposition`);
       if (row.disposition !== "shipped-static") assert.equal(row.model, "inherit", `${row.role} must not claim a hidden static model`);
     }
-    assert.notEqual(decision.model.value, "opus", `${row.role} must not start on static Opus`);
+    if (row.role !== "phase-runner") {
+      assert.notEqual(decision.model.value, "opus", `${row.role} must not start on static Opus`);
+    }
     assert.equal(decision.effort.value, null, `${row.role} effort must inherit`);
     assert.equal(decision.effort.source, "inheritance", `${row.role} effort source must be inheritance`);
     assert.equal(row.effort, "inherit", `${row.role} matrix effort must inherit`);

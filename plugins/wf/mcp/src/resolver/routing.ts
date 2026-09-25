@@ -19,10 +19,18 @@ import type {
 // the top tier however demanding the item. A host that genuinely lacks the tier is
 // handled by the shipper-only `model-unavailable` step-down in `resolveRouting`, so
 // no item fails solely for want of it; an operator pin still outranks this row.
+//
+// `phase-runner` holds the same static TOP-tier default: it runs the spec, plan,
+// verify-spec and qa-gen phases of the main loop, so a shipper on the top tier
+// whose phases ran derived on the mid tier left the loop's judgment work on the
+// ceiling the shipper row exists to lift. The row outranks derivation, so the
+// ladder no longer selects for this role; a project `## Routing` row or an
+// operator pin still overrides it.
 const DEFAULTS: RoutingProjectConfig = {
   classify: { model: "haiku", effort: null },
   branch: { model: "haiku", effort: null },
   shipper: { model: "opus", effort: null },
+  "phase-runner": { model: "opus", effort: null },
 };
 
 const MODEL_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
