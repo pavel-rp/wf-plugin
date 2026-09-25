@@ -372,6 +372,14 @@ folded into one.
 | `unverifiable` | the candidate exists but the source could **not** be read — no anchor to verify against, an anchor the bound above rejected, an anchor whose file no longer opens, or a source that could not be read (a `Read`/`Grep` error, an unreadable or binary file, an anchor resolving to a directory, or a real-path resolution that could not run) | record which of the four; file nothing |
 | `absent` | there was no finding to judge — a read that could not be performed, a probe that could not be performed, an unreachable pull request, or a genuinely empty review at read time | record which of the four; file nothing |
 
+The same closed set, as the one grammar line the sweep's gate map checks (the table above stays
+authoritative for when each applies):
+
+```
+DISPOSITION — exactly one per judged candidate; `absent` describes the review
+disposition: <issue filed | verified-invalid | moot | unverifiable | absent>
+```
+
 **A bound check that cannot run fails closed.** If the real-path resolution itself errors, the
 anchor is *not* bounded and the candidate is `unverifiable` with `source could not be read` — never
 opened on the assumption that the check would have passed.

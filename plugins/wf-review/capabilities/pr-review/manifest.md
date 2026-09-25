@@ -1,6 +1,6 @@
 # pr-review capability manifest
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** pr-review (a native feature capability; **registration is required** — see references)
 **Kind:** feature (ships three user-invoked skills; contributes two `slot` fills)
@@ -49,6 +49,17 @@ composition point, not an SDD phase), and each scope is single-owner `replace`.
 |-------|-------------------|-------------------------------------|--------------------------|
 | —     | slot              | `inline: fragments/ship-review.md`     | ship.review replace      |
 | —     | slot              | `inline: fragments/closeout-review.md` | fleet.closeout-review replace |
+
+## Gate maps
+
+gate-map: gate-maps/review-pr.gate-map.md
+gate-map: gate-maps/address-pr.gate-map.md
+gate-map: gate-maps/sweep-pr.gate-map.md
+
+One gate-eligibility map per user-invoked skill (schema: `gate-map.contract.md` beside the registry
+contract). None of the three gates anything today, so every label is `advisory`; the sweep's map is
+checked against the disposition grammar in `fragments/closeout-review.md`. Documentation only — no
+finding's blocking status changes.
 
 The gate's requirement mapping and the incident it answers: [`references/ship-review.md`](references/ship-review.md).
 The sweep's post-merge reachability analysis and the incident it answers: [`references/closeout-review.md`](references/closeout-review.md).
