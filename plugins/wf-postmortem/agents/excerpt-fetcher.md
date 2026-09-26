@@ -88,10 +88,10 @@ there is nothing to bound the fetch by.
    Any check failing → **`read denied`** (the same outcome as any other denied read, since trusting a
    swapped symlink target — leaf or ancestor — or an unreadable file is exactly the risk this check
    exists to close).
-2. **Fetch the bounded excerpt.** Every fetch command below is piped through `head -c 16000` before
-   its output is used for anything else — a raw, pre-redaction byte ceiling on the byte stream as a
-   whole, independent of and applied strictly before the existing 4,000-character post-redaction
-   excerpt ceiling (step 4). **16,000 bytes is chosen as 4x that existing 4,000-character ceiling** —
+2. **Fetch the bounded excerpt.** Every fetch emits at most **16,000** raw bytes before its output is
+   used for anything else — a raw, pre-redaction byte ceiling on the byte stream as a whole,
+   independent of and applied strictly before the existing 4,000-character post-redaction excerpt
+   ceiling (step 4). **16,000 bytes is chosen as 4x that existing 4,000-character ceiling** —
    it bounds a single pathologically oversized line (e.g. a JSONL tool-result payload) long before it
    fully enters context. It is **not** a guarantee that an ordinary 200-line window or ~41-line `grep`
    context always fits under it — at typical widths of 100-120 characters/line, 200 lines alone can
@@ -101,40 +101,48 @@ there is nothing to bound the fetch by.
    ceiling's actual, load-bearing job is narrower than "every ordinary case fits": no single fetch, of
    any width, ever places more than 16,000 raw bytes into this agent's own context before redaction
    runs.
-   - **`window` given:** `Bash`: `sed -n '<start>,<end>p' '<path>' | head -c 16000; exit
-     "${PIPESTATUS[0]}"`. Clamp the window to 200 lines before the fetch (a window naming a wider span
-     is truncated to its own first 200 lines, not refused) — the byte ceiling above applies in
-     addition to this line-count clamp, not instead of it. **End the command by exiting with `sed`'s
-     own captured status (`${PIPESTATUS[0]}`), never `head`'s** — `head` exits 0 on empty input
-     regardless of the upstream command's own status, so piping alone would silently collapse a
-     denied/failed `sed` read into what looks like an empty successful fetch. Because each fetch runs
-     as its own process, `exit "${PIPESTATUS[0]}"` makes that captured status the dispatch's own
-     observed exit code — not merely an unread variable. **Interpret the observed exit code as
-     follows, and no other way:** `0` (`sed` reached its own end of output before `head`'s 16,000-byte
-     quota ever forced a close — the total was 16,000 bytes or fewer) — the fetch succeeded, the
-     ceiling did **not** engage, proceed to step 3. `141` (`SIGPIPE` — `head` had already read its
-     16,000 bytes and closed the pipe while `sed` was still trying to write more, so the kernel killed
-     `sed` on its next write) — **this is the ceiling doing exactly its intended job on a fetch whose
-     raw output exceeded 16,000 bytes, not a failure**; the fetch still succeeded, the ceiling **did**
-     engage, proceed to step 3 with whatever `head` captured. This exit code is the **definitive**,
-     single-execution ceiling-engaged signal step 3's boundary-truncation guard keys on — it comes from
-     the same producer run that generated the returned bytes, never a separate re-read that could
-     observe a changed file. Step 1's own readability check already rules out "can't be opened" before
-     the fetch ever runs, so **any other nonzero exit code** here is a genuine, unexpected `sed`
+
+   **The bounded-fetch shape — one execution, two separate facts.** Both routes below run their
+   `<producer>` inside this single `Bash` call, with every `'` in the path and anchor escaped as in
+   step 1:
+
+   ```
+   export LC_ALL=C; raw=$(<producer> | tr -d '\000' | head -c 16001; printf '\n%s' "${PIPESTATUS[0]}"); status=${raw##*$'\n'}; raw=${raw%$'\n'*}; if [ "${#raw}" -gt 16000 ]; then clip=clipped; else clip=complete; fi; printf '%s' "${raw:0:16000}"; printf '\n[fetch-meta] producer-status=%s clipping=%s\n' "$status" "$clip"
+   ```
+
+   It caps the producer's stream at **16,001** bytes — one byte past the ceiling — held only in the
+   command's own shell variable, emits only the first **16,000** of them, and ends with exactly one
+   `[fetch-meta]` trailer line carrying two independent facts from that same execution:
+   - **`clipping=`** — `clipped` exactly when more than 16,000 bytes arrived, `complete` otherwise
+     (so 16,000 bytes exactly is `complete`, 16,001 is `clipped`). It is measured on the bytes
+     themselves, never inferred from how the producer exited: a producer whose whole output fits in
+     the OS pipe buffer exits `0` even when it wrote far more than 16,000 bytes, so an exit status
+     can never stand in for this fact. NUL bytes are stripped before the cap so the counted stream
+     and the emitted stream are the same bytes, and `LC_ALL=C` makes every length a byte count.
+   - **`producer-status=`** — `sed`'s or `grep`'s own exit status (`${PIPESTATUS[0]}`, never `head`'s,
+     which exits `0` on empty input whatever the producer did). It classifies the outcome below and
+     says nothing about clipping.
+
+   The trailer is the fetch's final line and is **never** part of the excerpt: the excerpt is
+   everything before the single newline that precedes it. No second read of the file is made to
+   learn either fact, and the 16,001st byte never reaches this agent's context.
+   - **`window` given:** `<producer>` is `sed -n '<start>,<end>p' '<path>'`. Clamp the window to 200
+     lines before the fetch (a window naming a wider span is truncated to its own first 200 lines, not
+     refused) — the byte ceiling above applies in addition to this line-count clamp, not instead of
+     it. **Interpret `producer-status` as follows, and no other way:** `0` or `141` (`SIGPIPE` — the
+     cap closed the pipe while `sed` was still writing, the ceiling doing its intended job) → the
+     fetch succeeded, proceed to step 3. Step 1's own readability check already rules out "can't be
+     opened" before the fetch ever runs, so **any other status** here is a genuine, unexpected `sed`
      failure → **`read denied`**.
-   - **No `window`, a search anchor given:** `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>' |
-     head -c 16000; exit "${PIPESTATUS[0]}"`, with the anchor single-quoted the same way (`-F` —
-     literal string, never a regular expression). Same discipline, `grep`'s own status: `0` (a match
-     was found and its full bounded context was written without the ceiling ever engaging) or `141`
-     (`SIGPIPE` — a match was found and the ceiling closed the pipe while `grep` was still writing its
-     `-B20 -A20` context, so the ceiling engaged; the match itself still stands) both mean the fetch
-     succeeded — proceed to step 3. An observed exit code of `1` (`grep`'s own "no match" code) within
-     that bounded search → **`not found`**. Never a wider retry. Step 1's readability check again
-     rules out "can't be opened," so any other nonzero exit code is a genuine failure.
-   - A denied read is **any exit code that is nonzero and neither `141` (the ceiling's own SIGPIPE)
-     nor `grep`'s own `1` ("no match")** → **`read denied`**. `141` is never, under any
-     circumstance, treated as a denied read — a large fetch hitting the byte ceiling is the normal,
-     intended case this ceiling exists to handle, not an error.
+   - **No `window`, a search anchor given:** `<producer>` is `grep -n -F -m1 -B20 -A20 -- '<anchor>'
+     '<path>'` (`-F` — literal string, never a regular expression). Same shape, same trailer, same
+     clipping rule — `grep`'s own status: `0` or `141` (a match was found; `141` only means the cap
+     closed the pipe while `grep` was still writing its `-B20 -A20` context, and the match still
+     stands) → the fetch succeeded, proceed to step 3. `1` (`grep`'s own "no match" code) within that
+     bounded search → **`not found`**. Never a wider retry. Any other status is a genuine failure.
+   - A denied read is **any `producer-status` that is nonzero and neither `141` nor `grep`'s own `1`
+     ("no match")** → **`read denied`**. `141` is never, under any circumstance, treated as a denied
+     read — and never as the clipping signal either; `clipping=` alone is.
 3. **Redact first, before any truncation.** Run the **entire fetched excerpt** through the shape list
    you obtained in Prerequisites, replacing every recognized match with the literal marker
    `[REDACTED]`. This must happen **before** truncation (step 4) — a credential- or token-shaped run
@@ -144,22 +152,20 @@ there is nothing to bound the fetch by.
    place this text is ever read, so there is no backstop after you. (`Path` redaction is a separate,
    unconditional step — step 5 below, its **sole** owner — never repeated or re-described here.)
 
-   **Boundary-truncation guard, scoped to when the ceiling actually engaged.** Step 2's `head -c
-   16000` cut can end mid-run through a token/hex/base64/JWT shape — but only when the raw fetch
-   actually reached the ceiling. Before this guard fires, consult step 2's own observed exit code —
-   the same one already used to classify the fetch as successful, from the same single execution that
-   produced the returned bytes, never a separate re-read: exit code **`141`** means the ceiling
-   engaged (SIGPIPE fired because `sed`/`grep` had more to write than `head`'s 16,000-byte quota
-   allowed) and may have cut something mid-pattern; exit code **`0`** means the ceiling never touched
-   this fetch (the producer finished writing 16,000 bytes or fewer on its own, before `head` ever
-   needed to force a close) and the guard does **not** apply — this is what stops the guard from
-   over-redacting an ordinary, un-truncated excerpt's incidental trailing hash-shaped identifier or
-   filename, including one that happens to land at exactly 16,000 bytes naturally (which also exits
-   `0`, never `141`, so the exit code — unlike the truncated output's own length, which is always
-   16,000 bytes or fewer either way — correctly tells the two cases apart). When (and only when) the
-   ceiling did engage,
-   additionally redact any trailing run of 16 or more characters drawn from `[A-Za-z0-9+/=_.-]` (rules
-   3's and 4's own character classes, plus `.` for rule 2's JWT segment-joining character) that reaches
+   **Boundary-truncation guard, scoped to when the ceiling actually engaged.** Step 2's 16,000-byte
+   cut can end mid-run through a token/hex/base64/JWT shape — but only when the raw fetch actually
+   exceeded the ceiling. Before this guard fires, consult step 2's own `[fetch-meta]` trailer — from
+   the same single execution that produced the returned bytes, never a separate re-read — and key on
+   its **`clipping=`** fact alone, **never** on `producer-status`: `clipping=clipped` means more than
+   16,000 bytes arrived and the cut may have split something mid-pattern, **whatever the producer's
+   exit status** (a clipped fetch whose producer exited `0` is exactly as guarded as one that exited
+   `141`); `clipping=complete` means the ceiling never touched this fetch and the guard does **not**
+   apply — this is what stops the guard from over-redacting an ordinary, un-truncated excerpt's
+   incidental trailing hash-shaped identifier or filename, including one that happens to land at
+   exactly 16,000 bytes naturally (which reports `complete`, since only a 16,001st byte makes it
+   `clipped`). When (and only when) the trailer reports `clipping=clipped`, additionally redact any
+   trailing run of 16 or more characters drawn from `[A-Za-z0-9+/=_.-]` (rules 3's and 4's own
+   character classes, plus `.` for rule 2's JWT segment-joining character) that reaches
    the **exact final character** of the fetched excerpt — even when that run alone does not reach the
    matching rule's own full length threshold. This closes the boundary gap for rules 2-4. **Rule 1
    (Bearer tokens) is a stated, accepted residual risk at this boundary**: a Bearer token's own alphabet
