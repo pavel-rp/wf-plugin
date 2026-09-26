@@ -69,7 +69,8 @@ flag, seam counts), move to the retry set's front ahead of the ranked remainder;
 dispatch the locator **a second time**, attach-only mode, over just the missing values (a stated,
 bounded exception to "exactly once per run" — `SKILL.md` Safety Rules), merged the same way.
 **Ranked remainder** = fresh locate-mode return, its own order, **excluding**: sessions already
-`read`/`read in part (…)`/`skipped (reader error: …)`/`skipped (access denied)` in the prior Coverage
+`read`/`read in part (…)`/`skipped (reader error: …)`/`skipped (access denied)`/`skipped
+(unrecognized shape: …)` in the prior Coverage
 (step A4) unless also named via `--session` this run (explicit retry beats a terminal status); and
 sessions already merged above. Everything else — prior `skipped (budget)` rows, plus sessions absent
 from prior Coverage — forms the remainder, appended after explicit retries. A newly-appearing session
@@ -100,7 +101,7 @@ counts, hypotheses) **replaces** any prior same-path entry in full (rationale:
 gains its first `skipped (budget)`, Part B), untouched. **Verdict-quality guard: a replacement never
 loses evidence** (rationale: `continuation-rationale.md` §"Why the verdict-quality guard exists") —
 rank this run's verdict vs. the one it would overwrite: `read` > `read in part` > `skipped (reader
-error)`/`skipped (access denied)` (the two failures rank equal). `read`/`read in part` → replace in
+error)`/`skipped (access denied)`/`skipped (unrecognized shape)` (the failures rank equal). `read`/`read in part` → replace in
 full (a `read in part` supersedes an earlier `read` too); failure over a prior `read`/`read in part`
 → **keep the prior entry**, log `Retry failed, prior evidence retained: <path> — <failure verdict and
 reason>`; both failures → replace (fresher reason, nothing lost either way).
