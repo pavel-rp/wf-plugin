@@ -200,6 +200,27 @@ is a clean delivery, not a failure):
 - **Incomplete** — `<source capability>` contributed nothing and is not clean:
   <what failed>. The findings above are not a complete adversarial pass. Non-gating.
 
+## Counterparts
+
+This section is present only when `list_counterparts` returned a listing, a suppressed key, a map
+diagnostic, or an `unavailable` status, or when a contributor returned a finding marked
+`counterpart`. Omit it otherwise, so a project with no declared map and no extractor sees no
+counterpart term. Every entry is advisory `warn`. It never changes `**Verdict:**`, never enters the
+ledger, and `/wf:verify-fix` skips it; a copy left unchanged on purpose is a normal outcome.
+Entries marked `mechanical` render first.
+
+- **core** — `<key>` (<kind>) changed at `path/to/file:L` — unchanged: `path/to/copy:L, L`,
+  `path/to/other` (missing) — mechanical
+- **core** — `<key>` (<kind>) changed at `path/to/file:L` — unchanged: `path/to/copy:L` —
+  <total> occurrences, first 10 shown — mechanical
+- **<source capability>** — `<key>` changed at `path/to/file:L` — unchanged: `path/to/copy:L`
+
+Suppressed — `<key>` — too short to be distinctive; not listed.
+
+Map — `<diagnostic>` (one line per map diagnostic the tool returned).
+
+Incomplete — counterpart listing unavailable: <diagnostic>. Non-gating.
+
 ## Deviations from derived artifacts (informational)
 
 If you noticed a derived artifact (e.g. an LLM-authored plan) over- or under-specified

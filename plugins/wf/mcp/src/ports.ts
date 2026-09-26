@@ -22,6 +22,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
@@ -369,6 +370,35 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
      * decisions, and already maps `""` and `null` to the same answer.
      */
     runModeSignal: () => process.env.WF_RUN_MODE ?? null,
+
+    /** The working-tree diff against `baseRef` for the counterpart listing
+     *  (WF-758). Arguments go to git as an argv array, never a shell string; the
+     *  service has already held `baseRef` to a plain revision shape, and `--`
+     *  ends option parsing after it. Renames are off so every path is literal.
+     *  Any failure is `null`, reported by the service as `unavailable`. */
+    workspaceDiff: (baseRef) => {
+      try {
+        return execFileSync(
+          "git",
+          [
+            "-C",
+            workspaceRoot,
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--unified=0",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-renames",
+            baseRef,
+            "--",
+          ],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 },
+        );
+      } catch {
+        return null;
+      }
+    },
 
     /** The machine-local home for bindings that must live OUTSIDE the audited
      *  workspace. `os.homedir()` throws on some exotic environments and can

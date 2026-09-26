@@ -121,7 +121,7 @@ Hold the resolved `k` for the ledger rebuild (below) and the Phase 7 write.
 
 ## Phase 2: Load and Parse the Report
 
-Read `04_verify.md` in full. Extract the header metadata and four lists, preserving order and each finding's identifier (the numbered requirement, or the capability finding's own id — e.g. `MIG-<n>` for a migration-capability finding).
+Read `04_verify.md` in full. Extract the header metadata and five lists, preserving order and each finding's identifier (the numbered requirement, or the capability finding's own id — e.g. `MIG-<n>` for a migration-capability finding).
 
 1. **Header metadata** — capture `Branch:`, `Commit:` (HEAD SHA the audit ran against), base SHA, `Tree:` (clean or dirty), and `**Audited at:**` (the timestamp the staleness check below compares against). These may be absent on reports produced before the header was extended — treat as unknown and skip the staleness check below.
 2. **Requirements list** — each numbered `[PASS | FAIL | PARTIAL | N/A | UNVERIFIABLE]` item. Capture verdict, requirement text, `Expected`, `Found`, `Location` / `Evidence`, and a `Remedy` line (the concrete bounded edit) when the report carries one. Mint its fingerprint as `path/to/file:L|R<n>` — its own `Location` plus this item's own list number (stable for the life of one loop: the Safety Rules already forbid touching `00_reqs.md`/`01_spec.md`, so the spec never shifts mid-loop).
@@ -130,6 +130,8 @@ Read `04_verify.md` in full. Extract the header metadata and four lists, preserv
 5. **Adversarial findings**, when the report carries that section — informational only; do
    not act on these. They are non-gating by contract and never change a verdict, so this
    skill has nothing mechanical to apply. Reports that carry no such section simply omit it.
+6. **Counterparts**, when the report carries that section — informational only; do not act on
+   these. They are advisory by contract and never change a verdict.
 
 > **Remedy carrier.** `/wf:verify-spec`'s report schema renders `Remedy` as a structured field on FAIL/PARTIAL requirement items and as a trailing clause on capability findings, whenever the underlying `finding` carries one. Capture it verbatim when present. Reports produced before this field existed simply omit it — fall back to the `Expected` state in that case (Phase 5).
 
@@ -171,6 +173,9 @@ A blocking fingerprint (a requirement `FAIL`/`PARTIAL`, or a capability finding'
 - Informational deviations from `01_spec.md`.
 - Every entry under `## Adversarial findings` — advisory and non-gating by contract; this
   skill reports them as skipped rather than dropping them silently.
+- Every entry under `## Counterparts` — advisory by contract; a listed copy may be left
+  unchanged on purpose. This skill reports each one as skipped and never edits a listed
+  location on its strength.
 
 ### AUTO — apply the fix directly
 
