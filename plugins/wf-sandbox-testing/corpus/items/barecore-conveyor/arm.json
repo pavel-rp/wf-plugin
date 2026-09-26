@@ -34,6 +34,10 @@
     {
       "slot": "fleet.closeout-review",
       "reason": "declared in /wf:fleet Closeout. /wf:fleet is not on the SDD conveyor this arm drives (/wf:spec -> /wf:plan -> /wf:tasks -> /wf:implement), so the bare-core run never reaches it. It is also a declared slot with no per-slot arm; that is recorded, with its reason, in corpus/slot-exemptions.json, and its inertness is asserted at the resolver and in the pr-review capability's own fixture suite instead (WF-522)."
+    },
+    {
+      "slot": "pr.body-check",
+      "reason": "declared in /wf:pr Phase 2.5, which is unreachable in bare core: /wf:pr is not on the SDD conveyor this arm drives (/wf:spec -> /wf:plan -> /wf:tasks -> /wf:implement), and its only conveyor caller, /wf:ship, hard-stops at Phase 1 with no delivery provider registered. It is also a declared slot with no per-slot arm; that is recorded, with its reason, in corpus/slot-exemptions.json, and its inertness is asserted at the resolver and in the core-authoring capability's own fixture suite instead (WF-757)."
     }
   ],
   "runs": [
