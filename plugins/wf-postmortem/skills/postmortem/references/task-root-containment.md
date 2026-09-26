@@ -78,7 +78,8 @@ therefore records the identity of what it created, then re-proves that identity 
 `Bash`: `(cd '<path>' && pwd -P && stat -c '%d:%i' .)` (BSD: `stat -f '%d:%i' .`). The `cd`
 resolves the path once, and both the canonical path it prints and the identity of `.` describe
 that same resolved directory, never a second lookup of the path. The only other primitives are
-`test -L '<path>'` and `test -e '<path>'`. Every value is single-quoted with `'` → `'\''` first.
+`test -L '<path>'` and the single-command slot probe `[ ! -e '<path>' ] && [ ! -L '<path>' ]`.
+Every value is single-quoted with `'` → `'\''` first.
 
 **Capture (Phase 3 step 4).** Never on a `--report` follow-up (Part A step 2 records that identity
 instead). The root half is taken **inside** the step 4 re-check that authorizes the create, and
@@ -110,9 +111,9 @@ and compare it only against R1–R4. Require **all** of the following, in order:
 2. `test -L '<R3>'` **fails**, meaning the minted folder is not a symlink.
 3. The bound lookup on R3 prints R3 and R4 exactly. A folder that was moved, replaced or
    redirected, including during the checks above, fails here.
-4. **Last, after the folder re-proof and immediately before the `Write`:** `test -e
-   '<R3>/report.md'` **fails** and `test -L '<R3>/report.md'` **fails**. No file and no symlink
-   (dangling or not) may occupy the slot. An absent `report.md` is the expected state of a first
+4. **Last, after the folder re-proof and immediately before the `Write`:** one `Bash` command,
+   `[ ! -e '<R3>/report.md' ] && [ ! -L '<R3>/report.md' ]`, exits 0. It is never split into two
+   calls. No file and no symlink (dangling or not) may occupy the slot. An absent `report.md` is the expected state of a first
    run, never an error. Nothing runs between this predicate and the `Write`.
 
 Any predicate failing → stop `POSTMORTEM — stopped`, reason `"report target changed between folder
@@ -121,24 +122,23 @@ creation and write — nothing written"`. Write nothing: no report, no partial, 
 accept. All passing → build the write path as `<R3>/report.md`, from the recorded values, never the
 raw config value.
 
-**Guarantee, stated plainly.** This, like `continuation.md` Part E, is a check immediately before
-the write. It is **not atomic**. No primitive available here creates or writes through an
-already-validated descriptor. Each bound lookup is internally consistent, but the gaps between
-lookups remain, each a few consecutive tool calls wide:
+**Guarantee, stated plainly.** This, like `continuation.md` Part E, is a check before the write.
+It is **not atomic**. Every check in this procedure is a separate step from the `Write`, and each
+filesystem test inside a check is a separate lookup. The `Write` goes through the path: it cannot
+create the file exclusively, refuse to follow a symlink, or write through an already-validated
+descriptor. So any interval between any check and the `Write` is a window a concurrent actor can
+use. The procedure narrows those windows but cannot close them, and it rejects only what it
+observes. Examples of such windows:
 
-- between the authorizing re-check and the `mkdir`, where the post-`mkdir` root lookup detects a
-  root replaced by another directory but not one swapped and restored within the gap;
-- between `mkdir` and the R3/R4 lookup, where capture looks the folder up by path rather than
-  binding the created object, so a replacement made in that gap is recorded as if created;
-- between the folder re-proof (predicate 3) and the `Write`, where the folder can still be moved
-  or replaced;
-- between the `report.md` slot check (predicate 4) and the `Write`, where a file or symlink placed
-  at `<R3>/report.md` is written to or followed. A prose-driven `Write` goes through the path and
-  cannot create the file exclusively or refuse to follow a symlink, so nothing this procedure can
-  do closes this window. The ordering only shrinks it to one tool call.
+- between the authorizing re-check and the `mkdir` — a root swapped and restored inside it passes
+  the post-`mkdir` root lookup;
+- between `mkdir` and the R3/R4 lookup — a replacement made there is recorded as if created;
+- between the folder re-proof (predicate 3) and the `Write` — the folder can still be moved or
+  replaced;
+- between the lookups inside the slot probe (predicate 4), and between that probe and the `Write`
+  — a file or symlink placed at `<R3>/report.md` there is written to or followed.
 
-The checks narrow exposure from the whole Phase 3 to Phase 4 span to those four gaps; they do not
-close them (rationale: `continuation-rationale.md` §"Why Part E re-verifies from scratch").
+Rationale: `continuation-rationale.md` §"Why Part E re-verifies from scratch".
 
 ## Retry semantics at step 4
 

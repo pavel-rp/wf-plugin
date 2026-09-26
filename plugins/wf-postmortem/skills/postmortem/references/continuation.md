@@ -149,10 +149,11 @@ Either failing → **stop** `POSTMORTEM — stopped`, reason `"--report <path> c
 validation and write — nothing written"`; write nothing at all (no report, no partial, no scratch
 copy, no Continuation entry). **Never re-validate-and-proceed** — the composed report is discarded,
 the prior report on disk is left exactly as it was. **Guarantee:** a check immediately before the
-write, **not atomic**. It narrows the race to two consecutive tool calls and does not close it: a
-prose-driven `Write` goes through the path and cannot refuse a file or symlink swapped in after the
-check, so nothing here can close that window. This is the same class of guarantee the fresh-mint
-path states for its `report.md` slot-check-to-`Write` gap; that path, which creates its folder,
-also states the gaps around its `mkdir` and its folder re-proof (`task-root-containment.md`
+write, **not atomic**. Each check is a separate step from the `Write`, and the `Write` goes
+through the path, so any interval between any check and the `Write` is a window a concurrent actor
+can use: a file or symlink swapped in there is written to or followed. The procedure narrows those
+windows but cannot close them, and rejects only what it observes. This is the same guarantee the
+fresh-mint path states, with examples of its windows around the `mkdir`, the folder re-proof and
+the `report.md` slot probe (`task-root-containment.md`
 §"Fresh-mint target identity"; rationale: `continuation-rationale.md` §"Why Part E re-verifies from
 scratch").
