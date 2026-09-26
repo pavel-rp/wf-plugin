@@ -49,13 +49,61 @@ does not exist yet, or is unreadable) is also **not** contained.
    `--report` follow-up (a follow-up instead re-runs `continuation.md` Part E in full, including its
    device/inode identity comparison). The elapsed time since step 2.5's first pass now includes all of
    Phase 3.5 — potentially many isolated `session-reader`/`excerpt-fetcher` dispatches, a far larger
-   window than the id-mint `Glob` gap this gate was first built to close. **Build the write path from
-   this re-check's own output** the same way step 4 builds the `mkdir` target — join the canonicalized
-   `{task-root}` string with the already-minted `PM<NNN>__<slug>/report.md` suffix, never the raw
-   pre-check value.
+   window than the id-mint `Glob` gap this gate was first built to close. On a fresh mint this call
+   site is the **full target validation** in §"Fresh-mint target identity" below, of which the
+   containment comparison is only the first predicate; the write path is built as that section states.
 
 Each of the three re-runs the full comparison from scratch; none of them trusts a value canonicalized at
 an earlier call site.
+
+## Fresh-mint target identity
+
+Containment alone proves only that `{task-root}` still resolves inside the workspace. It does not
+bind the write to the folder this run created, so swapping the minted folder, `{task-root}` or an
+ancestor, or pre-placing something at `report.md`, during Phase 3.5 would pass it. A fresh mint
+therefore records the identity of what it created, then re-proves that identity before writing. Both
+steps use the same metadata primitives `continuation.md` Part A/E use: `Bash`: `stat -c '%d:%i'
+'<path>'` (BSD: `stat -f '%d:%i'`), `test -L '<path>'`, `test -e '<path>'`, and the subshelled
+`(cd '<path>' && pwd -P)`. Every one is single-quoted with `'` → `'\''` first.
+
+**Capture (Phase 3 step 4, once, only after `mkdir` exits 0).** Never on a collision attempt, and
+never on a `--report` follow-up (Part A step 2 records that identity instead). Record:
+
+- **R1:** the canonical `{task-root}` string the step 4 re-check just printed.
+- **R2:** `stat '%d:%i'` of R1.
+- **R3:** `(cd '<R1>/<minted folder name>' && pwd -P)`. It must equal `<R1>/<minted folder name>`
+  character for character.
+- **R4:** `stat '%d:%i'` of R3.
+
+Any capture command failing, or R3 not equalling the joined path, means the folder is not what
+`mkdir` just created. Stop, reason `"report target changed between folder creation and write —
+nothing written"`, and write nothing. The folder stays as it is and its id stays taken.
+
+**Validation (Phase 4 step 2.5, the last action before the `Write`).** Re-derive every value fresh
+and compare it only against R1–R4. Require **all** of the following, in order:
+
+1. The containment comparison above passes, re-run from scratch.
+2. Its freshly printed canonical `{task-root}` equals R1 character for character, and `stat
+   '%d:%i'` of it equals R2. A replaced `{task-root}` or ancestor fails here, either by canonicalizing
+   elsewhere or by carrying a different identity.
+3. `test -L '<R3>'` **fails**, meaning the minted folder is not a symlink.
+4. `(cd '<R3>' && pwd -P)` equals R3, and `stat '%d:%i'` of it equals R4. A folder that was moved,
+   replaced or redirected fails here.
+5. `test -e '<R3>/report.md'` **fails** and `test -L '<R3>/report.md'` **fails**. No file and no
+   symlink (dangling or not) may occupy the slot. An absent `report.md` is the expected state of a
+   first run, never an error.
+
+Any predicate failing → stop `POSTMORTEM — stopped`, reason `"report target changed between folder
+creation and write — nothing written"`. Write nothing: no report, no partial, no scratch copy.
+**Never re-canonicalize the replacement and proceed.** A mismatch is a stop, never a new path to
+accept. All passing → build the write path as `<R3>/report.md`, from the recorded values, never the
+raw config value.
+
+**Guarantee, stated plainly.** This, like `continuation.md` Part E, is a check immediately before
+the write. It is **not atomic**. No primitive available here writes through an already-validated
+descriptor, so a window of two consecutive tool calls remains between the last predicate and the
+`Write`. The check narrows the window from the whole Phase 3.5 span to that gap; it does not close
+it (rationale: `continuation-rationale.md` §"Why Part E re-verifies from scratch").
 
 ## Retry semantics at step 4
 
