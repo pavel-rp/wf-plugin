@@ -15,6 +15,7 @@ You are the PR-composition-and-creation half of `/wf:pr`. The `/wf:pr` host has 
 - `id` — the opaque task id (whatever shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered). If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
 - `draft` — boolean; open a draft PR. Default false.
 - `base` — base branch. If omitted, resolve the repository's default base via the `default-base-query` delivery read operation.
+- `body-check` — optional. The composed `pr.body-check` slot body the `/wf:pr` host forwarded verbatim (Step 3.5). Absent when no capability fills that slot.
 
 ## Provider resolution — delivery surface (resolve once, or consume a forwarded record)
 
@@ -104,6 +105,12 @@ Resolves <reference>.
 Title: `{numeric-id}: <task name>`, same source order as the first commit subject (`00_reqs.md` → `01_spec.md` → `02_plan.md` → `lite.md`).
 
 Record which artifacts actually fed the body for the `Body sources:` line.
+
+## Step 3.5 — Follow the forwarded body check
+
+**No `body-check` input** → skip this step entirely; nothing is checked and Step 4 runs exactly as it would with no composition point at all.
+
+**A `body-check` input is present** → follow it as prose, in this agent's own context, against the title and body composed in Step 3 and the changes on `<branch>` since `<base>`. It is the whole of the check: perform exactly the operations it names and nothing it does not, and never edit the body to make a check pass. When it **flags** the body — or states that its own procedure could not complete — return `PR — Error` with reason `Body check flagged the composed body: <what it flagged>` and invoke no delivery write: the pull request is not created. When it passes, continue to Step 4 with the body unchanged.
 
 ## Step 4 — Invoke `pr-create`
 
