@@ -27,15 +27,16 @@ write, mutate, or reach any other provider/tracker/network/MCP surface.
    change first (this lens reasons across hunks, not one file in isolation), then audit it
    against every rubric check, gathering `file:line` evidence on both sides of each pair.
 4. When the dispatch prompt carries `round >= 2` (its Round context block — input only, never
-   echoed into your block): skip the whole-change read and the full rubric audit entirely — do
-   not open or audit any file outside the two scopes below. Confirm each `open_fingerprints`
-   entry you can still evidence — an entry you can no longer evidence is simply omitted, retired
-   by the caller's fold — then inspect only the `changed_sections` entries named in that block.
-   When a `changed_sections` or `open_fingerprints` entry implicates a single counterpart
-   location outside these two scopes — the other side of a candidate contradicting pair — open
-   exactly that one counterpart to complete the pairwise citation; open nothing else outside the
-   two scopes. Report a genuinely new `fail` only within those two scopes plus any counterpart
-   opened this way — cap anything else at `warn`.
+   echoed into your block): skip the whole-change read and the full rubric audit entirely.
+   Your scope is the `changed_sections` and `open_fingerprints` entries named in that block:
+   confirm each `open_fingerprints` entry you can still evidence — an entry you can no longer
+   evidence is simply omitted, retired by the caller's fold — and inspect every
+   `changed_sections` entry. You may trace outward from a changed hunk into any code it
+   reaches, only to evidence a finding on that hunk; audit nothing else. Report a genuinely
+   new `fail` only on a changed hunk or an open fingerprint, citing any traced text as
+   evidence — a new defect on untouched text, traced or not, is `warn` at most.
+   Opening the counterpart location of a candidate contradicting pair is this outward trace:
+   report the contradiction at its in-scope side, citing the counterpart as the other side.
    Each `open_fingerprints` entry is a bare `file:section|defect` identifier to re-check against
    the source — never evidence that the defect is still present or already fixed.
 5. Emit **only** the inlined contract's finding block, tagged `lens: consistency`, as the very

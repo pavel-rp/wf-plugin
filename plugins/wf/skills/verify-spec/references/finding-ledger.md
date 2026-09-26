@@ -8,9 +8,8 @@ step that section names. Rationale, the extended walkthrough, and a worked examp
 
 [Ledger field set](#ledger-field-set) · [Status vocabulary](#status-vocabulary) · [Round-number
 derivation](#round-number-derivation) · [Rebuild algorithm](#rebuild-algorithm) · [Match / insert /
-retire](#match--insert--retire-one-rounds-step) · [Pre-dispatch
-derivation](#pre-dispatch-derivation-changed-sections-round-2) · [Loop identity (L)](#loop-identity-l) ·
-[Gate-accept demotion](#gate-accept-demotion)
+retire](#match--insert--retire-one-rounds-step) · [Pre-dispatch derivation](#pre-dispatch-derivation-changed-sections-round-2)
+· [Loop identity (L)](#loop-identity-l) · [Gate-accept demotion](#gate-accept-demotion)
 
 ## Ledger field set
 
@@ -111,17 +110,18 @@ reads.
 
 ## Pre-dispatch derivation (changed sections, round ≥2)
 
-`verify-spec/SKILL.md` derives round `N` under §"Inputs to load" item 3, then runs the prior-rounds fold **before**
-dispatch (Rebuild algorithm steps 1–2 over rounds `1 .. N-1`). At round ≥2 it also derives a second diff between
-the **prior round's `**Commit:**`** (off the same trail entry the boundary walk reads) and the **current working
-tree**, dirty files included, never `HEAD`. Map each changed hunk's location through the same `section` derivation
-the aggregator uses for fingerprints (`verify-template.md` §"Pre-existing"), dedupe into `changed_sections` (a
-`file:section` list). Round 1 skips this.
+`verify-spec/SKILL.md` derives round `N` (§"Inputs to load" item 3), then runs the prior-rounds fold **before**
+dispatch (Rebuild algorithm steps 1–2 over rounds `1 .. N-1`). At round ≥2 it also diffs the **prior round's
+`**Commit:**`** (off the same trail entry the boundary walk reads) against the **current working tree**, dirty
+files included, never `HEAD`; each changed hunk's location maps through the aggregator's fingerprint `section`
+derivation (`verify-template.md` §"Pre-existing"), deduped into `changed_sections` (a `file:section` list). Round 1
+skips this. **`open_fingerprints`** (round ≥2): every ledger-so-far `open` entry off the fold just produced, each
+rendered as its bare `file:section|defect` only (no provenance, prose, or `verify-fix` output). Round 1 verifies
+against `HEAD`; round ≥2 the `**Tree:**` list and `changed_sections` both read the working tree, not `HEAD`
+(rationale: `finding-ledger-rationale.md` §"Pre-dispatch derivation").
 
-**`open_fingerprints`** (round ≥2): every ledger-so-far entry whose `status` is `open`, off the fold just produced
-— render each as its bare `file:section|defect` only (no provenance, prose, or `verify-fix` output). Round 1
-verifies against `HEAD`; round ≥2 the `**Tree:**` list and `changed_sections` both read the working tree, not
-`HEAD` (rationale: `finding-ledger-rationale.md` §"Pre-dispatch derivation").
+**Round ≥2 lens scope** — every lens states it: `changed_sections` plus `open_fingerprints`. A lens may trace outward
+from a changed hunk only to evidence a finding on that hunk; a new defect on untouched text is `warn` at most.
 
 ## Loop identity (L)
 
