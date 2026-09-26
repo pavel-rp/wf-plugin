@@ -7,6 +7,11 @@ behavior-bearing procedure `SKILL.md` points to rather than restates inline; it 
 not merely consulted for background. Rationale for specific design choices below:
 `version-resolution-rationale.md` (paired reference, never read at runtime).
 
+## Contents
+
+- [Step 5: resolve the executed version](#step-5-resolve-the-executed-version)
+- [Step 6: check each hypothesis two-sided and tier it](#step-6-check-each-hypothesis-two-sided-and-tier-it)
+
 ## Step 5: resolve the executed version
 
 For each hypothesis carrying a locator, resolve the executed version of the pack under audit.
@@ -36,20 +41,26 @@ labelling which branch resolved it — never skip a branch to reach a more conve
 `version-resolution-rationale.md` §"The `$CLAUDE_PLUGIN_ROOT` shape", §"Which containment
 primitive...", §"What each re-validation check defeats"):
 
-1. **Derive the root.** If `$CLAUDE_PLUGIN_ROOT` is unset/empty → fall through to (b). Otherwise
-   apply `dirname` ×3 (assumed shaped `<cache-root>/<marketplace>/<plugin>/<version>`) to yield
-   candidate `<cache-root>`, **reconstruct** the full path from it plus the three validated segments,
-   and compare character-for-character against `$CLAUDE_PLUGIN_ROOT`'s own uncanonicalized value.
-   Any mismatch → fall through to (b), never proceeding on an unverified `<cache-root>`.
+1. **Derive the cache root from the executing root's own suffix.** `$CLAUDE_PLUGIN_ROOT` is the
+   **executing** pack's root (this skill's), shaped `<cache-root>/<exec-marketplace>/<exec-plugin>/
+   <exec-version>` — not the audited pack's, which may differ in any segment. Unset/empty → fall
+   through to (b). Otherwise take its own last three segments (`basename` of the root, of its
+   `dirname`, of its `dirname` ×2) as `<exec-version>`, `<exec-plugin>`, `<exec-marketplace>`, and
+   `dirname` ×3 as candidate `<cache-root>`. Require, all four: each executing segment passes the
+   step-5 segment rule above; `<cache-root>` ends in `/plugins/cache`; and the **reconstruction**
+   `<cache-root>/<exec-marketplace>/<exec-plugin>/<exec-version>` is character-for-character
+   identical to `$CLAUDE_PLUGIN_ROOT`'s own uncanonicalized value. Any failure → fall through to (b),
+   never proceeding on an unverified `<cache-root>`. The audited segments play no part in this step.
 2. **Canonicalize and join.** `Bash`: `(cd '<cache-root>' && pwd -P)` (single-quoted, every `'` →
-   `'\''`, always in a subshell). `cd` failing → fall through to (b). Join the validated segments onto
-   the canonicalized root; canonicalize the joined candidate the same way — this `cd` failing also
+   `'\''`, always in a subshell). `cd` failing → fall through to (b). Join the **audited**
+   `<marketplace>/<plugin>/<version>` validated above onto the canonicalized root; canonicalize the
+   joined candidate the same way — this `cd` failing (the audited cache is missing or denied) also
    falls through to (b).
-3. **Re-validate**, all three required: **containment** — the candidate's ancestor three levels up
-   (`dirname` ×3) is character-for-character identical to the canonicalized cache root; **version
-   identity** — the candidate's basename is character-for-character identical to `<version>`;
-   **segment identity** — the candidate's `<plugin>`/`<marketplace>` segments are
-   character-for-character identical to the originally reported strings.
+3. **Re-validate** against the **audited** segments, all three required: **containment** — the
+   candidate's ancestor three levels up (`dirname` ×3) is character-for-character identical to the
+   canonicalized cache root; **version identity** — the candidate's basename is character-for-character
+   identical to `<version>`; **segment identity** — the candidate's `<plugin>`/`<marketplace>`
+   segments are character-for-character identical to the originally reported strings.
 4. **Any check failing** (steps 1-3) → fall through to (b), never a silent pass under an unrelated
    version.
 

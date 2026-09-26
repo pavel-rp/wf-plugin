@@ -20,6 +20,24 @@ observed convention. Branch (a)'s guard (fall through to branch (b) when the var
 empty) exists precisely because this shape is an observed convention, not a contract
 `pack-onboarding.ops.md` itself guarantees.
 
+**Two roots, two suffixes.** `$CLAUDE_PLUGIN_ROOT` names the **executing** pack — the postmortem
+pack itself — while the reader-reported string names the **audited** pack, which is usually a
+different plugin and often a different version. They share only the cache root. An earlier version
+of step 1 validated the derived `<cache-root>` by reconstructing it with the **audited** segments
+and comparing the result to `$CLAUDE_PLUGIN_ROOT`; that comparison can only succeed when the audited
+pack is the executing pack at the executing version, so every other audit fell through to branch (b)
+even with its exact cache installed. Step 1 therefore validates the executing root against **its
+own** last three segments — the only suffix that root can honestly be checked against — and step 2
+joins the audited suffix separately. The two suffixes are validated independently: the executing one
+in step 1 (segment rule, exact reconstruction), the audited one in step 5's string validation and
+again, after canonicalization, in step 3's three identity checks.
+
+**Why the `plugins/cache` anchor.** The audited string is only accepted when anchored on a literal
+`plugins/cache/` (step 5 validation). Requiring the derived `<cache-root>` to end in the same anchor
+makes the two sides agree on what "the cache root" is, and rejects an executing root that happens to
+have four or more segments but does not sit in a plugin cache at all (a development checkout, say) —
+where joining an audited suffix onto `dirname` ×3 would read an arbitrary sibling tree.
+
 ## Which containment primitive, and why it differs from the sibling agents' variant
 
 Step 2's `(cd '<dir>' && pwd -P)` is the literal directory-canonicalization primitive
