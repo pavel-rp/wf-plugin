@@ -81,9 +81,15 @@ check-lifecycle-write-scope.sh
 # drives seeded fixtures that plant every violation it claims to catch, plus a
 # smoke-parse of the REAL plugins/wf/skills/_contracts/GLOSSARY.md, so a green here
 # still means "the catch is proven", exactly as the WHY-SELFTEST-FIRST note demands.
+#
+# `check-pr-version-claims.sh` (WF-757) is the same shape for a different reason:
+# it compares ONE composed pull-request body with ONE branch diff, both handed to
+# it at pull-request composition time by the `pr.body-check` slot fill. There is no
+# whole tree to scan, so a bare call is a usage error by design.
 SELFTEST_ONLY_CHECKS="
 glossary-lint.sh
 glossary-on-touch.sh
+check-pr-version-claims.sh
 "
 
 fail=0

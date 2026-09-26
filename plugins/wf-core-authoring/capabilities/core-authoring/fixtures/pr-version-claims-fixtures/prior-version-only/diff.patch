@@ -1,0 +1,16 @@
+diff --git a/plugins/wf/.claude-plugin/plugin.json b/plugins/wf/.claude-plugin/plugin.json
+--- a/plugins/wf/.claude-plugin/plugin.json
++++ b/plugins/wf/.claude-plugin/plugin.json
+@@ -1,5 +1,5 @@
+ {
+   "name": "wf",
+-  "version": "0.10.0",
++  "version": "0.11.0",
+   "description": "fixture"
+ }
+diff --git a/docs/notes.md b/docs/notes.md
+--- a/docs/notes.md
++++ b/docs/notes.md
+@@ -1 +1 @@
+-old
++"version": "9.9.9"
