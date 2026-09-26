@@ -374,7 +374,9 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     /** The working-tree diff against `baseRef` for the counterpart listing
      *  (WF-758). Arguments go to git as an argv array, never a shell string; the
      *  service has already held `baseRef` to a plain revision shape, and `--`
-     *  ends option parsing after it. Renames are off so every path is literal.
+     *  ends option parsing after it. Renames are off so every path is literal,
+     *  and external diff drivers and textconv filters are off so no
+     *  repository-configured program runs during a read.
      *  Any failure is `null`, reported by the service as `unavailable`. */
     workspaceDiff: (baseRef) => {
       try {
@@ -389,6 +391,7 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
             "--unified=0",
             "--no-color",
             "--no-ext-diff",
+            "--no-textconv",
             "--no-renames",
             baseRef,
             "--",

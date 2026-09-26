@@ -27,7 +27,7 @@ One markdown table. Other prose in the file is ignored.
 
 - **Key:** a literal string, optionally backtick-quoted, that must not contain `|`. It matches by plain substring, with no pattern syntax.
 - **Kind:** exactly one of `mirror` (the same statement held in several places), `writer-parser` (a format one location writes and another reads), or `reference` (defined once, referenced by literal elsewhere). The kind is a label only; it changes no computation.
-- **Locations:** comma-separated, forward-slash, repo-relative paths. A path that is absolute, uses a backslash, or has a `..` segment is rejected.
+- **Locations:** comma-separated, forward-slash, repo-relative paths. A path that is absolute, uses a backslash, has a `..` segment, or carries a control character is rejected. The map and every location are read only when their canonical target stays inside the workspace, so a symlink pointing out of it reads as absent (the map) or `missing` (a location).
 - A malformed row (wrong cell count, empty key, unknown kind, or no valid location) is skipped and reported as a diagnostic. It is never guessed at.
 
 ## Change detection and listing

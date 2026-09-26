@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeSlashes } from "../src/resolver/paths.js";
@@ -317,6 +317,50 @@ test("real port: the git-backed diff lists a dirty working-tree change against H
     assert.equal(new ResolverService(ports).listCounterparts("no-such-ref").status, "unavailable");
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("real port: symlinks never lead a read out of the workspace, and no textconv driver runs", () => {
+  const root = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-counterparts-ws-"))));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-counterparts-out-"))));
+  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { stdio: "ignore" });
+  try {
+    git("init", "-q");
+    git("config", "user.email", "t@example.invalid");
+    git("config", "user.name", "t");
+    const marker = join(outside, "textconv-ran");
+    git("config", "diff.probe.textconv", `sh -c 'touch "${marker}"; cat "$0"'`);
+    mkdirSync(join(root, "docs"));
+    writeFileSync(join(root, ".gitattributes"), "*.md diff=probe\n");
+    writeFileSync(join(root, "docs", "a.md"), "The retry limit is 2.\n");
+    writeFileSync(join(outside, "secret.md"), "The retry limit is 2.\n");
+    writeFileSync(join(outside, "counterparts.md"), map(["| `retry limit` | mirror | docs/a.md |"]));
+    git("add", ".");
+    git("commit", "-q", "-m", "seed");
+    writeFileSync(join(root, "docs", "a.md"), "The retry limit is 3.\n");
+
+    // A registry folder that is a symlink to an outside directory: its map is never read.
+    symlinkSync(outside, join(root, "_linked"));
+    const linked = { ...createDefaultPorts(root), registryRelPath: () => "_linked/config.md" };
+    assert.equal(new ResolverService(linked).listCounterparts("HEAD").status, "no-map");
+
+    // A declared location that is a symlink to an outside file reads as missing.
+    mkdirSync(join(root, "_local"));
+    symlinkSync(join(outside, "secret.md"), join(root, "docs", "leak.md"));
+    writeFileSync(join(root, "_local", "counterparts.md"), map(["| `retry limit` | mirror | docs/a.md, docs/leak.md |"]));
+    const ports = { ...createDefaultPorts(root), registryRelPath: () => "_local/config.md" };
+    const res = new ResolverService(ports).listCounterparts("HEAD");
+    assert.equal(res.status, "listed");
+    assert.deepEqual(res.listings[0].locations.find((l) => l.path === "docs/leak.md"), {
+      path: "docs/leak.md",
+      lines: [],
+      changed: false,
+      missing: true,
+    });
+    assert.equal(existsSync(marker), false, "a repository-configured textconv driver ran");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 });
 

@@ -5803,7 +5803,7 @@ export class ResolverService {
       return { ...base, status: "unavailable", diagnostics: [`base ref refused: ${JSON.stringify(baseRef)}`] };
     }
 
-    const mapText = this.ports.readFile(this.absolutize(mapPath));
+    const mapText = this.readContainedText(mapPath);
     if (mapText === null) return { ...base, status: "no-map", diagnostics: [] };
 
     const { entries, diagnostics } = parseCounterpartMap(mapText);
@@ -5820,9 +5820,29 @@ export class ResolverService {
     const { listings, suppressed } = computeCounterparts({
       entries,
       changes,
-      readLocation: (p) => this.ports.readFile(this.absolutize(p)),
+      readLocation: (p) => this.readContainedText(p),
     });
     return { ...base, status: "listed", listings, suppressed, diagnostics };
+  }
+
+  /**
+   * Read a workspace-relative file only when its canonical target stays inside the
+   * canonical workspace root, so a symlinked folder or file is never followed out
+   * of the workspace. A target that escapes, or cannot be canonicalized, reads as
+   * absent. Without the canonicalize port (an in-memory double) the lexical shape
+   * checks already applied are the only containment.
+   */
+  private readContainedText(rel: string): string | null {
+    const abs = this.absolutize(rel);
+    if (this.ports.canonicalizeRoot) {
+      const target = this.ports.canonicalizeRoot(abs);
+      if (target === null) return null;
+      const root =
+        this.ports.canonicalizeRoot(this.ports.workspaceRoot) ??
+        this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+      if (target !== root && !target.startsWith(`${root}/`)) return null;
+    }
+    return this.ports.readFile(abs);
   }
 
   /** Resolve a caller-supplied path against the workspace root when relative. */
