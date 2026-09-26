@@ -255,8 +255,8 @@ compact, already-redacted or already-structural block comes back.
    measured, capped, or dispatched, carried to Coverage unchanged — and each candidate's `Omitted:` entries are
    carried to its Coverage entry verbatim; neither is a stop.
 
-2. **Decide windowing.** A session already `skipped (access denied)` (step 0) skips this step — never
-   measured, carried unchanged to step 4. Otherwise measure with `Bash`: `wc -c '<path>'` (metadata, not
+2. **Decide windowing.** A session already `skipped (access denied)` or `skipped (unrecognized
+   shape: …)` (step 0) skips this step — never measured, carried unchanged to step 4. Otherwise measure with `Bash`: `wc -c '<path>'` (metadata, not
    content) — a **byte** count, so the threshold is **200,000 bytes** (not characters), split into ordered,
    numbered-from-1 windows. The host computes only **approximate byte-offset** windows (equal splits, last
    takes the remainder) — the dispatched reader snaps each to the nearest line boundary before reading
@@ -272,7 +272,7 @@ compact, already-redacted or already-structural block comes back.
    exemption applies here** (`continuation.md` Part C): a session that already holds a Coverage entry is never
    *demoted* to `skipped (budget)` by this split — it keeps that entry unchanged, and only a never-before-covered
    session is freshly assigned the verdict past the cap. Likewise, a session already `skipped (access denied)`
-   (step 2) never reaches this split — straight to step 4, never counted against the cap, never dispatched.
+   or `skipped (unrecognized shape: …)` (step 2) never reaches this split — straight to step 4, never counted against the cap, never dispatched.
 
 3. **Route and dispatch one reader per session or per window** that step 2.5 carried into this step (never a
    capped-out or already-denied entry). **UnitId slug** = first 16 hex chars of SHA-256(resolved absolute
