@@ -1,4 +1,4 @@
-# wf-postmortem:locator — authoring rationale
+# wf-postmortem:locator agent — authoring rationale
 
 **Authoring-only — never read at runtime.** `agents/locator.md` states the operative dispatch
 procedure inline (Prerequisites, Input, Procedure, Output, Rules — the behavior-bearing steps the
@@ -6,6 +6,13 @@ locator agent follows); this document is the paired rationale for *why* three of
 constraints hold, kept out of the runtime-read file per this repo's ops/reference split (`≤150
 behavior-bearing lines` in the runtime half; rationale here). A future edit to the operative
 procedure changes `agents/locator.md` first; update this file to match, not the other way around.
+
+## Why this file is not under `agents/`
+
+Every `.md` file directly inside a plugin's `agents/` folder is auto-discovered as a subagent. A
+rationale file placed there registered as a bogus, frontmatter-less `locator-rationale` agent. It
+lives beside the seam's own rationale (`locator-rationale.md`) under the postmortem skill's
+`references/` instead, which is never auto-discovered and never read at runtime.
 
 ## Why no `tools:` field
 
