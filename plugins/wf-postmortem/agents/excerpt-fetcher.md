@@ -163,8 +163,9 @@ there is nothing to bound the fetch by.
    apply — this is what stops the guard from over-redacting an ordinary, un-truncated excerpt's
    incidental trailing hash-shaped identifier or filename, including one that happens to land at
    exactly 16,000 bytes naturally (which reports `complete`, since only a 16,001st byte makes it
-   `clipped`). When (and only when) the trailer reports `clipping=clipped`, additionally redact any trailing run of 16 or more characters drawn from `[A-Za-z0-9+/=_.-]` (rules
-   3's and 4's own character classes, plus `.` for rule 2's JWT segment-joining character) that reaches
+   `clipped`). When (and only when) the trailer reports `clipping=clipped`, additionally redact any
+   trailing run of 16 or more characters drawn from `[A-Za-z0-9+/=_.-]` (rules 3's and 4's own
+   character classes, plus `.` for rule 2's JWT segment-joining character) that reaches
    the **exact final character** of the fetched excerpt — even when that run alone does not reach the
    matching rule's own full length threshold. This closes the boundary gap for rules 2-4. **Rule 1
    (Bearer tokens) is a stated, accepted residual risk at this boundary**: a Bearer token's own alphabet
