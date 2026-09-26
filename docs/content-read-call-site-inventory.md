@@ -273,8 +273,8 @@ emit it with placeholders substituted"). One call site per (skill → template):
 |---|---|
 | `wf/skills/spec` | `spec-template.md` |
 | `wf/skills/plan` | `plan-template.md` |
-| `wf/skills/verify-spec` | `verify-template.md` |
-| `wf/skills/verify-fix` | `verify-fix-template.md` |
+| `wf/skills/verify-spec` | `verify-template.md`, `finding-disposition.md` |
+| `wf/skills/verify-fix` | `verify-fix-template.md`, `finding-disposition.md` (verify-spec) |
 | `wf/skills/triage` | `triage-template.md` |
 | `wf/skills/lite` | `lite-template.md` |
 | `wf/skills/constitution` | `constitution-template.md` |

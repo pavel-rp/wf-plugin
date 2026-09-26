@@ -20,7 +20,7 @@ carries exactly one. Nothing else is a disposition, and no row is ever left with
 | Disposition | Meaning | Kernel state |
 |---|---|---|
 | `pending` | Open and blocking; the loop still has a cycle to spend on it. | open |
-| `escalated` | Open and blocking at a stop — the loop hands it to `/wf:run`'s stop gate. | open |
+| `escalated` | Open and blocking at the loop's stop point — the round at which `/wf:run`'s stop gate fires when it drives the loop. | open |
 | `fixed` | No longer reported by the latest round. | fixed |
 | `refuted` | The critic disagreed with it (`critic: DISAGREE`). | refuted |
 | `accepted` | Non-blocking and kept as-is: a `warn`, a critic-`UNVERIFIABLE` candidate, a pre-existing `fail`, or a gate-accepted residue. | accepted-warning |
@@ -58,6 +58,11 @@ when **all** of these hold:
 Round `N-1` is the most recent trail entry after the de-duplication step of §"Round-number
 derivation" — the same entry the fold treats as the prior round. A later `extend` answer does not
 change this round's record; the next round re-derives its own dispositions.
+
+Round `N` counts audits, not gate firings, so a direct re-audit outside `/wf:run` advances it too.
+There, `escalated` records that the loop has reached its stop point, not that a gate ran. Whether a
+gate actually fired, and what it chose, is recorded only by the run evidence's `verify-loop:*`
+records, never inferred from this label.
 
 ## Requirement items
 
