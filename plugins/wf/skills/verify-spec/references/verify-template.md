@@ -19,6 +19,8 @@ The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.
 **Tree:** clean  |  dirty — <N> uncommitted files: `<path>, <path>, …`
 **Scope:** <N files, +X/-Y> vs `main`
 **Verdict:** <PASS | FAIL | PARTIAL>  (<passed>/<total> requirements)
+**Certified:** commit `<HEAD SHA>`, tree `<audited tree identity>`  |  none — verdict <FAIL | PARTIAL>
+**Drift re-verify:** `<certified commit>`..`<HEAD SHA>` (<change kind>)   ← drift mode only; omit the line otherwise
 **Audited by:** <model identifier>
 **Audited at:** <ISO 8601 timestamp>
 
@@ -37,6 +39,9 @@ The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.
 3. [UNVERIFIABLE] <requirement text>
    - Found: <why it cannot be verified>
    - Disposition: accepted
+
+4. [PASS] <requirement text> (carried from `<certified commit>`)   ← drift mode: evidence cites no drifted file
+   - Evidence: `path/to/file:42` — `<quoted line, copied from the certified report>`
 
 ...
 
@@ -143,6 +148,10 @@ requirement `FAIL`/`PARTIAL` (which never reaches the critic at all):
 - a `DISAGREE`d candidate — refuted, tagged `critic: DISAGREE` with the critic's own citation
   (ledger status `refuted`; `finding-ledger.md` §"Status vocabulary"):
   `` - **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — critic: DISAGREE at `path/to/file:L` — "<cited code>"``
+- a drift residual (drift mode only, `certified-commit.ops.md` §"Drift-mode audit") — a fresh finding
+  whose every cited line lies outside the drift diff, tagged with the certified commit it was
+  unchanged since (ledger status `warn`, disposition `accepted`):
+  `` - **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — drift: residual (unchanged since `<certified commit>`)``
 - a candidate the critic returned `UNVERIFIABLE` on — it was `fail`-severity and anchored until
   the critic could not confirm or refute it — tagged `critic: UNVERIFIABLE` with the critic's
   own one-line reason (ledger status `warn`, distinct from an originally-`warn` finding's
