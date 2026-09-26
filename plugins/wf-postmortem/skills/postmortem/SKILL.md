@@ -67,6 +67,16 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 - Resolve/normalize `--folder`/`--repo` (step 3) and canonicalize `{task-root}`/`workspaceRoot` for the containment
   gate (`task-root-containment.md`) — both via subshelled `Bash`: `(cd '<path>' && pwd -P)`, never bare.
 - Resolve each `--session` value with `Bash`: `test -e '<path>'` (a file, not the `--folder`/`--repo` primitive above), and size it with `Bash`: `wc -c '<path>'`.
+- **The UnitId digest primitive** — the one way this skill derives a `session-reader:`/`excerpt-fetcher:` UnitId
+  digest, for one already-resolved absolute path at a time. (1) `Write` that path string — UTF-8, exactly its
+  characters, no trailing newline, nothing else — to the fixed literal file `_local/scratch/postmortem-unitid-preimage`.
+  (2) Hash it with `Bash`: `sha256sum '_local/scratch/postmortem-unitid-preimage'` (BSD: `shasum -a 256` on the same
+  literal). (3) Take the output's first field; it must match `^[0-9a-f]{64}$`; the digest is its first 16 characters.
+  (4) Delete the file with `Bash`: `rm -f '_local/scratch/postmortem-unitid-preimage'` before any next preimage is
+  written, success or failure. The path is data in a file, never text on a command line; its input is the path this
+  run already resolved, never session content. This preimage is the one scratch write exempt from the redacting write
+  path below (redacting it would change the digest). A failed write, hash, or format check yields no digest — the unit
+  is not dispatched (step 3; `version-resolution.md` step 6).
 - Read the report template (`ref: report-template.md`), the redaction reference (`ref: redaction.md`),
   `version-resolution.md`, `recommendation.md`, `continuation.md`, and `coverage-cross-check.md` — each via
   `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`, `skill:
@@ -277,8 +287,10 @@ compact, already-redacted or already-structural block comes back.
 
 3. **Route and dispatch one reader per session or per window** that step 2.5 carried into this step (never a
    capped-out or already-denied entry). **UnitId slug** = first 16 hex chars of SHA-256(resolved absolute
-   session path) — deterministic, grammar-safe, length-bound with the `session-reader:` prefix and optional
-   `:window-<n>` suffix (rationale: `reader-dispatch-consistency.md`). Immediately before **each** dispatch
+   session path), computed with **the UnitId digest primitive** (Safety Rules) — deterministic, grammar-safe,
+   length-bound with the `session-reader:` prefix and optional `:window-<n>` suffix (rationale:
+   `reader-dispatch-consistency.md`); every window of one session shares its digest. A primitive failure → do
+   not dispatch; record `skipped (reader error: unit id digest failed)`. Immediately before **each** dispatch
    call `resolve_routing` with `workspaceRoot`, `role: "session-reader"`, `unitIds:
    ["session-reader:<16-hex-digest>"]` (+ `:window-<n>` when windowed), `shapeEvidence: { workSurface:
    "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk:

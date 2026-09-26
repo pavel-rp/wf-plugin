@@ -61,6 +61,30 @@ it is the identical construction over the hypothesis's one resolved real path (n
 already established for a different reason — this fix does not relax that rule, it reuses the same
 resolved-path input the existing rule already names).
 
+**Making the digest executable (WF-729).** Mandating SHA-256 was not enough on its own: the Safety
+Rules' Allowed list named no operation that computes one, so a host following the list literally
+could not derive the UnitId it was required to pass. `SKILL.md` now names exactly one **UnitId digest
+primitive**, shared verbatim by both dispatch paths, and its shape answers three constraints:
+
+- *The path is data, never code.* A resolved session path can contain spaces, quotes, `$(...)`,
+  backticks, `;` — anything a filesystem admits. Every shell-quoting scheme for interpolating it into
+  a command line (`printf '%s' '<path>' | sha256sum`) breaks on some input (a single quote ends a
+  single-quoted string), and a broken quote is an injection, not merely a wrong digest. The primitive
+  therefore never puts the path on a command line at all: the `Write` tool (no shell) puts the exact
+  string in a file, and the only shell commands run name a fixed literal file whose name contains no
+  shell-significant character. Hashing a file hashes its bytes, whatever those bytes are.
+- *One encoding rule, so identical paths give identical digests.* UTF-8, the exact characters, no
+  trailing newline. A trailing newline would silently fork the digest between callers that add one
+  and callers that do not; stating "no trailing newline" once, in the one definition both paths name,
+  is what makes the reader and excerpt digests of the same path equal.
+- *No session content, no residue.* The preimage is the path string the run already holds, never a
+  byte of the record it names, so the "no raw session content in the host" rule is untouched. It is
+  the one scratch write exempt from the redacting write path, because redacting it would change the
+  digest; it is deleted by its own consumer before the next preimage is written (constitution core.9
+  (a)), so the fixed file name never carries one unit's path into another's digest. The format check
+  (`^[0-9a-f]{64}$`) turns a failed or foreign `sha256sum` output into a clean non-dispatch rather
+  than an invalid UnitId reaching `resolve_routing`.
+
 ## 3. Reaching the resolver's cheap tier without a core-side special case (WF-612)
 
 **The problem.** The pack's own plugin manifest states the design intent plainly: each session is
@@ -87,10 +111,17 @@ directly on the `resolve_routing` call — an ordinary, already-generic paramete
 sitting in the resolver's own documented precedence chain (host enforcement → invocation override →
 project table → shipped role default → complexity-derived selection → inheritance) one tier above the
 project table and two above the shipped-default list this role isn't on. This is not a pin: the
-resolver, not the pack, still makes the final call — a project's own `## Routing` row would still win
-by declaring a role name and no host-level enforcement is bypassed, and if the selector is malformed,
+resolver, not the pack, still makes the final call — host enforcement still outranks it (a host-pinned
+model wins and the record reports the request as `masked`), and if the selector is malformed,
 unavailable, or unsupported on a given edge, `resolve_routing`'s own documented fallback (inheritance,
-recorded honestly rather than claimed) still applies. "The tier comes from `resolve_routing`" — the
+recorded honestly rather than claimed) still applies. What it does **not** leave room for is a project
+`## Routing` row overriding it: the invocation override sits *above* the project table, so the
+resolver takes the invocation value first (`plugins/wf/mcp/src/resolver/routing.ts` — `requested =
+invocation ?? configured ?? shipped ?? …`, `requestedSource: "invocation"`). Worked example (WF-730):
+with no host pin, `invocationModel: "haiku"` plus a project row `session-reader | sonnet` resolves to
+`haiku`, `source: invocation`; the project row applies only to a call that passes no invocation
+override. A project that wants a different reader tier therefore needs this pack's call to change,
+not a Routing row — this document records that consequence rather than choosing a new policy. "The tier comes from `resolve_routing`" — the
 pack's own Forbidden-list invariant — remains true; only what the pack *asks for* changed, using a
 lever the resolver already exposes to every caller.
 
