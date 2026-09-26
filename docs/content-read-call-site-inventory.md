@@ -80,9 +80,10 @@ before SUB-4, never dispatch them in parallel. (F4.2: the grep gates OUT-2, not 
 
 **Scanned exhaustively** (indexed grep + full read of each surface): every core skill
 (`plugins/wf/skills/*`), every core agent (`plugins/wf/agents/*`), and every skill, agent,
-and capability fragment across all eight packs — wf-git, wf-ado, wf-linear, wf-node-ts,
-wf-audit, wf-browser-qa, wf-angular, wf-review. **Reviewed update (WF-725):** wf-postmortem's skill,
-agents, references and profile template were scanned and added to §3, §4.4, §4.5, §5 and §6.
+and capability fragment across nine packs — the original eight (wf-git, wf-ado, wf-linear,
+wf-node-ts, wf-audit, wf-browser-qa, wf-angular, wf-review) plus a ninth, wf-postmortem, added by
+the **reviewed update (WF-725)**: its skill, agents, references and profile template were scanned
+and added to §3, §4.4, §4.5, §5 and §6.
 
 **What counts as a content-read call site.** A location in a skill/agent (or a fragment that
 in turn reads another fragment) that, at runtime, performs — or instructs — a raw
