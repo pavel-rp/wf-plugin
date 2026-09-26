@@ -22852,6 +22852,20 @@ var readRunEvidenceInput = fromJsonSchema2(withWorkspaceRoot({
   required: ["taskId"],
   additionalProperties: false
 }));
+var listCounterpartsInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    baseRef: {
+      type: "string",
+      minLength: 1,
+      maxLength: 256,
+      pattern: "^[A-Za-z0-9_][A-Za-z0-9._/@{}^~-]*$",
+      description: "The revision the audited change is diffed against (the same base the audit gathered its change set from). The working tree, dirty files included, is compared with it."
+    }
+  },
+  required: ["baseRef"],
+  additionalProperties: false
+}));
 var PLAN_MAX_SELECTION = 256;
 var PLAN_MAX_ANSWERS = 512;
 var pluginIdListProperty = (description) => ({
@@ -23743,6 +23757,15 @@ function registerResolverTools(server, selectService) {
     },
     async (args) => selected(args, (service) => service.readRunEvidence(args.taskId))
   );
+  server.registerTool(
+    "list_counterparts",
+    {
+      title: "list counterparts",
+      description: "Deterministically list the declared counterparts of every key the working-tree change touched. Reads the project's declared counterpart map (`counterparts.md` beside the registry file: a `| Key | Kind | Locations |` table, kind `mirror` | `writer-parser` | `reference`) and the diff against `baseRef`. A declared key is changed when any added or removed line contains it; each of its declared locations is returned with the lines holding the key and a `changed` flag. A listing is returned only when at least one declared location was left unchanged. Keys shorter than 4 characters come back under `suppressed` (`too-short`); a listing with more than 25 unchanged occurrences is `summarized` to the first 10 plus a `total`. Status: `listed`, `no-map` (no map declared: nothing to list, and no diff taken), `no-diff` (nothing changed against the base), or `unavailable` (the base ref was refused or the diff could not be taken \u2014 never an empty success). Read-only; no model judgment enters any listing.",
+      inputSchema: listCounterpartsInput
+    },
+    async (args) => selected(args, (service) => service.listCounterparts(args.baseRef))
+  );
 }
 
 // src/ports.ts
@@ -23762,6 +23785,7 @@ import {
   writeFileSync as writeFileSync2,
   writeSync
 } from "node:fs";
+import { execFileSync as execFileSync3 } from "node:child_process";
 import { randomBytes as randomBytes2 } from "node:crypto";
 import { createHash as createHash3 } from "node:crypto";
 import { homedir } from "node:os";
@@ -26254,6 +26278,34 @@ function createDefaultPorts(workspaceRoot) {
      * decisions, and already maps `""` and `null` to the same answer.
      */
     runModeSignal: () => process.env.WF_RUN_MODE ?? null,
+    /** The working-tree diff against `baseRef` for the counterpart listing
+     *  (WF-758). Arguments go to git as an argv array, never a shell string; the
+     *  service has already held `baseRef` to a plain revision shape, and `--`
+     *  ends option parsing after it. Renames are off so every path is literal.
+     *  Any failure is `null`, reported by the service as `unavailable`. */
+    workspaceDiff: (baseRef) => {
+      try {
+        return execFileSync3(
+          "git",
+          [
+            "-C",
+            workspaceRoot,
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--unified=0",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-renames",
+            baseRef,
+            "--"
+          ],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 }
+        );
+      } catch {
+        return null;
+      }
+    },
     /** The machine-local home for bindings that must live OUTSIDE the audited
      *  workspace. `os.homedir()` throws on some exotic environments and can
      *  legitimately be unset, so a failure is reported as `null` rather than
@@ -30560,6 +30612,183 @@ function mintRunEvidenceIssuerKey() {
   return randomBytes3(32).toString("hex");
 }
 
+// src/resolver/counterparts.ts
+var COUNTERPART_MAP_FILENAME = "counterparts.md";
+var COUNTERPART_KINDS = ["mirror", "writer-parser", "reference"];
+var MIN_KEY_LENGTH = 4;
+var SUMMARY_THRESHOLD = 25;
+var SUMMARY_KEEP = 10;
+var isKind = (v) => COUNTERPART_KINDS.includes(v);
+var stripTicks = (v) => v.trim().replace(/^`+/, "").replace(/`+$/, "").trim();
+function locationShapeError(p) {
+  if (p.length === 0) return "empty location";
+  if (p.includes("\\")) return "backslash in location";
+  if (p.startsWith("/") || /^[A-Za-z]:/.test(p)) return "absolute location";
+  if (p.split("/").some((seg) => seg === "..")) return "location escapes the workspace";
+  return null;
+}
+function parseCounterpartMap(text) {
+  const entries = [];
+  const diagnostics = [];
+  const lines = text.split(/\r?\n/);
+  lines.forEach((raw, idx) => {
+    const row = idx + 1;
+    const line = raw.trim();
+    if (!line.startsWith("|")) return;
+    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    if (cells.every((c) => /^:?-{3,}:?$/.test(c))) return;
+    if (cells[0]?.toLowerCase() === "key") return;
+    if (cells.length !== 3) {
+      diagnostics.push(`row ${row}: expected 3 cells (Key | Kind | Locations), found ${cells.length}`);
+      return;
+    }
+    const key = stripTicks(cells[0]);
+    const kind = cells[1].toLowerCase();
+    if (key.length === 0) {
+      diagnostics.push(`row ${row}: empty key`);
+      return;
+    }
+    if (!isKind(kind)) {
+      diagnostics.push(`row ${row}: unknown kind "${cells[1]}" (expected ${COUNTERPART_KINDS.join(" | ")})`);
+      return;
+    }
+    const locations = [];
+    let rejected2 = 0;
+    for (const part of cells[2].split(",")) {
+      const loc = stripTicks(part);
+      if (loc.length === 0) continue;
+      const err = locationShapeError(loc);
+      if (err) {
+        diagnostics.push(`row ${row}: ${err}: "${loc}"`);
+        rejected2 += 1;
+        continue;
+      }
+      if (!locations.includes(loc)) locations.push(loc);
+    }
+    if (locations.length === 0) {
+      if (rejected2 === 0) diagnostics.push(`row ${row}: no valid location`);
+      return;
+    }
+    entries.push({ key, kind, locations, row });
+  });
+  return { entries, diagnostics };
+}
+var unquotePath = (p) => {
+  const t = p.trim();
+  return t.startsWith('"') && t.endsWith('"') ? t.slice(1, -1) : t;
+};
+var stripSide = (p) => {
+  const t = unquotePath(p);
+  if (t === "/dev/null") return null;
+  return t.replace(/^[ab]\//, "");
+};
+function parseUnifiedDiff(text) {
+  const changes = /* @__PURE__ */ new Map();
+  let current = null;
+  let oldPath = null;
+  let inHeader = false;
+  let nextLine = 0;
+  const ensure = (path) => {
+    let c = changes.get(path);
+    if (!c) {
+      c = { path, added: [], removed: [] };
+      changes.set(path, c);
+    }
+    return c;
+  };
+  for (const line of text.split(/\r?\n/)) {
+    if (line.startsWith("diff --git ")) {
+      current = null;
+      oldPath = null;
+      inHeader = true;
+      continue;
+    }
+    if (inHeader) {
+      if (line.startsWith("--- ")) {
+        oldPath = stripSide(line.slice(4));
+        continue;
+      }
+      if (line.startsWith("+++ ")) {
+        const newPath = stripSide(line.slice(4)) ?? oldPath;
+        current = newPath ? ensure(newPath) : null;
+        continue;
+      }
+    }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (hunk) {
+      inHeader = false;
+      nextLine = Number(hunk[1]);
+      continue;
+    }
+    if (inHeader || current === null) continue;
+    if (line.startsWith("+")) {
+      current.added.push({ line: nextLine, text: line.slice(1) });
+      nextLine += 1;
+    } else if (line.startsWith("-")) {
+      current.removed.push(line.slice(1));
+    } else if (line.startsWith(" ")) {
+      nextLine += 1;
+    }
+  }
+  return changes;
+}
+var occurrenceLines = (content, key) => {
+  const out = [];
+  content.split(/\r?\n/).forEach((l, i) => {
+    if (l.includes(key)) out.push(i + 1);
+  });
+  return out;
+};
+function computeCounterparts(input) {
+  const listings = [];
+  const suppressed = [];
+  for (const entry of input.entries) {
+    const changedAt = [];
+    const changedPaths = /* @__PURE__ */ new Set();
+    for (const change of input.changes.values()) {
+      for (const a of change.added) {
+        if (a.text.includes(entry.key)) {
+          changedAt.push(`${change.path}:${a.line}`);
+          changedPaths.add(change.path);
+        }
+      }
+      if (change.removed.some((r) => r.includes(entry.key))) {
+        changedPaths.add(change.path);
+        if (!changedAt.some((c) => c === change.path || c.startsWith(`${change.path}:`))) {
+          changedAt.push(change.path);
+        }
+      }
+    }
+    if (changedAt.length === 0) continue;
+    if (entry.key.length < MIN_KEY_LENGTH) {
+      suppressed.push({ key: entry.key, reason: "too-short" });
+      continue;
+    }
+    const locations = entry.locations.map((path) => {
+      const content = input.readLocation(path);
+      return {
+        path,
+        lines: content === null ? [] : occurrenceLines(content, entry.key),
+        changed: changedPaths.has(path),
+        missing: content === null
+      };
+    });
+    const unchanged = locations.filter((l) => !l.changed);
+    if (unchanged.length === 0) continue;
+    const total = unchanged.reduce((n, l) => n + l.lines.length, 0);
+    const summarized = total > SUMMARY_THRESHOLD;
+    if (summarized) {
+      let budget = SUMMARY_KEEP;
+      for (const l of unchanged) {
+        l.lines = l.lines.slice(0, budget);
+        budget -= l.lines.length;
+      }
+    }
+    listings.push({ key: entry.key, kind: entry.kind, changedAt, locations, total, summarized });
+  }
+  return { listings, suppressed };
+}
+
 // src/service.ts
 var MAX_DECLARED_SOURCE_BYTES = 16 * 1024 * 1024;
 var KNOWN_SURFACES = /* @__PURE__ */ new Set([
@@ -34226,6 +34455,38 @@ var ResolverService = class _ResolverService {
       diagnostic: null
     };
   }
+  // --- counterpart listing (WF-758) ------------------------------------------
+  //
+  // Deterministic and read-only: the declared map beside the registry file plus
+  // the working-tree diff against `baseRef` decide every listing, so no model
+  // reasoning enters it. No capability resolution and no write happens here.
+  listCounterparts(baseRef) {
+    const registryRel = this.ports.registryRelPath();
+    const slash = registryRel.lastIndexOf("/");
+    const mapPath = slash >= 0 ? `${registryRel.slice(0, slash)}/${COUNTERPART_MAP_FILENAME}` : COUNTERPART_MAP_FILENAME;
+    const base = { mapPath, baseRef, listings: [], suppressed: [] };
+    if (!isSafeBaseRef(baseRef)) {
+      return { ...base, status: "unavailable", diagnostics: [`base ref refused: ${JSON.stringify(baseRef)}`] };
+    }
+    const mapText = this.ports.readFile(this.absolutize(mapPath));
+    if (mapText === null) return { ...base, status: "no-map", diagnostics: [] };
+    const { entries, diagnostics } = parseCounterpartMap(mapText);
+    if (!this.ports.workspaceDiff) {
+      return { ...base, status: "unavailable", diagnostics: [...diagnostics, "this runtime cannot take a workspace diff"] };
+    }
+    const diff = this.ports.workspaceDiff(baseRef);
+    if (diff === null) {
+      return { ...base, status: "unavailable", diagnostics: [...diagnostics, `diff against ${baseRef} could not be taken`] };
+    }
+    const changes = parseUnifiedDiff(diff);
+    if (changes.size === 0) return { ...base, status: "no-diff", diagnostics };
+    const { listings, suppressed } = computeCounterparts({
+      entries,
+      changes,
+      readLocation: (p) => this.ports.readFile(this.absolutize(p))
+    });
+    return { ...base, status: "listed", listings, suppressed, diagnostics };
+  }
   /** Resolve a caller-supplied path against the workspace root when relative. */
   absolutize(p) {
     const norm = p.replace(/\\/g, "/");
@@ -34233,6 +34494,9 @@ var ResolverService = class _ResolverService {
     return `${this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
   }
 };
+function isSafeBaseRef(ref) {
+  return ref.length > 0 && ref.length <= 256 && /^[A-Za-z0-9_][A-Za-z0-9._/@{}^~-]*$/.test(ref) && !ref.includes("..");
+}
 
 // src/workspace-services.ts
 var WorkspaceServiceRegistry = class {

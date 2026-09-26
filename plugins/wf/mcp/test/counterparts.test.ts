@@ -10,7 +10,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { normalizeSlashes } from "../src/resolver/paths.js";
+import { createDefaultPorts } from "../src/ports.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
 import {
   MIN_KEY_LENGTH,
@@ -277,6 +282,34 @@ test("service: a failed diff or a missing diff port is unavailable, never an emp
 
   const noPort = makePorts({ map: map(["| retry limit | mirror | a.md |"]), noDiffPort: true });
   assert.equal(new ResolverService(noPort.ports).listCounterparts("main").status, "unavailable");
+});
+
+test("real port: the git-backed diff lists a dirty working-tree change against HEAD", () => {
+  const root = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-counterparts-"))));
+  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { stdio: "ignore" });
+  try {
+    git("init", "-q");
+    git("config", "user.email", "t@example.invalid");
+    git("config", "user.name", "t");
+    mkdirSync(join(root, "_local"));
+    mkdirSync(join(root, "docs"));
+    writeFileSync(join(root, "_local", "counterparts.md"), map(["| `retry limit` | mirror | docs/a.md, docs/b.md |"]));
+    writeFileSync(join(root, "docs", "a.md"), "The retry limit is 2.\n");
+    writeFileSync(join(root, "docs", "b.md"), "intro\nThe retry limit is 2.\n");
+    git("add", "docs");
+    git("commit", "-q", "-m", "seed");
+    writeFileSync(join(root, "docs", "a.md"), "The retry limit is 3.\n");
+
+    const ports = { ...createDefaultPorts(root), registryRelPath: () => "_local/config.md" };
+    const res = new ResolverService(ports).listCounterparts("HEAD");
+    assert.equal(res.status, "listed");
+    assert.deepEqual(res.listings[0].changedAt, ["docs/a.md:1"]);
+    assert.deepEqual(res.listings[0].locations.find((l) => l.path === "docs/b.md")?.lines, [2]);
+
+    assert.equal(new ResolverService(ports).listCounterparts("no-such-ref").status, "unavailable");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("service: an unsafe base ref is refused before any diff is taken", () => {
