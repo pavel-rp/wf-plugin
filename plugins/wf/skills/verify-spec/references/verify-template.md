@@ -2,6 +2,8 @@
 
 The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.md`. Keep quoted snippets short — one or two lines max; the reader clicks `file:line` for the rest. The `## Capability findings` section is present only when one or more capabilities contributed `finding`s at the `verify` phase (omit it on the no-op path); when routing leaves it with no entry, it renders the single line `- none`. The `## Pre-existing`, `## Accepted warnings`, and `## Ledger` sections are **unconditional — always rendered, even empty**, so the report shape is stable across runs. A candidate the critic pass (`verify-spec/SKILL.md` §"Confirm candidate blocking findings") refutes or cannot verify also renders in `## Accepted warnings`, tagged `critic: DISAGREE`/`UNVERIFIABLE` with the citation — no separate section for it. The `## Adversarial findings` section is present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — which subordinates the omission rule: omit the whole section on a clean change only, meaning a run that produced no surviving finding, withdrew no candidate, and had every contributor deliver.
 
+**Mechanical-first ordering** (`SKILL.md` §"Fire the `verify` phase"): in `## Capability findings`, `## Pre-existing`, and `## Accepted warnings`, every finding marked `mechanical` renders before every unmarked finding, and its bullet ends with the tag `— mechanical`. With no marked finding, the order and bullet shape are unchanged.
+
 ## Contents
 
 - [Full output shape](#full-output-shape-04_verifymd) — the full fenced block

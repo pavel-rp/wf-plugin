@@ -90,7 +90,12 @@ SELFTEST_ONLY_CHECKS="
 glossary-lint.sh
 glossary-on-touch.sh
 check-pr-version-claims.sh
+check-authoring-rules.sh
 "
+# check-authoring-rules.sh (WF-756) is on-touch for the same reason: the live tree
+# already carries pre-existing violations of its rules, so it takes an explicit file
+# set. Its real-tree gate is the verify-phase fragment
+# `../fragments/authoring-rules.verify.md`, which supplies a change's touched files.
 
 fail=0
 

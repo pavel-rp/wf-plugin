@@ -1,6 +1,6 @@
 # core-authoring capability manifest
 
-**Version:** 0.6.0
+**Version:** 0.7.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** core-authoring (registers into the downstream `## Capabilities` registry as `core-authoring`)
 **Kind:** both (ships skills and is authored to attach phase fragments)
@@ -44,6 +44,12 @@ pack ships, and a lint script is not one. The `slot` row precedent below does no
 row exists because a slot fill is a real contribution the resolver composes, whereas a lint script is
 reached only by a CI runner. Registration therefore gates none of them, which is correct: they gate
 this repository, not a downstream project.
+
+**The one exception is the verify-phase row below (WF-756).** The scripts themselves still add no
+row; what does is `fragments/authoring-rules.verify.md`, a `verify` / `finding` contribution that
+runs the suite and the on-touch `fixtures/check-authoring-rules.sh` inside `/wf:verify-spec` and
+maps their output into findings marked `mechanical`. That is a real phase contribution, so it has a
+legal pair; registration gates it like any other row, and CI keeps running the suite regardless.
 
 These lints **consume** `plugins/wf/skills/_contracts/GLOSSARY.md`; they do not own it. That file
 stays at its core path for the same reason stated below — `wf-author-caps` is end-user-installable and
@@ -106,6 +112,7 @@ Schema `phase | contribution-kind | dispatch | scope`.
 |-------|-------------------|----------|-------|
 | —     | slot              | `inline: fragments/new-skill-constraints.md` | new-skill.constraints append |
 | —     | slot              | `inline: fragments/pr-version-claims.md` | pr.body-check append |
+| verify | finding          | `inline: fragments/authoring-rules.verify.md` | — |
 
 **The table stayed empty until a contribution had a legal row, and this one does.** A `slot` targets a
 per-skill composition **point**, not an SDD phase, so its phase cell is `—` and its scope is the

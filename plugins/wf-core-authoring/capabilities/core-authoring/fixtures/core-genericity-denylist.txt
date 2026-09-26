@@ -1,0 +1,28 @@
+# core-genericity-denylist.txt — data for check-authoring-rules.sh rule AR-CORE.
+#
+# One POSIX ERE per line; blank lines and lines starting with `#` are ignored.
+# Each pattern is matched case-sensitively, with word boundaries added by the
+# check, against core markdown only: `plugins/wf/skills/**` and `plugins/wf/agents/**`
+# (never `plugins/wf/mcp/`, never a `*-fixtures/` folder). CLAUDE.md §1: core names
+# zero stack, domain, or project nouns.
+#
+# This list names STACK and PRODUCT nouns only. Pack names (e.g. the delivery pack a
+# core remedy line tells the user to install) are deliberately absent: core already
+# names them in remedy text, and a rule that fires on legitimate remedy text is a
+# heuristic, not a mechanical definition. Add a noun here only when a core file
+# naming it is always wrong.
+#
+# Model: claude-opus-5-5
+Angular
+React
+Vue
+\.NET
+C#
+AcmeLedger
+RiskSuite
+LRP
+Linear
+GitHub
+Copilot
+Jira
+Azure DevOps
