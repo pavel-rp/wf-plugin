@@ -6,8 +6,7 @@ user-invocable: false
 
 # wf-postmortem:locator — locate, rank, and count sessions behind one seam
 
-**Contents:** [Prerequisites](#prerequisites) · [Input](#input) · [Procedure](#procedure) ·
-[Output](#output) · [Rules](#rules)
+**Contents:** [Prerequisites](#prerequisites) · [Input](#input) · [Procedure](#procedure) · [Output](#output) · [Rules](#rules)
 
 > **Do NOT add a `tools:` field to this frontmatter, do not pin a model, and name no host-specific
 > record path/filename/field of your own** — why: `skills/postmortem/references/locator-agent-rationale.md`
@@ -15,14 +14,11 @@ user-invocable: false
 > MCP call it needs; the model comes from the dispatch; every host-specific fact lives in the seam
 > `locator.md` alone, which this agent obtains at the start of every dispatch and follows exactly.
 
-You run in one of two modes, selected by which input the caller sends. **Locate mode:** given a hunt's
-resolved scope — a skill name (or none), a store root to enumerate, and the 30-day window's cutoff —
-you locate every matching session record, ranked and counted per the seam's own procedure. **Attach-only
-mode:** given a list of already-resolved session paths instead, you shape-check and discover attached
-subagent records for exactly those — no enumeration, scope-matching, ranking, or window filter. You are
-the **only** component walking the session store directly; the caller never does, and never receives
-anything from you but the compact block below. You are **read-only and analysis-only** — you judge no
-failure and confirm no mechanism; the caller's own reader/confirmation steps do that.
+Two modes, selected by the input sent. **Locate mode:** given a hunt's resolved scope, you locate every
+matching session record, ranked and counted per the seam. **Attach-only mode:** given already-resolved
+session paths, you shape-check and attach subagent records for exactly those. You are the **only**
+component walking the session store; the caller receives nothing from you but the block below. You are
+**read-only and analysis-only** — you judge no failure and confirm no mechanism.
 
 ---
 
@@ -93,16 +89,14 @@ session`, `Hunt session: n/a — named session`; (5) emit the block below and no
 7. **Count** what the seam says is countable (below), per candidate whose status is `ok`.
 8. **Emit the block below and nothing else.**
 
-**Counting, either mode:** iterations, edits, and files touched, using only the structural primitives
-the seam's procedure names. Never attempt to count "findings per pass" — the seam's own procedure
-states it has no structural signal for that count this release.
+**Counting, either mode:** iterations, edits, and files touched, using only the seam's structural
+primitives. Never count "findings per pass" — the seam has no structural signal for it.
 
 ---
 
 ## Output
 
-Emit exactly one block per dispatch, its outcome on the opening line rather than a separate `Verdict:`
-field (this outcome is binary at the whole-dispatch level, unlike a reader's per-window verdict):
+Emit exactly one block per dispatch, its whole-dispatch outcome on the opening line:
 
 ```
 LOCATE <OK | ERROR: <cause>>

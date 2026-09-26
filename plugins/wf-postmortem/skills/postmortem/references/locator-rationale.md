@@ -106,3 +106,23 @@ hunt is supposed to stay fully explicit. The existing stop reason (`"no named se
 — <n> named, 0 resolved"`) is `SKILL.md`'s own pre-existing behavior, unchanged by this seam's
 introduction; the seam simply is never dispatched on that path, rather than being dispatched and then
 discarding its own result.
+
+## Why shape failures are local to their session, and the store root alone fails loudly (WF-737)
+
+§2 originally stopped the whole dispatch on the first unrecognized record or attached entry. The host
+later began writing a `subagents/workflows/` container for its workflow runs; one such session made
+every automatic hunt in that workspace abort, even though every other session was ordinary. A shape
+failure says something about one session's record, not about the store, so its blast radius is now
+that session: an unrecognized top-level record is `skipped (unrecognized shape: …)`, an unrecognized
+attached entry or container is omitted and named under its owner's `Omitted:`, and every unaffected
+session proceeds. Nothing is silently narrowed — every skip and omission is stated with its path and
+reason, so coverage never looks more complete than it is. The store root stays a loud, whole-dispatch
+failure because an unreadable root means the seam cannot say which sessions exist at all.
+
+The safety checks are unchanged in strength: an entry failing path safety (symlink, not a real
+file/directory, or uncontained in locate mode) is never opened, listed, or descended — the omission is
+recorded *instead of* traversing it, never as a reason to traverse it. `subagents/workflows/` is named
+as a known container because its run directories hold the same agent pairs as `subagents/` itself,
+plus a `journal.jsonl` orchestration log that is not a transcript; attaching those pairs keeps a
+workflow session's subagent evidence visible to the reader. A malformed record skipped this way has no trusted
+record date, so it is window-filtered on file modification time (metadata only), so years-old debris does not flood coverage.
