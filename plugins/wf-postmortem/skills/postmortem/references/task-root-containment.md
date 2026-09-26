@@ -54,7 +54,7 @@ does not exist yet, or is unreadable) is also **not** contained.
    `{task-root}` string this `pwd -P` call just printed with the minted folder name — never a
    separately-held copy of the raw, pre-check `{task-root}` config value, so the create targets exactly
    the directory identity the re-check just verified, not a value that could have changed between the
-   two. On the fresh-mint path this re-check also takes the root identity R2 (§"Fresh-mint target
+   two. On the fresh-mint path this re-check runs as the bound lookup and yields R1 and R2 (§"Fresh-mint target
    identity", Capture) before the `mkdir`.
 3. **Phase 4 step 2.5** — immediately before the report `Write`, on **every** run, not only a
    `--report` follow-up (a follow-up instead re-runs `continuation.md` Part E in full, including its
@@ -72,23 +72,28 @@ an earlier call site.
 Containment alone proves only that `{task-root}` still resolves inside the workspace. It does not
 bind the write to the folder this run created, so swapping the minted folder, `{task-root}` or an
 ancestor, or pre-placing something at `report.md`, during Phase 3.5 would pass it. A fresh mint
-therefore records the identity of what it created, then re-proves that identity before writing. Both
-steps use the same metadata primitives `continuation.md` Part A/E use: `Bash`: `stat -c '%d:%i'
-'<path>'` (BSD: `stat -f '%d:%i'`), `test -L '<path>'`, `test -e '<path>'`, and the subshelled
-`(cd '<path>' && pwd -P)`. Every one is single-quoted with `'` → `'\''` first.
+therefore records the identity of what it created, then re-proves that identity before writing.
+
+**The bound lookup.** Every path-and-identity pair below comes from **one** subshelled command,
+`Bash`: `(cd '<path>' && pwd -P && stat -c '%d:%i' .)` (BSD: `stat -f '%d:%i' .`). The `cd`
+resolves the path once, and both the canonical path it prints and the identity of `.` describe
+that same resolved directory, never a second lookup of the path. The only other primitives are
+`test -L '<path>'` and `test -e '<path>'`. Every value is single-quoted with `'` → `'\''` first.
 
 **Capture (Phase 3 step 4).** Never on a `--report` follow-up (Part A step 2 records that identity
 instead). The root half is taken **inside** the step 4 re-check that authorizes the create, and
 the folder half only after `mkdir` exits 0, never on a collision attempt:
 
-- **R1:** the canonical `{task-root}` string the step 4 re-check just printed.
-- **R2:** `stat '%d:%i'` of R1, taken as part of that same re-check, **before** the `mkdir`.
+- **R1, R2:** the step 4 re-check runs its canonicalization of `{task-root}` as the bound lookup,
+  **before** the `mkdir`. R1 is its printed canonical path and R2 is its printed identity, so
+  both describe the one directory that passed the containment comparison.
 - **J:** the expected folder path, joined root-aware: `/<minted folder name>` when R1 is exactly
   `/`, otherwise `<R1>/<minted folder name>`. Never a bare textual `<R1>/…` join.
-- **After `mkdir` exits 0:** re-run `stat '%d:%i'` of R1 and require it to equal R2, so a root or
-  ancestor replaced between the authorizing re-check and the create is rejected, never recorded.
-- **R3:** `(cd '<J>' && pwd -P)`. It must equal J character for character.
-- **R4:** `stat '%d:%i'` of R3.
+- **After `mkdir` exits 0:** run the bound lookup on R1 and require both of its printed values to
+  equal R1 and R2, so a root or ancestor replaced between the authorizing re-check and the create
+  is rejected, never recorded.
+- **R3, R4:** the bound lookup on J. R3 is the printed canonical path, which must equal J character
+  for character, and R4 is the printed identity.
 
 Any capture command failing, the root identity not equalling R2, or R3 not equalling J, means the
 folder is not what `mkdir` just created under the authorized root. Stop, reason `"report target
@@ -98,16 +103,16 @@ as it is and its id stays taken.
 **Validation (Phase 4 step 2.5, the last action before the `Write`).** Re-derive every value fresh
 and compare it only against R1–R4. Require **all** of the following, in order:
 
-1. The containment comparison above passes, re-run from scratch.
-2. Its freshly printed canonical `{task-root}` equals R1 character for character, and `stat
-   '%d:%i'` of it equals R2. A replaced `{task-root}` or ancestor fails here, either by canonicalizing
+1. The containment comparison above passes, re-run from scratch as the bound lookup on
+   `{task-root}`. Its printed canonical path equals R1 character for character and its printed
+   identity equals R2. A replaced `{task-root}` or ancestor fails here, either by canonicalizing
    elsewhere or by carrying a different identity.
-3. `test -L '<R3>'` **fails**, meaning the minted folder is not a symlink.
-4. `(cd '<R3>' && pwd -P)` equals R3, and `stat '%d:%i'` of it equals R4. A folder that was moved,
-   replaced or redirected fails here.
-5. `test -e '<R3>/report.md'` **fails** and `test -L '<R3>/report.md'` **fails**. No file and no
+2. `test -e '<R3>/report.md'` **fails** and `test -L '<R3>/report.md'` **fails**. No file and no
    symlink (dangling or not) may occupy the slot. An absent `report.md` is the expected state of a
    first run, never an error.
+3. `test -L '<R3>'` **fails**, meaning the minted folder is not a symlink.
+4. **Last, immediately before the `Write`:** the bound lookup on R3 prints R3 and R4 exactly. A
+   folder that was moved, replaced or redirected, including during the checks above, fails here.
 
 Any predicate failing → stop `POSTMORTEM — stopped`, reason `"report target changed between folder
 creation and write — nothing written"`. Write nothing: no report, no partial, no scratch copy.
@@ -117,13 +122,16 @@ raw config value.
 
 **Guarantee, stated plainly.** This, like `continuation.md` Part E, is a check immediately before
 the write. It is **not atomic**. No primitive available here creates or writes through an
-already-validated descriptor, so two windows remain, each a few consecutive tool calls wide:
+already-validated descriptor. Each bound lookup is internally consistent, but the gaps between
+lookups remain, each a few consecutive tool calls wide:
 
-- between `mkdir` and the R3/R4 lookup, where capture is a pathname lookup, not a bind to the
-  created object, so a replacement made in that gap is recorded as if created;
-- between the last validation predicate and the `Write`.
+- between the authorizing re-check and the `mkdir`, where the post-`mkdir` root lookup detects a
+  root replaced by another directory but not one swapped and restored within the gap;
+- between `mkdir` and the R3/R4 lookup, where capture looks the folder up by path rather than
+  binding the created object, so a replacement made in that gap is recorded as if created;
+- between validation predicate 4 (the folder identity) and the `Write`.
 
-The checks narrow exposure from the whole Phase 3 to Phase 4 span to those two gaps; they do not
+The checks narrow exposure from the whole Phase 3 to Phase 4 span to those three gaps; they do not
 close them (rationale: `continuation-rationale.md` §"Why Part E re-verifies from scratch").
 
 ## Retry semantics at step 4
