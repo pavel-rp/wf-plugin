@@ -24,6 +24,11 @@
 #      normalized report exactly, and is a no-op on its output.
 #   5. GROUPING — a reference model of Part A step 5 yields one group per task id, id-less
 #      candidates as singletons, and no group for a covered id.
+#   6. VERSION RESOLUTION — version-resolution.md's Contents anchors resolve and it stays within
+#      budget; branch (a) derives the cache root from the executing root's own suffix; the
+#      fallbacks keep their order and labels; and a reference model of branch (a) over a scratch
+#      cache tree resolves a different pack/version while rejecting malformed roots, traversal,
+#      symlink escapes, and missing or denied audited caches.
 #
 # Usage:  run.sh    run every check (default; used by CI)
 set -uo pipefail
@@ -37,6 +42,7 @@ CONT="$REFS/continuation.md"
 CROSS="$REFS/coverage-cross-check.md"
 CORPUS="${POSTMORTEM_FIXTURE_CORPUS:-$SCRIPT_DIR/corpus}"   # override: mutation-test a copy
 CONT_BUDGET=162
+VR_BUDGET=160
 
 fail=0
 err() { printf 'FAIL: %s\n' "$1" >&2; fail=$((fail + 1)); }   # a count, so each section can tell its own failures
@@ -253,6 +259,106 @@ got_groups=$(awk -F'\t' '
 [ "$got_groups" = "$(sort "$CORPUS/grouping/expected-groups.txt")" ] \
   || err "grouping: groups differ from expected"$'\n'"$got_groups"
 [ "$fail" -eq "$before" ] && ok "trigger-(b) grouping"
+
+# --- 6. Version resolution --------------------------------------------------------------
+before=$fail
+VR="$REFS/version-resolution.md"
+VRR="$REFS/version-resolution-rationale.md"
+for f in "$VR" "$VRR"; do [ -f "$f" ] || { err "missing reference: $f"; exit 1; }; done
+vlines=$(wc -l < "$VR")
+[ "$vlines" -le "$VR_BUDGET" ] || err "version-resolution.md is $vlines lines, budget $VR_BUDGET"
+vanchors=$(grep '^## ' "$VR" | sed 's/^## //' | while IFS= read -r h; do slug "$h"; echo; done)
+vlinks=$(awk '/^## Contents/{on=1;next} /^## /{on=0} on' "$VR" | grep -o '](#[^)]*)' | sed -e 's/^](#//' -e 's/)$//')
+[ -n "$vlinks" ] || err "version-resolution.md has no Contents links"
+nv=0
+while IFS= read -r l; do
+  [ -z "$l" ] && continue
+  nv=$((nv + 1))
+  printf '%s\n' "$vanchors" | grep -qxF -- "$l" || err "version-resolution.md Contents link #$l resolves to no heading"
+done <<< "$vlinks"
+[ "$nv" -eq "$(grep -c '^## Step ' "$VR")" ] || err "version-resolution.md Contents lists $nv entries for $(grep -c '^## Step ' "$VR") Steps"
+# Branch (a) validates the executing root against its OWN suffix, never the audited one.
+grep -qF '`<cache-root>/<exec-marketplace>/<exec-plugin>/<exec-version>`' "$VR" \
+  || err "branch (a) step 1 does not reconstruct the executing root from its own suffix"
+grep -qF 'ends in `/plugins/cache`' "$VR" || err "branch (a) step 1 does not anchor the cache root on plugins/cache"
+grep -qF 'plus the three validated segments' "$VR" && err "branch (a) step 1 still reconstructs with the audited segments"
+for f in "$VR" "$VRR"; do
+  grep -qF 'executing' "$f" || err "$(basename "$f") does not name the executing root"
+done
+# Fallbacks keep their order, labels, and the present-day-only promotion bar.
+prev_ln=0
+for b in '**a. ' '**b. ' '**c. ' '**d. '; do
+  ln=$(grep -nF -- "$b" "$VR" | head -1 | cut -d: -f1)
+  [ -n "$ln" ] && [ "$ln" -gt "$prev_ln" ] || err "branch $b missing or out of order"
+  prev_ln=${ln:-$prev_ln}
+done
+for lbl in '(install path)' '(manifest history)' 'version approximate (date-resolved)' '`present-day-only`' \
+           'Never eligible for promotion'; do
+  grep -qF -- "$lbl" "$VR" || err "version-resolution.md lost fallback label/rule: $lbl"
+done
+
+# Reference model of branch (a) steps 1-3, exercised over a scratch cache tree. Prints the
+# resolved candidate, or `fallthrough` (branch (b) takes over). `old` models the pre-fix step 1.
+seg_ok() { [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] && [ "$1" != . ] && [ "$1" != .. ]; }
+branch_a() {  # $1 mode (new|old) $2 exec root $3 marketplace $4 plugin $5 version
+  local mode="$1" root="$2" m="$3" p="$4" v="$5" em ep ev cr ccr cand s
+  for s in "$m" "$p" "$v"; do seg_ok "$s" || { echo fallthrough; return; }; done   # step-5 validation
+  [ -n "$root" ] || { echo fallthrough; return; }
+  ev=$(basename "$root"); ep=$(basename "$(dirname "$root")"); em=$(basename "$(dirname "$(dirname "$root")")")
+  cr=$(dirname "$(dirname "$(dirname "$root")")")
+  if [ "$mode" = old ]; then
+    [ "$cr/$m/$p/$v" = "$root" ] || { echo fallthrough; return; }
+  else
+    for s in "$em" "$ep" "$ev"; do seg_ok "$s" || { echo fallthrough; return; }; done
+    case "$cr" in */plugins/cache) ;; *) echo fallthrough; return ;; esac
+    [ "$cr/$em/$ep/$ev" = "$root" ] || { echo fallthrough; return; }
+  fi
+  ccr=$(cd "$cr" 2>/dev/null && pwd -P) || { echo fallthrough; return; }
+  cand=$(cd "$ccr/$m/$p/$v" 2>/dev/null && pwd -P) || { echo fallthrough; return; }
+  [ "$(dirname "$(dirname "$(dirname "$cand")")")" = "$ccr" ] || { echo fallthrough; return; }
+  [ "$(basename "$cand")" = "$v" ] || { echo fallthrough; return; }
+  [ "$(basename "$(dirname "$cand")")" = "$p" ] || { echo fallthrough; return; }
+  [ "$(basename "$(dirname "$(dirname "$cand")")")" = "$m" ] || { echo fallthrough; return; }
+  echo "$cand"
+}
+VT=$(mktemp -d) || { err "cannot create a scratch cache tree"; VT=""; }
+if [ -n "$VT" ]; then
+  C="$VT/plugins/cache"
+  mkdir -p "$C/mk/wf-postmortem/0.9.7" "$C/mk/wf-postmortem/0.9.6" "$C/mk/wf/0.150.0" \
+           "$VT/outside/0.152.0" "$VT/dev/mk/wf-postmortem/0.9.7"
+  ln -s "$C/mk/wf/0.150.0" "$C/mk/wf/0.151.0"      # version segment swapped to another version
+  ln -s "$C/mk/wf" "$C/mk/evil"                     # plugin segment swapped to another pack
+  ln -s "$VT/outside/0.152.0" "$C/mk/wf/0.152.0"    # version segment escaping the cache root
+  CC=$(cd "$C" && pwd -P)
+  EXEC="$C/mk/wf-postmortem/0.9.7"
+  expect() {  # $1 label $2 expected $3.. branch_a args
+    local label="$1" want="$2" got; shift 2
+    got=$(branch_a new "$@")
+    [ "$got" = "$want" ] || err "branch (a) $label: expected '$want', got '$got'"
+  }
+  expect "different pack+version"   "$CC/mk/wf/0.150.0"            "$EXEC" mk wf 0.150.0
+  expect "same pack, other version" "$CC/mk/wf-postmortem/0.9.6"   "$EXEC" mk wf-postmortem 0.9.6
+  expect "same pack, same version"  "$CC/mk/wf-postmortem/0.9.7"   "$EXEC" mk wf-postmortem 0.9.7
+  expect "unset executing root"     fallthrough ""                 mk wf 0.150.0
+  expect "trailing-slash root"      fallthrough "$EXEC/"           mk wf 0.150.0
+  expect "traversal in root"        fallthrough "$C/mk/.."         mk wf 0.150.0
+  expect "root outside a cache"     fallthrough "$VT/dev/mk/wf-postmortem/0.9.7" mk wf 0.150.0
+  expect "audited traversal"        fallthrough "$EXEC"            mk .. 0.150.0
+  expect "missing audited cache"    fallthrough "$EXEC"            mk wf 9.9.9
+  expect "symlinked version"        fallthrough "$EXEC"            mk wf 0.151.0
+  expect "symlinked pack"           fallthrough "$EXEC"            mk evil 0.150.0
+  expect "containment escape"       fallthrough "$EXEC"            mk wf 0.152.0
+  if [ "$(id -u)" -ne 0 ]; then
+    mkdir -p "$C/mk/wf/0.153.0"; chmod 000 "$C/mk/wf/0.153.0"
+    expect "denied audited cache"   fallthrough "$EXEC"            mk wf 0.153.0
+    chmod 700 "$C/mk/wf/0.153.0"
+  fi
+  # The pre-fix derivation must fail the cross-pack case, or this section proves nothing.
+  [ "$(branch_a old "$EXEC" mk wf 0.150.0)" = fallthrough ] \
+    || err "reference model of the pre-fix step 1 unexpectedly resolves a different pack"
+  rm -rf "$VT"
+fi
+[ "$fail" -eq "$before" ] && ok "version resolution ($vlines lines, $nv anchors, branch (a) model)"
 
 if [ "$fail" -ne 0 ]; then
   echo "wf-postmortem fixtures: FAILED" >&2
