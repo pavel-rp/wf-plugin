@@ -88,8 +88,7 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
   prose, not a session record — outside the prohibition below.
 - Resolve which version's tree to read that text from; read the last-modified time of a session (`version-resolution
   .md` branches (b)/(c)) and of a candidate task folder's artifacts (`coverage-cross-check.md` Part A step 1); and read
-  the device/inode identity of the `--report` target (Part E) and of a fresh mint's `{task-root}` and minted folder
-  (`task-root-containment.md` §"Fresh-mint target identity") — `Bash`: `git log`, `git show`, `stat -c '%Y'`/`'%d:%i'`
+  the device/inode identity of the `--report` target (Part E) or a fresh-mint target (`task-root-containment.md`) — `Bash`: `git log`, `git show`, `stat -c '%Y'`/`'%d:%i'`
   (BSD: `stat -f '%m'`/`'%d:%i'`), single-quoted the same way. With `test -e`/`test -L`/`wc -c`, metadata only.
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id, and ask exactly one interactive question
   (`AskUserQuestion`) when the failure description is missing and a channel is available.
@@ -215,12 +214,11 @@ minted this run.
    highest number, increment, zero-pad to 3 digits, starting at `PM001`. Slug the **redacted** description (step 2's
    output): lowercase it; collapse every character outside `a-z0-9` to a single `-` (removing `/`, `\`, `.`, and any
    `..` segment); trim leading/trailing `-`; truncate to 40 characters; if nothing remains, use `report`.
-4. **Create the folder with one exclusive fail-if-exists create** — a plain existence check followed by a separate create is a check-then-act race, so the create itself must be what fails. **Immediately before `mkdir`, re-run the containment gate** per `task-root-containment.md`, building the target from the re-check's own output, never the raw config value; fails → stop, write nothing, same reason as step 2.5. A "retry" below means re-running this full re-check-then-`mkdir` sequence, never only the bare `mkdir`.
+4. **Create the folder with one exclusive fail-if-exists create** — a plain existence check followed by a separate create is a check-then-act race, so the create itself must be what fails. **Immediately before `mkdir`, re-run the containment gate** per `task-root-containment.md`, building the target from the re-check's own output, never the raw config value; fails → stop, write nothing, same reason as step 2.5. A "retry" below means re-running this full re-check-then-`mkdir` sequence, never only the bare `mkdir`. **On exit 0, immediately record the folder's identity** per `task-root-containment.md` §"Fresh-mint target identity" (Capture) — the successful attempt only, never a collision attempt.
 
    **Use `Bash`: `LC_ALL=C mkdir '<path>'` — without `-p`.** `LC_ALL=C` is load-bearing: under another
    locale a genuine collision's translated stderr could be misread as a hard failure. Exit 0 → folder
-   created; **immediately record its identity** per `task-root-containment.md` §"Fresh-mint target
-   identity" (Capture) — on this successful attempt only, never a collision attempt — then continue. Non-zero **and** the path now exists as a directory (`test -d
+   created, identity captured (above), continue to Phase 4. Non-zero **and** the path now exists as a directory (`test -d
    '<path>'`) → true id collision, re-mint (step 3) and retry, bounded at **3 attempts per run**;
    exhausting it stops with "report-folder id contention — 3 consecutive collisions." Non-zero and the
    path does **not** exist (permission/missing/full-disk/read-only) → **not** a collision; stop with
