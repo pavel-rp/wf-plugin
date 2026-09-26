@@ -107,12 +107,13 @@ and compare it only against R1–R4. Require **all** of the following, in order:
    `{task-root}`. Its printed canonical path equals R1 character for character and its printed
    identity equals R2. A replaced `{task-root}` or ancestor fails here, either by canonicalizing
    elsewhere or by carrying a different identity.
-2. `test -e '<R3>/report.md'` **fails** and `test -L '<R3>/report.md'` **fails**. No file and no
-   symlink (dangling or not) may occupy the slot. An absent `report.md` is the expected state of a
-   first run, never an error.
-3. `test -L '<R3>'` **fails**, meaning the minted folder is not a symlink.
-4. **Last, immediately before the `Write`:** the bound lookup on R3 prints R3 and R4 exactly. A
-   folder that was moved, replaced or redirected, including during the checks above, fails here.
+2. `test -L '<R3>'` **fails**, meaning the minted folder is not a symlink.
+3. The bound lookup on R3 prints R3 and R4 exactly. A folder that was moved, replaced or
+   redirected, including during the checks above, fails here.
+4. **Last, after the folder re-proof and immediately before the `Write`:** `test -e
+   '<R3>/report.md'` **fails** and `test -L '<R3>/report.md'` **fails**. No file and no symlink
+   (dangling or not) may occupy the slot. An absent `report.md` is the expected state of a first
+   run, never an error. Nothing runs between this predicate and the `Write`.
 
 Any predicate failing → stop `POSTMORTEM — stopped`, reason `"report target changed between folder
 creation and write — nothing written"`. Write nothing: no report, no partial, no scratch copy.
@@ -129,9 +130,14 @@ lookups remain, each a few consecutive tool calls wide:
   root replaced by another directory but not one swapped and restored within the gap;
 - between `mkdir` and the R3/R4 lookup, where capture looks the folder up by path rather than
   binding the created object, so a replacement made in that gap is recorded as if created;
-- between validation predicate 4 (the folder identity) and the `Write`.
+- between the folder re-proof (predicate 3) and the `Write`, where the folder can still be moved
+  or replaced;
+- between the `report.md` slot check (predicate 4) and the `Write`, where a file or symlink placed
+  at `<R3>/report.md` is written to or followed. A prose-driven `Write` goes through the path and
+  cannot create the file exclusively or refuse to follow a symlink, so nothing this procedure can
+  do closes this window. The ordering only shrinks it to one tool call.
 
-The checks narrow exposure from the whole Phase 3 to Phase 4 span to those three gaps; they do not
+The checks narrow exposure from the whole Phase 3 to Phase 4 span to those four gaps; they do not
 close them (rationale: `continuation-rationale.md` §"Why Part E re-verifies from scratch").
 
 ## Retry semantics at step 4
