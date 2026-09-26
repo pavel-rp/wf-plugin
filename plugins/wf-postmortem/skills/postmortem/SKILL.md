@@ -69,7 +69,8 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 - Resolve each `--session` value with `Bash`: `test -e '<path>'` (a file, not the `--folder`/`--repo` primitive above), and size it with `Bash`: `wc -c '<path>'`.
 - **The UnitId digest primitive** — the one way this skill derives a `session-reader:`/`excerpt-fetcher:` UnitId
   digest, for one already-resolved absolute path at a time. (1) `Write` that path string — UTF-8, exactly its
-  characters, no trailing newline, nothing else — to the fixed literal file `_local/scratch/postmortem-unitid-preimage`.
+  characters, no trailing newline, nothing else — to the fixed literal file `_local/scratch/postmortem-unitid-preimage`,
+  resolved against `workspaceRoot` (the session's own `pwd -P`, which is also the `Bash` working directory below).
   (2) Hash it with `Bash`: `sha256sum '_local/scratch/postmortem-unitid-preimage'` (BSD: `shasum -a 256` on the same
   literal). (3) Take the output's first field; it must match `^[0-9a-f]{64}$`; the digest is its first 16 characters.
   (4) Delete the file with `Bash`: `rm -f '_local/scratch/postmortem-unitid-preimage'` before any next preimage is
@@ -135,7 +136,8 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 - Treat a run's own success/progress statement as evidence, or let it confirm a factor or measured effect; it may be
   quoted (`run-reported`), never treated as what happened.
 - Write outside the report's own seeded folder and the fixed, literal `_local/scratch/`; touch `plugins/wf/` or any
-  other pack; write anything without first passing it through the redacting write path (`redaction.md`).
+  other pack; write anything without first passing it through the redacting write path (`redaction.md`) (the UnitId
+  digest preimage excepted — Allowed list).
 - Guess whether an interactive channel is available (establish it from the tool catalog, Phase 2), or ask more than
   one question per run.
 
