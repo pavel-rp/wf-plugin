@@ -320,6 +320,11 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    its **cited lines** (every contributor's `location` and evidence lines) are what every
    identity test below matches. Tag each by every contributing **source capability**; order is cosmetic.
 
+**Mechanical-first ordering.** A contributor may mark a finding `mechanical: true` — decided by a
+deterministic check, not judgment; a collapsed finding is marked when any contributor marked it.
+Every section that renders findings lists every marked finding before every unmarked one, each group
+in its existing order. With no marked finding, nothing moves — the lean default names no contributor.
+
 **No-op:** an empty `capabilities[]`, or no fragment matching `verify`/`finding`, means the
 phase produces **nothing** — no capability/stack/domain term, no STOP. A malformed
 `dispatch` is that contributor's own no-op, reported as incomplete coverage below. Gating
