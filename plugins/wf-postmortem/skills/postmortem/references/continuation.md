@@ -89,10 +89,11 @@ deduplicated by draw key against the prior report (kept, not re-drawn, when alre
 already-Coverage'd session is never *demoted* by the cap** — the retry set can exceed
 the cap on its own (any number of `--session` retries, ordered first); pushing an already-terminal
 session past the boundary **keeps its existing Coverage entry** verbatim (verdict, date, model, tier,
-observations, counts), never reassigned `skipped (budget)` (rationale: `continuation-rationale.md`
-§"Why the cap exemption exists"); only a **no-prior-entry** session gets a fresh past-cap `skipped
-(budget)`. Part D line: `Requested but not reached this run: <path> — cap in force (<n>) reached
-before this retry; prior entry retained`. **Dispatch/merge** the capped set through `SKILL.md` Phase
+observations, counts) — only its `Omitted:` entries refresh, from this run's fresh locate-mode return
+(Part B) when the session is present in it, so no stale locator fact survives — never reassigned
+`skipped (budget)` (rationale: `continuation-rationale.md` §"Why the cap exemption exists"); only
+a **no-prior-entry** session gets a fresh past-cap `skipped (budget)`. Part D line: `Requested but
+not reached this run: <path> — cap in force (<n>) reached before this retry; prior entry retained`. **Dispatch/merge** the capped set through `SKILL.md` Phase
 3.5 steps 2-4 unchanged — no distinction from a first run's sessions.
 **Upsert, keyed by resolved session path — never a plain union, never a duplicate row.** Every session
 **dispatched this run**: its fresh result (Coverage verdict, Evidence observations, Measured Effect
