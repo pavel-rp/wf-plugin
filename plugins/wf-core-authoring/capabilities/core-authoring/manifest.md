@@ -1,6 +1,6 @@
 # core-authoring capability manifest
 
-**Version:** 0.5.0
+**Version:** 0.6.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** core-authoring (registers into the downstream `## Capabilities` registry as `core-authoring`)
 **Kind:** both (ships skills and is authored to attach phase fragments)
@@ -105,6 +105,7 @@ Schema `phase | contribution-kind | dispatch | scope`.
 | phase | contribution-kind | dispatch | scope |
 |-------|-------------------|----------|-------|
 | —     | slot              | `inline: fragments/new-skill-constraints.md` | new-skill.constraints append |
+| —     | slot              | `inline: fragments/pr-version-claims.md` | pr.body-check append |
 
 **The table stayed empty until a contribution had a legal row, and this one does.** A `slot` targets a
 per-skill composition **point**, not an SDD phase, so its phase cell is `—` and its scope is the
@@ -157,6 +158,17 @@ registry-side act.
 The row and the fragment file it names are authored together, in the change that introduces them.
 With this capability unregistered the row is never reached, the point resolves `unfilled`, and the
 scaffolder runs its inline default — no authoring term of this capability surfaces anywhere.
+
+The second `slot` row (WF-757) fills `pr.body-check`, the point core `/wf:pr` declares in its
+`interface.md` for checking a composed pull-request body before the pull request is created. The fill
+carries this repository's release-version rule (`CLAUDE.md` §8): a version the body announces must be
+one the change sets in a plugin `plugin.json` or the marketplace manifest. It runs the pack's own
+`fixtures/check-pr-version-claims.sh` — the rule's single executable definition, proven by its
+selftest — and a mismatch stops creation through the agent's existing `PR — Error`. The merge policy is
+`append`, so it composes with any other capability's body check. With this capability unregistered the
+point resolves `unfilled` and `/wf:pr` composes and creates exactly as before. Rationale:
+[`references/pr-version-claims.md`](references/pr-version-claims.md) — read by authors, never at
+slot-fire.
 
 Rationale, the constraint-to-section mapping, and why each rule is cited rather than restated:
 [`references/new-skill-constraints.md`](references/new-skill-constraints.md) — read by authors,
