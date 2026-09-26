@@ -1,11 +1,21 @@
 # postmortem `{task-root}` containment gate
 
-Runtime-read reference for `SKILL.md` Phase 3 steps 2.5 and 4, and Phase 4 step 2.5 — obtained via
+Runtime-read reference for `SKILL.md` Phase 3 steps 2.5 and 4 (including the fresh-mint identity
+capture), and Phase 4 step 2.5 (the fresh-mint target validation) — obtained via
 `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`, `skill:
 postmortem`, `ref: task-root-containment.md`) at the start of each of those steps, never read at boot.
 This is the full, behavior-bearing procedure `SKILL.md` points to rather than restates inline at each of
 its three call sites, per this repo's skill-body-length budget; it is followed exactly, not merely
 consulted for background.
+
+## Contents
+
+- [Why this gate exists](#why-this-gate-exists)
+- [The primitive, and why it must run in a subshell](#the-primitive-and-why-it-must-run-in-a-subshell)
+- [The comparison](#the-comparison)
+- [Where this runs](#where-this-runs--three-call-sites-one-procedure-re-run-fresh-each-time)
+- [Fresh-mint target identity](#fresh-mint-target-identity) — capture after `mkdir`, validation before `Write`
+- [Retry semantics at step 4](#retry-semantics-at-step-4)
 
 ## Why this gate exists
 

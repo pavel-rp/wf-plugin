@@ -88,7 +88,8 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
   prose, not a session record — outside the prohibition below.
 - Resolve which version's tree to read that text from; read the last-modified time of a session (`version-resolution
   .md` branches (b)/(c)) and of a candidate task folder's artifacts (`coverage-cross-check.md` Part A step 1); and read
-  the `--report` target's device/inode identity for Part E — `Bash`: `git log`, `git show`, `stat -c '%Y'`/`'%d:%i'`
+  the device/inode identity of the `--report` target (Part E) and of a fresh mint's `{task-root}` and minted folder
+  (`task-root-containment.md` §"Fresh-mint target identity") — `Bash`: `git log`, `git show`, `stat -c '%Y'`/`'%d:%i'`
   (BSD: `stat -f '%m'`/`'%d:%i'`), single-quoted the same way. With `test -e`/`test -L`/`wc -c`, metadata only.
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id, and ask exactly one interactive question
   (`AskUserQuestion`) when the failure description is missing and a channel is available.
@@ -218,7 +219,8 @@ minted this run.
 
    **Use `Bash`: `LC_ALL=C mkdir '<path>'` — without `-p`.** `LC_ALL=C` is load-bearing: under another
    locale a genuine collision's translated stderr could be misread as a hard failure. Exit 0 → folder
-   created, continue to Phase 4. Non-zero **and** the path now exists as a directory (`test -d
+   created; **immediately record its identity** per `task-root-containment.md` §"Fresh-mint target
+   identity" (Capture) — on this successful attempt only, never a collision attempt — then continue. Non-zero **and** the path now exists as a directory (`test -d
    '<path>'`) → true id collision, re-mint (step 3) and retry, bounded at **3 attempts per run**;
    exhausting it stops with "report-folder id contention — 3 consecutive collisions." Non-zero and the
    path does **not** exist (permission/missing/full-disk/read-only) → **not** a collision; stop with
@@ -395,11 +397,11 @@ compact, already-redacted or already-structural block comes back.
    delivery entry id>` identifier as well as its key-attempted string — closing the same report-forgery
    class the CLI-prompt channel already closes, for a delivery-entry or task-folder source exactly as
    for a session-sourced one.
-2.5. **Re-verify the write target — the last action before step 3's `Write`, every run, not only a follow-up.** On a follow-up, re-run `continuation.md` **Part E** in full (the confinement check plus the device/inode identity comparison); stop with nothing written on any failure or identity mismatch. On a fresh mint, re-run the containment gate per `task-root-containment.md`; fails → stop, write nothing, same reason as step 2.5.
+2.5. **Re-verify the write target — the last action before step 3's `Write`, every run, not only a follow-up.** On a follow-up, re-run `continuation.md` **Part E** in full (the confinement check plus the device/inode identity comparison); stop with nothing written on any failure or identity mismatch. On a fresh mint, run the full target validation per `task-root-containment.md` §"Fresh-mint target identity" (Validation) — the containment re-check, then the recorded `{task-root}`/folder identity, non-symlink folder, and an empty `report.md` slot; a containment failure stops with step 2.5's reason, any other mismatch stops with `"report target changed between folder creation and write — nothing written"`, and a mismatch is never re-canonicalized and accepted. Neither path is atomic — each is a check immediately before the write (same reference).
 3. **Write** `{task-root}/PM<NNN>__<slug>/report.md` per the template shape, including the `**Model:**` attribution
    line (the runtime model id — `unknown` rather than guessed) and the fenced `POSTMORTEM — written` final-output
-   block, matching this skill's own Final Output shape verbatim. **On a fresh mint**, build the write path from step
-   2.5's re-check output per `task-root-containment.md` (same discipline as the `mkdir` target). **On a follow-up**,
+   block, matching this skill's own Final Output shape verbatim. **On a fresh mint**, build the write path from the
+   folder identity step 2.5 just validated per `task-root-containment.md` (`<R3>/report.md`, never the raw config value). **On a follow-up**,
    write to the prior report's own folder (Phase 0.5) instead — overwriting the same `report.md`, never minting a new
    id — and append the dated Continuation entry `continuation.md` Part D composes, after Recommendation, before the
    final-output block. Any scratch file is written under the fixed, literal `_local/scratch/`, through the same
@@ -447,6 +449,7 @@ compact, already-redacted or already-structural block comes back.
   disk, read-only. Stop with that reason; never retried. Three consecutive collisions hits the same bound. **A seeded
   folder left with no `report.md`** by an interrupted run — the id stays taken.
 - **`{task-root}` fails the containment gate** (`task-root-containment.md`) — stops before the `Glob`/`mkdir`/`Write`; write nothing.
+- **A fresh-mint target changed between folder creation and write** — `{task-root}` or an ancestor replaced, the minted folder moved, swapped or symlinked, or anything (file or symlink) placed at its `report.md` during Phase 3.5. Phase 4 step 2.5's validation stops, reason `"report target changed between folder creation and write — nothing written"`; nothing is written and the replacement is never accepted. A normal first run, with no `report.md` yet, passes.
 - **A located or named set larger than the cap in force, or a follow-up remainder still larger than the cap.** Read in
   ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never dropped, retrievable by a further
   `--report` follow-up unless it ages out or is removed first. On a follow-up, a session already holding a Coverage
