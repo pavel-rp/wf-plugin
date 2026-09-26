@@ -250,7 +250,10 @@ compact, already-redacted or already-structural block comes back.
 
    Read defensively: no parseable `LOCATE` block, or `LOCATE ERROR: <cause>`, stops the run — write no
    report. `LOCATE OK` with an empty list is **not** a stop — proceed as "not found." The block's own
-   `Model:` is this dispatch's diagnostic only; Coverage's per-session `model:`/`tier:` comes from step 3.
+   `Model:` is this dispatch's diagnostic only; Coverage's per-session `model:`/`tier:` comes from step 3. A
+   candidate `skipped (unrecognized shape: …)` is handled exactly like one `skipped (access denied)` below — never
+   measured, capped, or dispatched, carried to Coverage unchanged — and each candidate's `Omitted:` entries are
+   carried to its Coverage entry verbatim; neither is a stop.
 
 2. **Decide windowing.** A session already `skipped (access denied)` (step 0) skips this step — never
    measured, carried unchanged to step 4. Otherwise measure with `Bash`: `wc -c '<path>'` (metadata, not
@@ -345,7 +348,8 @@ compact, already-redacted or already-structural block comes back.
    - **Localisation** — filled with the file(s) named by every confirmed factor's `file:line` when at least one
      exists; otherwise the template's stated reason.
    - **Coverage** — every record, exactly once, under its verdict from step 2.5 (`skipped (budget)`) or step 4, its
-     model/tier (`not dispatched`/`n/a` when capped), its date, and the cap in force (every run) — plus, on a located
+     model/tier (`not dispatched`/`n/a` when capped), its date, any step-0 `Omitted:` entries (path — reason), and
+     the cap in force (every run) — plus, on a located
      run, the rank, the hunt-session label, and the window cutoff. **Follow-ups** also state `continuation.md` Part
      B's "cannot see" entries, with the reason.
 
@@ -413,9 +417,9 @@ compact, already-redacted or already-structural block comes back.
   **One** unresolved beside resolving ones → marked in Scope, hunt proceeds over the rest. **No `--session` at all**
   is not this case: the locator locates instead. Beside a validated `--report` follow-up, this stop condition does not
   apply (`continuation.md` Part A step 7).
-- **The locator's whole-store read fails, or meets an unrecognized record shape.** `LOCATE ERROR: <cause>` stops
-  immediately; write no report — distinct from one session's own denied read (`skipped (access denied)`, never a
-  stop). A **resolved scope locating no session** is not this case: Summary states "not found." A session **older than
+- **The locator's whole-store read fails.** `LOCATE ERROR: <cause>` stops immediately; write no report — distinct
+  from one session's own denied read (`skipped (access denied)`) or unrecognized record (`skipped (unrecognized
+  shape: …)`), and from an unfamiliar attached entry (listed as omitted in its session's Coverage) — none a stop. A **resolved scope locating no session** is not this case: Summary states "not found." A session **older than
   the window** gets no coverage entry.
 - **The running session, or an earlier `postmortem` session, is located.** Both rank last regardless of match or
   recency and are labelled hunt sessions — never `skipped (self)`, never dropped. **A session record larger than one
@@ -469,7 +473,7 @@ Follow-up: <n/a — first run | continuing <prior report path> · <n> newly read
 Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<n> (default|override) · session-scope=<current workspace only|<resolved project path>>
 Sessions: <n> named · <r> resolved · <u> unresolved | <n> located
 Window:   <30-day cutoff, stated on every located run | n/a — named-session run>
-Coverage: <path>=<read|read in part (<reason>)|skipped (budget)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] [hunt-session] · …
+Coverage: <path>=<read|read in part (<reason>)|skipped (budget)|skipped (reader error: <reason>)|skipped (access denied)|skipped (unrecognized shape: <reason>)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] [hunt-session] · …
 Finding:  <one line — what was found | not found>
 Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <framing> | file a work item from this report, then /wf:spec <id>>
 ```
@@ -486,7 +490,7 @@ Stopped:
 ```
 POSTMORTEM — stopped
 
-Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "no failure description given — the interactive answer was empty after trimming", "wf-postmortem pack not registered — pack-owned references cannot resolve", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "task root does not resolve inside the workspace — <value>", "_local/config.md absent — run /wf:init first">
+Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "locator procedure unavailable — <reason>", "no failure description given and no interactive channel available to ask for one", "no failure description given — the interactive answer was empty after trimming", "wf-postmortem pack not registered — pack-owned references cannot resolve", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "task root does not resolve inside the workspace — <value>", "_local/config.md absent — run /wf:init first">
 Next:   <the command that clears the block, e.g. "/wf:init", "/wf-postmortem:init", "re-run with --session <path>", "re-run with a failure description", "re-run --report <path> without the conflicting flag", "re-run with a positive integer --cap", or "re-run without --report to start a fresh hunt" (the too-large-report remedy)>
 ```
 

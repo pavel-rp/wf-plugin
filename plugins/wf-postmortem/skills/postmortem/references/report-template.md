@@ -178,6 +178,10 @@ cutoff and labels a hunt session. A named `--session` entry has no locator-suppl
 - `<session path>` — skipped (budget) · date: <…> · model: not dispatched · tier: n/a <[hunt-session] when labelled>
 - `<session path>` — skipped (reader error: <reason>) · date: <…> · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
 - `<session path>` — skipped (access denied) · date: <…> · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
+- `<session path>` — skipped (unrecognized shape: <what did not match>) · date: n/a — not read · model: not dispatched · tier: n/a
+
+<Any entry above whose locator return listed `Omitted:` entries appends ` · omitted: <entry path> —
+<reason>; …` — every attached entry or container the locate seam left out of that session, never dropped.>
 
 **Window:** <the 30-day cutoff, stated on every located run | "n/a — named-session run">
 
@@ -299,7 +303,7 @@ Follow-up: <n/a — first run | continuing <prior report path> · <n> newly read
 Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<n> (default|override) · session-scope=<current workspace only|<resolved project path>>
 Sessions: <n> named · <r> resolved · <u> unresolved | <n> located
 Window:   <30-day cutoff, stated on every located run | n/a — named-session run>
-Coverage: <path>=<read|read in part (<reason>)|skipped (budget)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] [hunt-session] · …
+Coverage: <path>=<read|read in part (<reason>)|skipped (budget)|skipped (reader error: <reason>)|skipped (access denied)|skipped (unrecognized shape: <reason>)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] [hunt-session] · …
 Finding:  <one line — what was found | not found>
 Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <framing> | file a work item from this report, then /wf:spec <id>>
 ```
@@ -343,8 +347,9 @@ Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <fra
   session-side excerpt at its locator both verify (or both verify mechanically, at an exact
   `file:line` and an exact locator) — never on one side alone, and never when the version resolves
   only to `present-day-only` text. Everything else stays a hypothesis at the `unverified` tier.
-- **Coverage carries each resolved-or-located record exactly once** under one of the five verdicts
-  (`read`, `read in part`, `skipped (budget)`, `skipped (reader error)`, `skipped (access denied)`),
+- **Coverage carries each resolved-or-located record exactly once** under one of the six verdicts
+  (`read`, `read in part`, `skipped (budget)`, `skipped (reader error)`, `skipped (access denied)`,
+  `skipped (unrecognized shape)`), any attached entries the locate seam omitted (path and reason),
   with the model that reader ran on, whether that was the requested cheaper tier or the host-tier
   fallback (with its reason), plus **the cap in force on every run, located or named** — and, on a
   located run only, the 30-day window's own cutoff and a hunt-session label where one applies. A

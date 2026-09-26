@@ -37,7 +37,8 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
   run with no failure description asks exactly one question; a run with no interactive channel stops
   with a stated reason and writes nothing. A run naming only `--session` records that fail to resolve
   also stops with a stated reason and writes nothing — never falling back to locating. A locator that
-  meets an unreadable store or an unrecognized record shape fails loudly the same way.
+  meets an unreadable store fails loudly the same way; an unrecognized record or attached entry is
+  instead skipped or omitted against its own session and named in Coverage, never aborting the rest.
 - **`session-reader`** — the pack's isolated reader agent, dispatched once per named session (or once
   per ordered window of a record too large for one reader) on a model tier cheaper than the skill's
   own, falling back to the host's tier and **saying so** when the host is already lowest or the
@@ -50,8 +51,9 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
 - **`locator`** — the pack's isolated locate/rank/count agent, dispatched exactly once per run. It
   owns all host-specific knowledge of where sessions live, how subagent records attach, and the
   30-day retention window, behind one replaceable seam (`references/locator.md`); it reads only
-  structural record facts, never message content, fails loudly on an unreadable store or an
-  unrecognized record shape, and ranks the surviving set (scope-match specificity, then recency, hunt
+  structural record facts, never message content, fails loudly on an unreadable store, states
+  any unrecognized record or attached entry against its own session (including the host's workflow
+  subagent container, whose child records it attaches), and ranks the surviving set (scope-match specificity, then recency, hunt
   sessions always last) without ever silently dropping one.
 - **`/wf-postmortem:init`** — a one-command compatibility alias into the canonical `/wf:init`
   lifecycle, seeding `wf-postmortem` into the selection round.
