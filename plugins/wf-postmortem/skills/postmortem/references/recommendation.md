@@ -19,7 +19,10 @@ new field, just a fresh pass over a larger input.
 states plainly "No factor confirmed this run — a fix direction follows a confirmed contributing
 factor; none exists this run," and its marker is the literal `— (no confirmed factor)` — not
 `stated`, and not `resting on an open choice`. This is the only marker value this branch may take,
-and it is what makes rule 3 below fire on "no confirmed factor" without a separate check.
+and it is what satisfies rule 3's "no confirmed factor" clause below without a separate check —
+**but rules are first-match, and rule 1 is evaluated before rule 3.** When Hypotheses is also
+empty, rule 1 fires and the report is a terminus; rule 3 fires on this marker only when at least
+one hypothesis remains (and rule 2 does not hold). The marker never by itself selects rule 3.
 
 **When at least one factor was confirmed this run:** compose one short paragraph naming the concrete
 change the confirmed mechanism (its Component and Version, `file:line`) points at — grounded in that
@@ -92,6 +95,17 @@ never changes which rule fires — only the confirmed-factor count, the Localisa
 marker are load-bearing for rule selection. Rule 1 is the only rule the hypothesis count actually
 gates (its presence is what distinguishes "not found" from a hunt that surfaced only hypotheses,
 which is rule 3's territory).
+
+**Worked examples (no confirmed factor).** Both carry the Part A marker `— (no confirmed factor)`,
+and the table above is applied unchanged, first match wins:
+
+- **0 confirmed factors, 0 hypotheses** — rule 1 matches first. Recommendation: no route;
+  `Next:     none — terminus`. Rule 3 is never reached.
+- **0 confirmed factors, 2 hypotheses** (for example, one reader-suggested mechanism left
+  `unverified` plus one coverage cross-check trigger (b) entry) — rule 1 fails (Hypotheses is not
+  empty); rule 2 fails (no confirmed factor, and the Localisation list is built from confirmed
+  factors only); rule 3 matches on "no confirmed factor". Recommendation: research;
+  `Next:     /wf:research — <framing>`.
 
 **Reproducibility.** Given only the confirmed-factor count, the hypothesis count, the Localisation
 file/contract list, and the Fix Direction marker, the fired rule and its hand-off are fully
