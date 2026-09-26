@@ -95,6 +95,31 @@ on `r<N+1>` never matches, so the demotion silently never fires (the WF-671 defe
 value `/wf:run` used to mint the record — sidesteps the mismatch entirely rather than trying to
 thread `/wf:run`'s `N` through the re-invocation's own command line.
 
+## Disposition
+
+**Why a projection, not a second state machine.** `finding-disposition.md` gives every ledger row
+and every non-passing requirement item one recorded fate. Before it existed, a `warn` finding sat
+in `## Accepted warnings` with a status, but neither the verify nor the fix artifact said what the
+loop *decided* about it. A finding still open when the loop stopped likewise had no recorded fate,
+so defects were raised and then dropped without trace. Deriving the disposition from `status` plus
+the stop predicate keeps one policy: a shared loop kernel can lift the five values and their
+kernel mapping (open / fixed / refuted / accepted-warning) without reconciling two sources.
+
+**Why `verify-spec` evaluates the stop predicate itself.** `/wf:run` writes nothing, so a fate
+recorded "when the stop gate fires" must already be on disk in the stopped round's `04_verify.md`.
+The predicate is restated from `run/SKILL.md` §"The verify⇄fix stop gate" over the same artifacts
+(the fold's round-`N-1` open set and the two headers' `<passed>` counts). If the two ever diverge,
+the run's gate still governs control flow; only the recorded label would be off.
+
+**Why counterparts and adversarial findings are excluded.** WF-758 contracts `## Counterparts` out
+of the ledger, and `## Adversarial findings` has always been non-gating and unfingerprinted. Both are
+re-derived from the diff every round, so their per-round state is already visible where they
+render. Giving them a tracked disposition would turn an advisory listing into a loop finding.
+
+**Why `pre-existing` and `UNVERIFIABLE` requirement items get `accepted`.** The acceptance rule is
+"zero undisposed". Limiting dispositions to `warn`-severity rows would leave other non-blocking
+rows with no fate, which is the same gap under a different name.
+
 ## Worked example
 
 `corpus-archive/verify-replay-wf554/rounds/round-01.md` through `round-07.md` are seven real
