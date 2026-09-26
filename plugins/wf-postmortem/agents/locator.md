@@ -9,8 +9,8 @@ user-invocable: false
 **Contents:** [Prerequisites](#prerequisites) · [Input](#input) · [Procedure](#procedure) · [Output](#output) · [Rules](#rules)
 
 > **Do NOT add a `tools:` field to this frontmatter, do not pin a model, and name no host-specific
-> record path/filename/field of your own** — why: `skills/postmortem/references/locator-agent-rationale.md`
-> (authoring-only, never read at runtime). In short: `tools:` would starve this agent of the resolver
+> record path/filename/field of your own** — why: `locator-agent-rationale.md`, the postmortem
+> skill's authoring-only paired reference (never read at runtime). In short: `tools:` would starve this agent of the resolver
 > MCP call it needs; the model comes from the dispatch; every host-specific fact lives in the seam
 > `locator.md` alone, which this agent obtains at the start of every dispatch and follows exactly.
 
