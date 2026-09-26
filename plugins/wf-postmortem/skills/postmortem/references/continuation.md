@@ -85,7 +85,8 @@ deduplicated by draw key against the prior report (kept, not re-drawn, when alre
 
 **Cap** the retry set (explicit retries, then ranked remainder) at `SKILL.md`'s fixed cap-split point
 (step 2.5), same position as a first run's list. Within cap → dispatch; past it → assigned/stays
-`skipped (budget)` (named as newly-capped, distinct from already-`skipped (budget)`). **Exemption: an
+`skipped (budget)` (named as newly-capped, distinct from already-`skipped (budget)`; one that stays
+`skipped (budget)` refreshes its `Omitted:` entries exactly as the exemption below does). **Exemption: an
 already-Coverage'd session is never *demoted* by the cap** — the retry set can exceed
 the cap on its own (any number of `--session` retries, ordered first); pushing an already-terminal
 session past the boundary **keeps its existing Coverage entry** verbatim (verdict, date, model, tier,
@@ -99,7 +100,8 @@ not reached this run: <path> — cap in force (<n>) reached before this retry; p
 **dispatched this run**: its fresh result (Coverage verdict, Evidence observations, Measured Effect
 counts, hypotheses) **replaces** any prior same-path entry in full (rationale:
 `continuation-rationale.md` §"Why replace-in-full"). Not dispatched → keeps its existing entry (or
-gains its first `skipped (budget)`, Part B), untouched. **Verdict-quality guard: a replacement never
+gains its first `skipped (budget)`, Part B), untouched except its `Omitted:` entries, refreshed as
+under **Cap** above. **Verdict-quality guard: a replacement never
 loses evidence** (rationale: `continuation-rationale.md` §"Why the verdict-quality guard exists") —
 rank this run's verdict vs. the one it would overwrite: `read` > `read in part` > `skipped (reader
 error)`/`skipped (access denied)`/`skipped (unrecognized shape)` (the failures rank equal). `read`/`read in part` → replace in
