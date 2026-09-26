@@ -54,7 +54,8 @@ does not exist yet, or is unreadable) is also **not** contained.
    `{task-root}` string this `pwd -P` call just printed with the minted folder name — never a
    separately-held copy of the raw, pre-check `{task-root}` config value, so the create targets exactly
    the directory identity the re-check just verified, not a value that could have changed between the
-   two.
+   two. On the fresh-mint path this re-check also takes the root identity R2 (§"Fresh-mint target
+   identity", Capture) before the `mkdir`.
 3. **Phase 4 step 2.5** — immediately before the report `Write`, on **every** run, not only a
    `--report` follow-up (a follow-up instead re-runs `continuation.md` Part E in full, including its
    device/inode identity comparison). The elapsed time since step 2.5's first pass now includes all of
@@ -76,18 +77,23 @@ steps use the same metadata primitives `continuation.md` Part A/E use: `Bash`: `
 '<path>'` (BSD: `stat -f '%d:%i'`), `test -L '<path>'`, `test -e '<path>'`, and the subshelled
 `(cd '<path>' && pwd -P)`. Every one is single-quoted with `'` → `'\''` first.
 
-**Capture (Phase 3 step 4, once, only after `mkdir` exits 0).** Never on a collision attempt, and
-never on a `--report` follow-up (Part A step 2 records that identity instead). Record:
+**Capture (Phase 3 step 4).** Never on a `--report` follow-up (Part A step 2 records that identity
+instead). The root half is taken **inside** the step 4 re-check that authorizes the create, and
+the folder half only after `mkdir` exits 0, never on a collision attempt:
 
 - **R1:** the canonical `{task-root}` string the step 4 re-check just printed.
-- **R2:** `stat '%d:%i'` of R1.
-- **R3:** `(cd '<R1>/<minted folder name>' && pwd -P)`. It must equal `<R1>/<minted folder name>`
-  character for character.
+- **R2:** `stat '%d:%i'` of R1, taken as part of that same re-check, **before** the `mkdir`.
+- **J:** the expected folder path, joined root-aware: `/<minted folder name>` when R1 is exactly
+  `/`, otherwise `<R1>/<minted folder name>`. Never a bare textual `<R1>/…` join.
+- **After `mkdir` exits 0:** re-run `stat '%d:%i'` of R1 and require it to equal R2, so a root or
+  ancestor replaced between the authorizing re-check and the create is rejected, never recorded.
+- **R3:** `(cd '<J>' && pwd -P)`. It must equal J character for character.
 - **R4:** `stat '%d:%i'` of R3.
 
-Any capture command failing, or R3 not equalling the joined path, means the folder is not what
-`mkdir` just created. Stop, reason `"report target changed between folder creation and write —
-nothing written"`, and write nothing. The folder stays as it is and its id stays taken.
+Any capture command failing, the root identity not equalling R2, or R3 not equalling J, means the
+folder is not what `mkdir` just created under the authorized root. Stop, reason `"report target
+changed between folder creation and write — nothing written"`, and write nothing. The folder stays
+as it is and its id stays taken.
 
 **Validation (Phase 4 step 2.5, the last action before the `Write`).** Re-derive every value fresh
 and compare it only against R1–R4. Require **all** of the following, in order:
@@ -110,10 +116,15 @@ accept. All passing → build the write path as `<R3>/report.md`, from the recor
 raw config value.
 
 **Guarantee, stated plainly.** This, like `continuation.md` Part E, is a check immediately before
-the write. It is **not atomic**. No primitive available here writes through an already-validated
-descriptor, so a window of two consecutive tool calls remains between the last predicate and the
-`Write`. The check narrows the window from the whole Phase 3.5 span to that gap; it does not close
-it (rationale: `continuation-rationale.md` §"Why Part E re-verifies from scratch").
+the write. It is **not atomic**. No primitive available here creates or writes through an
+already-validated descriptor, so two windows remain, each a few consecutive tool calls wide:
+
+- between `mkdir` and the R3/R4 lookup, where capture is a pathname lookup, not a bind to the
+  created object, so a replacement made in that gap is recorded as if created;
+- between the last validation predicate and the `Write`.
+
+The checks narrow exposure from the whole Phase 3 to Phase 4 span to those two gaps; they do not
+close them (rationale: `continuation-rationale.md` §"Why Part E re-verifies from scratch").
 
 ## Retry semantics at step 4
 
