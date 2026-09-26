@@ -97,7 +97,8 @@ and never gain one by being copied into the fix log.
 
 `/wf:verify-fix` never decides a disposition. It copies each one from the source `04_verify.md`:
 every `## Ledger` row (fingerprint, first-seen round, disposition) and every requirement item's
-`- Disposition:` line (fingerprint `path/to/file:L|R<n>`, as its Phase 2 mints it). If a report
+`- Disposition:` line (fingerprint `path/to/file:L|R<n>`, as its Phase 2 mints it, or the bare
+`R<n>` when the item carries no `Location`, as an `UNVERIFIABLE` item may not). If a report
 predates the `Disposition` column, apply §"Ledger-row derivation" to its `Status` column, using
 `pending` for `open`, because that report carries no stop evidence. If it has no `## Ledger` at all,
 record `- none — source report carries no ledger`.

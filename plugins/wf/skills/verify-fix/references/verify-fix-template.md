@@ -45,6 +45,7 @@ The verbatim template `/wf:verify-fix` writes to `{fix-log-dir}05_verify-fix.md`
 - `path/to/file:<section>|<defect>` — accepted — first seen round 1
 - `path/to/file:<section>|<defect>` — pending — first seen round 2 — this run: FIXED
 - `path/to/file:L|R<n>` — escalated — this run: awaiting user
+- `R<n>` — accepted
 - none — source report carries no ledger
 
 (Copied from the source report per `finding-disposition.md` §"Copying it into the fix log";
