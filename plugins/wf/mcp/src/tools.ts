@@ -177,6 +177,27 @@ const readRunEvidenceInput = fromJsonSchema(withWorkspaceRoot({
   additionalProperties: false,
 }));
 
+// --- list_counterparts (WF-758) ------------------------------------------------
+// `baseRef` reaches `git diff` as an argv element, so the schema holds it to a
+// plain revision shape (no leading `-`, no whitespace); the service re-checks it
+// and additionally refuses a `..` range.
+
+const listCounterpartsInput = fromJsonSchema(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    baseRef: {
+      type: "string",
+      minLength: 1,
+      maxLength: 256,
+      pattern: "^[A-Za-z0-9_][A-Za-z0-9._/@{}^~-]*$",
+      description:
+        "The revision the audited change is diffed against (the same base the audit gathered its change set from). The working tree, dirty files included, is compared with it.",
+    },
+  },
+  required: ["baseRef"],
+  additionalProperties: false,
+}));
+
 // --- plan_install (WF-447) -------------------------------------------------
 // The selection unit is the PACK (`pluginId`), matching `discover_packs` and
 // `register_pack(pluginId, …)`. `deregister` is a SEPARATE explicit input on
@@ -1341,5 +1362,21 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     },
     async (args: WorkspaceArgs & { taskId: string }) =>
       selected(args, (service) => service.readRunEvidence(args.taskId)),
+  );
+
+  // --- counterpart listing (WF-758) ------------------------------------------
+  //
+  // Deliberately NOT `RESIDENT`: named at one call site inside the verify phase.
+
+  server.registerTool(
+    "list_counterparts",
+    {
+      title: "list counterparts",
+      description:
+        "Deterministically list the declared counterparts of every key the working-tree change touched. Reads the project's declared counterpart map (`counterparts.md` beside the registry file: a `| Key | Kind | Locations |` table, kind `mirror` | `writer-parser` | `reference`) and the diff against `baseRef`. A declared key is changed when any added or removed line contains it; each of its declared locations is returned with the lines holding the key and a `changed` flag. A listing is returned only when at least one declared location was left unchanged. Keys shorter than 4 characters come back under `suppressed` (`too-short`); a listing with more than 25 unchanged occurrences is `summarized` to the first 10 plus a `total`. Status: `listed`, `no-map` (no map declared: nothing to list, and no diff taken), `no-diff` (nothing changed against the base), or `unavailable` (the base ref or an out-of-workspace registry path was refused, or the diff could not be taken — never an empty success). Read-only; no model judgment enters any listing.",
+      inputSchema: listCounterpartsInput,
+    },
+    async (args: WorkspaceArgs & { baseRef: string }) =>
+      selected(args, (service) => service.listCounterparts(args.baseRef)),
   );
 }
