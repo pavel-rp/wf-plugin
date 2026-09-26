@@ -84,8 +84,8 @@ drew it — "fallback evidence only — trigger (a): no factor confirmed from se
 Hypothesis regardless of how corroborating that evidence is; confirmation reaches only through the
 two-sided check. **Trigger (b)** most often introduces its own new entry here rather than augmenting
 an existing one — an unmatched run has no session, so no existing hypothesis is already tied to it —
-in which case "suggested from" names the candidate's own task-folder path or delivery-entry id (never
-a session locator, since none exists for this candidate) and the mechanism text is drawn from that
+in which case "suggested from" names the run — `task:<id>` for a group with an extracted task id, or
+`delivery:<entry id>` for an id-less singleton (never a session locator, since none exists for it) and the mechanism text is drawn from that
 candidate's own fallback-sourced artifacts.
 
 **`H<n>` id — minted once, never reused or renumbered** (Report-state contract, below). Assigned the
@@ -95,8 +95,8 @@ text, never a merge-order position — is what the draw keys use to stay identic
 
 **Highest minted id:** <H<n> | none>
 
-- **H<n>** <mechanism, one line> — suggested from `<session locator | task-folder path |
-  delivery-entry id | "no locator">` — <reason it was not promoted>
+- **H<n>** <mechanism, one line> — suggested from `<session locator | task:<id> |
+  delivery:<entry id> | "no locator">` — <reason it was not promoted>
 
 ## Evidence Record
 

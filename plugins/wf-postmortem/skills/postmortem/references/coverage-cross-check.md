@@ -145,13 +145,15 @@ record" list above stays one line per raw candidate — that is a coverage fact,
 hide how many delivery entries a reader is actually looking at. But **a single run can produce several
 delivery entries** — multiple commits, or a commit plus its pull request, all carrying the same
 extracted task id — and Part B's trigger (b) is about *runs*, not entries. So, immediately before Part
-B evaluates trigger (b), partition this step's unmatched candidates into groups: every task-folder
-candidate is its own singleton group (one folder per task id, by construction); every unmatched
-delivery entry joins the group keyed by its own extracted task id, alongside every other unmatched
-delivery entry (and, when one exists and is itself unmatched, the task-folder candidate) sharing that
-same id. A delivery entry with no extractable id (the `inferred`-tier, date-only case) forms its own
-singleton group — it has no id to share a group on. Trigger (b) below evaluates and fires **per
-group**, never per raw entry.
+B evaluates trigger (b), partition this step's unmatched candidates **by extracted task id first**:
+every unmatched candidate carrying an id — task folder and delivery entry alike — joins the one group
+keyed by that id, so a task folder and every delivery entry sharing its id form a single group. Only
+a candidate with no extractable id (in practice a delivery entry whose text yields no 3+-digit run —
+the `inferred`-tier, date-only case) forms its own singleton group. A group whose id is also carried
+by a **covered** candidate (one step 3 matched to a session) does not fire trigger (b): that run left
+a session record, and its unmatched entries are extra artifacts of a run the hunt already located.
+Trigger (b) below evaluates and fires **per group**, never per raw entry, and its draw key names the
+group (`task:<id>`), or the sole candidate (`delivery:<entry id>`) for an id-less singleton.
 
 This cross-check **draws no evidence, promotes no factor, and confirms nothing** — it only names
 which in-scope runs have no matching session. Everything past this point belongs to Part B.
@@ -175,9 +177,9 @@ it draws fallback evidence **about that specific unmatched run** and either (i) 
 corroborating/disconfirming material alongside an existing hypothesis when the drawn text plausibly
 describes the same mechanism that hypothesis already names, or (ii), the ordinary case, enters it as
 its **own** new Hypotheses entry — mechanism described from the fallback text, "suggested from" the
-run's own identity (its extracted task id when the group has one, or the sole candidate's own
-task-folder path / delivery-entry id for a singleton group with no extractable id — never a session
-locator, since none exists for this run), "why not promoted": "fallback evidence only — trigger (b):
+run's own identity (`task:<id>` when the group has an extracted task id, or `delivery:<entry id>`
+for an id-less singleton — never a session locator, since none exists for this run), minted a fresh
+`H<n>` like any new entry, "why not promoted": "fallback evidence only — trigger (b):
 matched run left no session record". This reading is exactly Success Criterion 4's own wording:
 evidence *for that run*, drawn independently of whether some other finding in the report is confirmed
 — never evidence manufactured for a finding the cross-check has no way to have already produced.
@@ -307,11 +309,11 @@ strings:
 
 **Every draw key is built from resolved paths, ids, and stable minted ids only — never from mechanism
 prose or a per-run position.** Part C's own session upsert keys "by resolved session path" for exactly
-this reason (`continuation.md`), and this table follows it deliberately. A mechanism line is free text
+this reason (`continuation.md`), and the keys below follow it deliberately. A mechanism line is free text
 this skill regenerates from a reader's or fetcher's return on every run; an explicit `--session` retry
 that reads the same record again is not guaranteed to reproduce it byte-for-byte, so a key containing
 it would silently change and re-draw the very entry it exists to suppress. For the same reason the
-trigger-(a) key's own third component (below) is the hypothesis's own **`H<n>` id**
+trigger-(a) and trigger-(b) case (i) keys each end in the hypothesis's own **`H<n>` id**
 (`report-template.md`) — minted once and carried forward unchanged by every later parse
 (`continuation.md` Part A step 4), never a merge-order position, which is recomputed fresh every run
 and therefore not stable across them. The id exists because the locator/source pair alone collides:
@@ -320,14 +322,25 @@ same source (e.g. both from `_local/fleet/scoreboard.md`) would otherwise produc
 silently discarding the second draw as a false duplicate — the `H<n>` id each was minted with the first
 time it was created disambiguates them, and stays the same disambiguator on every subsequent run.
 
-| Disposition | Draw key |
-|---|---|
-| Trigger (b), case (ii) — a new Hypotheses entry for an unmatched **run** (Part A step 5's group) | that run's own resolved identity, as its "suggested from" states it (the group's extracted task id, or the sole candidate's own path/id for a singleton group with none) |
-| Trigger (b), case (i) — corroborating/disconfirming material filed against an **existing** hypothesis | that run's own resolved identity (as above), paired with **the resolved session path in that hypothesis's own locator** (or the literal `no locator` when it has none) |
-| Trigger (a) — corroborating material for a hypothesis that stays unconfirmed | **the resolved session path in that hypothesis's own locator** (or `no locator`), paired with the resolved source the material was drawn from (task-folder path, `_local/fleet/scoreboard.md`, the configured eval-log path, or the delivery-entry id), paired with **the hypothesis's own `H<n>` id** (minted once, never a merge-order position) |
+- **Trigger (b), case (ii)** — a new Hypotheses entry for an unmatched **run** (Part A step 5's
+  group): `(b-ii) | <run>`
+- **Trigger (b), case (i)** — corroborating/disconfirming material filed against an **existing**
+  hypothesis: `(b-i) | <run> | <locator> | H<n>`
+- **Trigger (a)** — corroborating material for a hypothesis that stays unconfirmed:
+  `(a) | <locator> | <source> | H<n>`
 
-**Already present** → keep the existing entry unchanged and draw nothing further for that key this
-run. **Not present** → draw it fresh, exactly as on a first run. Without this, a candidate that stays
+`<run>` is `task:<id>` for a group carrying an extracted task id, else `delivery:<entry id>` for an
+id-less singleton; `<locator>` is the resolved session path in the hypothesis's own locator, or the
+literal `no locator`; `<source>` is the resolved source the material was drawn from (the task-folder
+path, `_local/fleet/scoreboard.md`, the canonicalized eval-log path, or `delivery:<entry id>`);
+`H<n>` is the hypothesis's own id, minted once. These are exactly the strings `report-template.md`'s
+**Report-state contract** defines. **The key is persisted on every run, first run included**: every
+`fallback evidence` entry is written with the literal `· draw key:` followed by its key in backticks,
+so a follow-up reads the complete key back from the report rather than reconstructing it. A keyless
+entry left by an older report is kept and never matched (the contract's legacy normalization).
+
+**Already present** (an entry whose persisted draw key equals this key) → keep the existing entry
+unchanged and draw nothing further for that key this run. **Not present** → draw it fresh, exactly as on a first run. Without this, a candidate that stays
 unmatched, or a hypothesis that never gets confirmed, accumulates a duplicate entry from the same
 deterministic sources on every unrelated follow-up — the identical hazard for all three dispositions,
 so the guard is stated once over all three rather than for whichever one was noticed first. This
