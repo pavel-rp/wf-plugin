@@ -325,6 +325,8 @@ deterministic check, not judgment; a collapsed finding is marked when any contri
 Every section that renders findings lists every marked finding before every unmarked one, each group
 in its existing order. With no marked finding, nothing moves — the lean default names no contributor.
 
+**Counterpart listing.** Once per round, call the `wf-resolver` tool `list_counterparts({ workspaceRoot, baseRef: <the base SHA from "Implementation scope"> })`. Each returned listing becomes one finding with provenance `core`: `severity: warn`, `mechanical: true`, `counterpart: true`. Its location is the first unchanged location and line. Its issue reads "`<key>` changed at `<changedAt>`; unchanged copies: `<path:lines>`…", with the `total` added when the listing is `summarized`. A contributor finding marked `counterpart: true` (a capability's extractor) is held to the same rule, whatever severity it declares. Every counterpart finding renders only under `## Counterparts` (template), together with `suppressed` keys, map `diagnostics`, and an `unavailable` status. It never enters step 4's collapse, the critic, the blocking set, the ledger, or `**Verdict:**`. Status `no-map` or `no-diff`, with no marked contributor finding, renders nothing.
+
 **No-op:** an empty `capabilities[]`, or no fragment matching `verify`/`finding`, means the
 phase produces **nothing** — no capability/stack/domain term, no STOP. A malformed
 `dispatch` is that contributor's own no-op, reported as incomplete coverage below. Gating
