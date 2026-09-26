@@ -119,7 +119,7 @@ the aggregator uses for fingerprints (`verify-template.md` §"Pre-existing"), de
 `file:section` list). Round 1 skips this.
 
 **`open_fingerprints`** (round ≥2): every ledger-so-far entry whose `status` is `open`, off the fold just produced
-— render `fingerprint`, `defect`, and `last seen: <lens>/<check>` verbatim off `contributing lenses`. Round 1
+— render each as its bare `file:section|defect` only (no provenance, prose, or `verify-fix` output). Round 1
 verifies against `HEAD`; round ≥2 the `**Tree:**` list and `changed_sections` both read the working tree, not
 `HEAD` (rationale: `finding-ledger-rationale.md` §"Pre-dispatch derivation").
 

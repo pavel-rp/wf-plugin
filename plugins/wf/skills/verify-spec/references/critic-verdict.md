@@ -63,9 +63,10 @@ Return only the verdict block below — one entry per candidate, in the order gi
 additional commentary.
 ```
 
-Never sent: the requirement checklist, any `PASS`/`N/A`/`UNVERIFIABLE` requirement row, or a
-lens's own reasoning/prompt — the critic reads citations and code, not another agent's
-narrative. This is what "requirement verdicts never enter the critic" means operationally.
+Never sent: the requirement checklist, any `PASS`/`N/A`/`UNVERIFIABLE` requirement row, a
+lens's own reasoning/prompt, prior-round ledger provenance, or any `verify-fix` output,
+reasoning, transcript, or attempt record — the critic reads citations and code, not another
+agent's narrative or the repair episode. This is what "requirement verdicts never enter the critic" means operationally.
 
 ## Verdict block
 

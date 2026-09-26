@@ -283,11 +283,16 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    **Round context** — caller-supplied input the lens reads, never part of its return
    shape: at `N >= 2` send it as its own block *above* the return template, identical bytes
    across all five lenses; at `N == 1` omit it, so the prompt stays byte-identical to baseline.
+   **Reviewer-prompt allowlist.** Every lens prompt here, and the critic prompt below, is
+   assembled only from the artifact under audit, the source it names, the inlined finding
+   contract, and — at `N >= 2` — this block, derived from persisted artifacts alone. Nothing
+   else in the caller's context enters any reviewer prompt: no `verify-fix` output, reasoning,
+   transcript, or attempt record, even when `verify-fix` ran earlier in this same context.
 
    ```text
    Round context (input only — never echo these keys into the returned block):
    round: <N>
-   open_fingerprints: <ledger-so-far `open` entries — fingerprint, defect, "last seen: <lens>/<check>">
+   open_fingerprints: <ledger-so-far `open` entries — one bare `file:section|defect` per line, nothing else>
    changed_sections: <the `file:section` list derived above>
    ```
 
