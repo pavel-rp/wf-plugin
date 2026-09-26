@@ -23,7 +23,7 @@ Runs before Phase 1, only when `--report <path>` was passed; absent → skip str
    canonicalized **grandparent** = canonicalized `{task-root}` character-for-character (never a prefix
    match). Any failing → stop, reason `"--report <path> is not inside a postmortem report folder"`;
    write nothing. **Record identity for Part E:** all passing → `Bash`: `stat -c '%d:%i' '<path>'`
-   (BSD: `stat -f '%d:%i'`), hand it + the canonicalized parent/grandparent to Part E.
+   (BSD: `stat -f '%d:%i' '<path>'`), hand it + the canonicalized parent/grandparent to Part E.
 3. **Validate.** Size first (rationale: `continuation-rationale.md` §"Why size before read"): `Bash`:
    `wc -c '<path>'` (same primitive as `SKILL.md` Phase 3.5 step 2), same 200,000-char ceiling. Over →
    stop, reason `"--report <path> is too large to continue — <n> characters, ceiling 200000"`; write
@@ -143,9 +143,17 @@ re-verifies from scratch"). **As the last action before the `Write`, and only th
 resolved path: (1) **re-run step A2 from scratch** — basename, `test -L` non-symlink, freshly
 re-canonicalized parent matching `^PM[0-9]+__.+$`, freshly re-canonicalized grandparent vs. freshly
 re-canonicalized `{task-root}` (reuse no prior canonicalized string or conclusion); (2) **compare
-identity** — `Bash`: `stat -c '%d:%i' '<path>'` (BSD: `stat -f '%d:%i'`) vs. step A2's recorded pair,
+identity** — `Bash`: `stat -c '%d:%i' '<path>'` (BSD: `stat -f '%d:%i' '<path>'`) vs. step A2's recorded pair,
 character-for-character (differing → the file at that path is not the one this run validated/read).
 Either failing → **stop** `POSTMORTEM — stopped`, reason `"--report <path> changed between
 validation and write — nothing written"`; write nothing at all (no report, no partial, no scratch
 copy, no Continuation entry). **Never re-validate-and-proceed** — the composed report is discarded,
-the prior report on disk is left exactly as it was.
+the prior report on disk is left exactly as it was. **Guarantee:** a check immediately before the
+write, **not atomic**. Each check is a separate step from the `Write`, and the `Write` goes
+through the path, so any interval between any check and the `Write` is a window a concurrent actor
+can use: a file or symlink swapped in there is written to or followed. The procedure narrows those
+windows but cannot close them, and rejects only what it observes. This is the same guarantee the
+fresh-mint path states, with examples of its windows around the `mkdir`, the folder re-proof and
+the `report.md` slot probe (`task-root-containment.md`
+§"Fresh-mint target identity"; rationale: `continuation-rationale.md` §"Why Part E re-verifies from
+scratch").

@@ -1,11 +1,21 @@
 # postmortem `{task-root}` containment gate
 
-Runtime-read reference for `SKILL.md` Phase 3 steps 2.5 and 4, and Phase 4 step 2.5 — obtained via
+Runtime-read reference for `SKILL.md` Phase 3 steps 2.5 and 4 (including the fresh-mint identity
+capture), and Phase 4 step 2.5 (the fresh-mint target validation) — obtained via
 `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`, `skill:
 postmortem`, `ref: task-root-containment.md`) at the start of each of those steps, never read at boot.
 This is the full, behavior-bearing procedure `SKILL.md` points to rather than restates inline at each of
 its three call sites, per this repo's skill-body-length budget; it is followed exactly, not merely
 consulted for background.
+
+## Contents
+
+- [Why this gate exists](#why-this-gate-exists)
+- [The primitive, and why it must run in a subshell](#the-primitive-and-why-it-must-run-in-a-subshell)
+- [The comparison](#the-comparison)
+- [Where this runs](#where-this-runs--three-call-sites-one-procedure-re-run-fresh-each-time)
+- [Fresh-mint target identity](#fresh-mint-target-identity) — capture after `mkdir`, validation before `Write`
+- [Retry semantics at step 4](#retry-semantics-at-step-4)
 
 ## Why this gate exists
 
@@ -44,18 +54,91 @@ does not exist yet, or is unreadable) is also **not** contained.
    `{task-root}` string this `pwd -P` call just printed with the minted folder name — never a
    separately-held copy of the raw, pre-check `{task-root}` config value, so the create targets exactly
    the directory identity the re-check just verified, not a value that could have changed between the
-   two.
+   two. On the fresh-mint path this re-check runs as the bound lookup and yields R1 and R2 (§"Fresh-mint target
+   identity", Capture) before the `mkdir`.
 3. **Phase 4 step 2.5** — immediately before the report `Write`, on **every** run, not only a
    `--report` follow-up (a follow-up instead re-runs `continuation.md` Part E in full, including its
    device/inode identity comparison). The elapsed time since step 2.5's first pass now includes all of
    Phase 3.5 — potentially many isolated `session-reader`/`excerpt-fetcher` dispatches, a far larger
-   window than the id-mint `Glob` gap this gate was first built to close. **Build the write path from
-   this re-check's own output** the same way step 4 builds the `mkdir` target — join the canonicalized
-   `{task-root}` string with the already-minted `PM<NNN>__<slug>/report.md` suffix, never the raw
-   pre-check value.
+   window than the id-mint `Glob` gap this gate was first built to close. On a fresh mint this call
+   site is the **full target validation** in §"Fresh-mint target identity" below, of which the
+   containment comparison is only the first predicate; the write path is built as that section states.
 
 Each of the three re-runs the full comparison from scratch; none of them trusts a value canonicalized at
 an earlier call site.
+
+## Fresh-mint target identity
+
+Containment alone proves only that `{task-root}` still resolves inside the workspace. It does not
+bind the write to the folder this run created, so swapping the minted folder, `{task-root}` or an
+ancestor, or pre-placing something at `report.md`, during Phase 3.5 would pass it. A fresh mint
+therefore records the identity of what it created, then re-proves that identity before writing.
+
+**The bound lookup.** Every path-and-identity pair below comes from **one** subshelled command,
+`Bash`: `(cd '<path>' && pwd -P && stat -c '%d:%i' .)` (BSD: `stat -f '%d:%i' .`). The `cd`
+resolves the path once, and both the canonical path it prints and the identity of `.` describe
+that same resolved directory, never a second lookup of the path. The only other primitives are
+`test -L '<path>'` and the single-command slot probe `[ ! -e '<path>' ] && [ ! -L '<path>' ]`.
+Every value is single-quoted with `'` → `'\''` first.
+
+**Capture (Phase 3 step 4).** Never on a `--report` follow-up (Part A step 2 records that identity
+instead). The root half is taken **inside** the step 4 re-check that authorizes the create, and
+the folder half only after `mkdir` exits 0, never on a collision attempt:
+
+- **R1, R2:** the step 4 re-check runs its canonicalization of `{task-root}` as the bound lookup,
+  **before** the `mkdir`. R1 is its printed canonical path and R2 is its printed identity, so
+  both describe the one directory that passed the containment comparison.
+- **J:** the expected folder path, joined root-aware: `/<minted folder name>` when R1 is exactly
+  `/`, otherwise `<R1>/<minted folder name>`. Never a bare textual `<R1>/…` join.
+- **After `mkdir` exits 0:** run the bound lookup on R1 and require both of its printed values to
+  equal R1 and R2, so a root or ancestor replaced between the authorizing re-check and the create
+  is rejected, never recorded.
+- **R3, R4:** the bound lookup on J. R3 is the printed canonical path, which must equal J character
+  for character, and R4 is the printed identity.
+
+Any capture command failing, the root identity not equalling R2, or R3 not equalling J, means the
+folder is not what `mkdir` just created under the authorized root. Stop, reason `"report target
+changed between folder creation and write — nothing written"`, and write nothing. The folder stays
+as it is and its id stays taken.
+
+**Validation (Phase 4 step 2.5, the last action before the `Write`).** Re-derive every value fresh
+and compare it only against R1–R4. Require **all** of the following, in order:
+
+1. The containment comparison above passes, re-run from scratch as the bound lookup on
+   `{task-root}`. Its printed canonical path equals R1 character for character and its printed
+   identity equals R2. A replaced `{task-root}` or ancestor fails here, either by canonicalizing
+   elsewhere or by carrying a different identity.
+2. `test -L '<R3>'` **fails**, meaning the minted folder is not a symlink.
+3. The bound lookup on R3 prints R3 and R4 exactly. A folder that was moved, replaced or
+   redirected, including during the checks above, fails here.
+4. **Last, after the folder re-proof and immediately before the `Write`:** one `Bash` command,
+   `[ ! -e '<R3>/report.md' ] && [ ! -L '<R3>/report.md' ]`, exits 0. It is never split into two
+   calls. No file and no symlink (dangling or not) may occupy the slot. An absent `report.md` is the expected state of a first
+   run, never an error. Nothing runs between this predicate and the `Write`.
+
+Any predicate failing → stop `POSTMORTEM — stopped`, reason `"report target changed between folder
+creation and write — nothing written"`. Write nothing: no report, no partial, no scratch copy.
+**Never re-canonicalize the replacement and proceed.** A mismatch is a stop, never a new path to
+accept. All passing → build the write path as `<R3>/report.md`, from the recorded values, never the
+raw config value.
+
+**Guarantee, stated plainly.** This, like `continuation.md` Part E, is a check before the write.
+It is **not atomic**. Every check in this procedure is a separate step from the `Write`, and each
+filesystem test inside a check is a separate lookup. The `Write` goes through the path: it cannot
+create the file exclusively, refuse to follow a symlink, or write through an already-validated
+descriptor. So any interval between any check and the `Write` is a window a concurrent actor can
+use. The procedure narrows those windows but cannot close them, and it rejects only what it
+observes. Examples of such windows:
+
+- between the authorizing re-check and the `mkdir` — a root swapped and restored inside it passes
+  the post-`mkdir` root lookup;
+- between `mkdir` and the R3/R4 lookup — a replacement made there is recorded as if created;
+- between the folder re-proof (predicate 3) and the `Write` — the folder can still be moved or
+  replaced;
+- between the lookups inside the slot probe (predicate 4), and between that probe and the `Write`
+  — a file or symlink placed at `<R3>/report.md` there is written to or followed.
+
+Rationale: `continuation-rationale.md` §"Why Part E re-verifies from scratch".
 
 ## Retry semantics at step 4
 
