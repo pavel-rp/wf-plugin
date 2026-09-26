@@ -1,11 +1,18 @@
 # postmortem follow-up: `--report` resolution and continuation
 
-Runtime-read reference for `SKILL.md` Phase 0.5, Phase 3.5's follow-up dispatch/merge rules, and
-Phase 4's pre-overwrite re-verification (Part E) — obtained via `resolve_content({ workspaceRoot,
-... })` (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref:
-continuation.md`) at Phase 0.5's start, never read at boot; followed exactly, obtained once, stays in
-context through Phase 4 (Part E is a second, independent check, not a second fetch). Rationale:
-`continuation-rationale.md` (paired reference, never read at runtime).
+Runtime-read reference for `SKILL.md` Phase 0.5, Phase 3.5's follow-up rules, and Phase 4's
+re-verification (Part E) — obtained once via `resolve_content({ workspaceRoot, ... })` (`class:
+references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref: continuation.md`) at Phase
+0.5, never at boot; followed exactly, in context through Phase 4 (Part E is a second check, not a
+second fetch). Rationale: `continuation-rationale.md` (paired reference, never read at runtime).
+
+## Contents
+
+- [Part A: Resolve `--report <path>` (Phase 0.5)](#part-a-resolve---report-path-phase-05)
+- [Part B: Build the retry set (Phase 3.5 step 0 override)](#part-b-build-the-retry-set-phase-35-step-0-override)
+- [Part C: Cap, dispatch, merge, and recompute](#part-c-cap-dispatch-merge-and-recompute)
+- [Part D: Write in place and log the Continuation entry](#part-d-write-in-place-and-log-the-continuation-entry)
+- [Part E: Re-verify the write target immediately before the overwrite (Phase 4 step 2.5)](#part-e-re-verify-the-write-target-immediately-before-the-overwrite-phase-4-step-25)
 
 ## Part A: Resolve `--report <path>` (Phase 0.5)
 
@@ -30,17 +37,19 @@ Runs before Phase 1, only when `--report <path>` was passed; absent → skip str
    nothing (a fresh hunt without `--report` continues instead). Else `Read` the file — no parseable
    `POSTMORTEM — written` block anywhere → stop, reason `"--report <path> is not a postmortem
    report"`; write nothing.
-4. **Parse the prior report's accumulated state**, per `report-template.md`'s sections: Scope
-   (description, skill, folder/repository, read cap+source, session scope/source, every named session
-   line resolved-or-not); Coverage (every session, verdict, date, model/tier or
-   `not dispatched`/`n/a`, `[hunt-session]` flag, "cannot see" entries); Evidence Record (every
-   observation, locator, tier); Contributing Factors (confirmed: mechanism/version/`file:line`/
-   locator/tier; Hypotheses: `H<n>` id, mechanism, locator or "no locator", not-promoted reason,
-   fallback-evidence label + draw-key material — dedup: `coverage-cross-check.md`); Measured Effect
-   (counts+tiers); the folder path (for Part C). A "none/not yet produced" section parses empty, not a
-   failure. A Read-cap field not matching `<n> (default|override)` (pre-593's `"default, not yet
-   enforced"`) parses **unresolvable** → step 7 falls back to the shipped default (15, `default`)
-   unless `--cap` overrides.
+4. **Parse the prior report's accumulated state**, per `report-template.md` (obtain it now via
+   `resolve_content`, `ref: report-template.md`; it stays in context through Phase 4) and its
+   **Report-state contract**: Scope (description, skill, folder/repository, read cap+source, session
+   scope/source, every named session line resolved-or-not); Coverage (every session, verdict, date,
+   model/tier or `not dispatched`/`n/a`, `[hunt-session]` flag, "cannot see" entries); Evidence Record
+   (every observation, locator, tier, `fallback evidence` label and its `draw key`); Contributing
+   Factors (confirmed: mechanism/version/`file:line`/locator/tier/`retired id`; Hypotheses: the
+   `**Highest minted id:**` line, then per entry `H<n>` id, mechanism, locator or "no locator",
+   not-promoted reason); Measured Effect (counts+tiers); the folder path (for Part C). **Then run the
+   contract's legacy normalization** (item 5) before anything relies on an id or key; its log lines go
+   to Part D. A "none/not yet produced" section parses empty, not a failure. A Read-cap field not
+   matching `<n> (default|override)` (pre-593's `"default, not yet enforced"`) parses **unresolvable**
+   → step 7 falls back to the shipped default (15, `default`) unless `--cap` overrides.
 5. **Redact this run's freshly passed values** (`<description>`/`--skill`/`--folder`/`--repo`) through
    `SKILL.md` Phase 3 steps 1-2's pass (`redaction.md` + markdown neutralization) **before** comparing
    below — the prior Scope values were written post-pass too (rationale: `continuation-rationale.md`
@@ -54,8 +63,7 @@ Runs before Phase 1, only when `--report <path>` was passed; absent → skip str
    else the shipped default per step 4 — never re-defaulting silently over an explicit override); the
    follow-up flag, prior folder path, device/inode identity (step 2), everything step 4 parsed. Any
    `--session` this run resolves via Phase 1 step 5 as on a first run; unresolved is reported in
-   Scope, but step 5's "all-unresolved → stop" does **not** apply — Part B uses a *resolved* value
-   differently.
+   Scope, but step 5's "all-unresolved → stop" does **not** apply (Part B).
 
 ## Part B: Build the retry set (Phase 3.5 step 0 override)
 
@@ -70,73 +78,70 @@ remainder; **absent** → dispatch the locator **a second time**, attach-only mo
 missing values (a stated, bounded exception to "exactly once per run" — `SKILL.md` Safety Rules), merged the same way.
 **Ranked remainder** = fresh locate-mode return, its own order, **excluding**: sessions already
 `read`/`read in part (…)`/`skipped (reader error: …)`/`skipped (access denied)`/`skipped
-(unrecognized shape: …)` in the prior Coverage
-(step A4) unless also named via `--session` this run (explicit retry beats a terminal status); and
-sessions already merged above. Everything else — prior `skipped (budget)` rows, plus sessions absent
+(unrecognized shape: …)` in the prior Coverage (step A4) unless also named via `--session` this run
+(explicit retry beats a terminal status); and sessions already merged above. Everything else — prior `skipped (budget)` rows, plus sessions absent
 from prior Coverage — forms the remainder, appended after explicit retries. A newly-appearing session
 this run's cap (Part C) doesn't reach is a *newly*-`skipped (budget)` session (Part D names it as
 such, distinct from an already-listed one). A prior `skipped (budget)` session **absent** from the
 fresh return (aged out, or removed) moves to "sessions this hunt cannot see" with that reason — not a
-failure. `coverage-cross-check.md`'s Part A reruns fresh every follow-up over this re-located
-scope/re-enumerated history, never carried forward — except its fallback-evidence entries,
-deduplicated by draw key against the prior report (kept, not re-drawn, when already present).
+failure. `coverage-cross-check.md` Part A reruns fresh over this scope; only its fallback-evidence
+entries carry forward, deduplicated by persisted draw key (kept, never re-drawn).
 
 ## Part C: Cap, dispatch, merge, and recompute
 
 **Cap** the retry set (explicit retries, then ranked remainder) at `SKILL.md`'s fixed cap-split point
 (step 2.5), same position as a first run's list. Within cap → dispatch; past it → assigned/stays
 `skipped (budget)` (named as newly-capped, distinct from already-`skipped (budget)`; one that stays
-`skipped (budget)` refreshes its `Omitted:` entries exactly as the exemption below does). **Exemption: an
-already-Coverage'd session is never *demoted* by the cap** — the retry set can exceed
+`skipped (budget)` refreshes its `Omitted:` entries exactly as the exemption below does).
+**Exemption: an already-Coverage'd session is never *demoted* by the cap** — the retry set can exceed
 the cap on its own (any number of `--session` retries, ordered first); pushing an already-terminal
 session past the boundary **keeps its existing Coverage entry** verbatim (verdict, date, model, tier,
 observations, counts) — only its `Omitted:` entries refresh, from this run's fresh locate-mode return
 (Part B) when the session is present in it, so no stale locator fact survives — never reassigned
 `skipped (budget)` (rationale: `continuation-rationale.md` §"Why the cap exemption exists"); only
 a **no-prior-entry** session gets a fresh past-cap `skipped (budget)`. Part D line: `Requested but
-not reached this run: <path> — cap in force (<n>) reached before this retry; prior entry retained`. **Dispatch/merge** the capped set through `SKILL.md` Phase
-3.5 steps 2-4 unchanged — no distinction from a first run's sessions.
+not reached this run: <path> — cap in force (<n>) reached before this retry; prior entry retained`.
+**Dispatch/merge** the capped set through `SKILL.md` Phase 3.5 steps 2-4 unchanged.
 **Upsert, keyed by resolved session path — never a plain union, never a duplicate row.** Every session
 **dispatched this run**: its fresh result (Coverage verdict, Evidence observations, Measured Effect
 counts, hypotheses) **replaces** any prior same-path entry in full (rationale:
 `continuation-rationale.md` §"Why replace-in-full"). Not dispatched → keeps its existing entry (or
 gains its first `skipped (budget)`, Part B), untouched except its `Omitted:` entries, refreshed as
-under **Cap** above. **Verdict-quality guard: a replacement never
-loses evidence** (rationale: `continuation-rationale.md` §"Why the verdict-quality guard exists") —
-rank this run's verdict vs. the one it would overwrite: `read` > `read in part` > `skipped (reader
-error)`/`skipped (access denied)`/`skipped (unrecognized shape)` (the failures rank equal). `read`/`read in part` → replace in
-full (a `read in part` supersedes an earlier `read` too); failure over a prior `read`/`read in part`
-→ **keep the prior entry**, log `Retry failed, prior evidence retained: <path> — <failure verdict and
-reason>`; both failures → replace (fresher reason, nothing lost either way).
+under **Cap** above. **Verdict-quality guard: a replacement never loses evidence** (rationale:
+`continuation-rationale.md` §"Why the verdict-quality guard exists") — rank this run's verdict vs.
+the one it would overwrite: `read` > `read in part` > `skipped (reader error)`/`skipped (access
+denied)`/`skipped (unrecognized shape)` (the failures rank equal). `read`/`read in part` → replace
+in full (a `read in part` supersedes an earlier `read` too); failure over a prior `read`/`read in
+part` → **keep the prior entry**, log `Retry failed, prior evidence retained: <path> — <failure
+verdict and reason>`; both failures → replace (fresher reason, nothing lost either way).
 **Recompute over the full accumulated set.** Run `SKILL.md` Phase 3.5 steps 5-8 (version resolution,
 two-sided check, section composition, fix-direction/recommendation — `version-resolution.md` and
-`recommendation.md`) as a first run would, but over
-**every** accumulated hypothesis/observation post-upsert — every section restated fresh each time; a
+`recommendation.md`) as a first run would, but over **every** accumulated hypothesis/observation
+post-upsert — every section restated fresh each time; a
 factor is never dropped for lack of new evidence, and a re-read session replaces its own prior
 contribution rather than duplicating it. **`H<n>` ids are never recomputed** — a carried-over entry
-(step 4) keeps its id; only a genuinely new entry mints the next unused `H<n>`
-(`report-template.md`'s minting rule).
+(step 4, post-normalization) keeps its id; only a genuinely new entry mints one, per the contract's
+minting rule, so a promoted or retired id is never reissued.
+
 ## Part D: Write in place and log the Continuation entry
 
 Phase 3 (folder minting) is skipped — reuse the prior folder path (step A4). Phase 4 overwrites the
 **same** `report.md`, every section recomputed per Part C, then appends one dated Continuation entry
 (`report-template.md`'s Continuation section, after Recommendation, before the final-output block)
-stating: the run date; sessions newly read (by path, incl. an explicit retry even if already `read` —
-Part C's upsert replaced it); sessions newly `skipped (budget)` **this run only**; retries the cap
-didn't reach (Part C's exemption-line format); retries that failed over a prior read (Part C's
-verdict-guard line, never folded into "Sections changed"); sessions newly moved to "cannot see," with
-reason; fallback evidence drawn/retired (`coverage-cross-check.md`: each new draw by finding or
-"none"; a finding's first sessions-only confirmation after carrying fallback evidence gets a dated
-note beside those still-labelled entries, no further draws for it after); fallback evidence
-suppressed (`coverage-cross-check.md`'s dedup guard: `Fallback evidence suppressed (duplicate key):
-<key>` per hit, or "none"); which sections changed vs. the overwritten version (content-compared for
-Summary/Contributing Factors/Component and Version/Localisation/Measured Effect; Recommendation by
-fired rule — unchanged → "Recommendation unchanged (rule `<n>` still fires)"; changed →
-"Recommendation changed — rule `<old>` → rule `<new>`" plus the new hand-off in full). Every part of
+stating: the run date; step A4's legacy normalizations (or "none"); sessions newly read (by path,
+incl. an explicit retry even if already `read` — Part C's upsert replaced it); sessions newly
+`skipped (budget)` **this run only**; retries the cap didn't reach and retries that failed over a
+prior read (Part C's two lines, never folded into "Sections changed"); sessions newly moved to
+"cannot see," with reason; fallback evidence drawn, retired, and suppressed — each line naming its
+draw key (`coverage-cross-check.md` §"Follow-up behaviour"), or "none"; which sections changed vs.
+the overwritten version (content-compared for Summary/Contributing Factors/Component and
+Version/Localisation/Measured Effect; Recommendation by fired rule — unchanged → "Recommendation
+unchanged (rule `<n>` still fires)"; changed → "Recommendation changed — rule `<old>` → rule
+`<new>`" plus the new hand-off in full). Every part of
 this write, Continuation entry included, passes through the same redacting write path (`redaction.md`)
-as a first run. **Part E runs after this is composed, immediately before the write lands.** The
-Continuation log itself is unbounded (rationale: `continuation-rationale.md` §"Why the log is
-unbounded") — step A3's read-side ceiling keeps that growth bounded on read.
+as a first run. **Part E runs after this is composed, immediately before the write lands.** The log
+is unbounded, bounded on read by step A3's ceiling (`continuation-rationale.md` §"Why the log is
+unbounded").
 
 ## Part E: Re-verify the write target immediately before the overwrite (Phase 4 step 2.5)
 
@@ -144,19 +149,14 @@ Step A2's check ran back in Phase 0.5; Phase 1 through 3.5 has run since, so it 
 the file Phase 4 is about to overwrite (rationale: `continuation-rationale.md` §"Why Part E
 re-verifies from scratch"). **As the last action before the `Write`, and only then**, over the same
 resolved path: (1) **re-run step A2 from scratch** — basename, `test -L` non-symlink, freshly
-re-canonicalized parent matching `^PM[0-9]+__.+$`, freshly re-canonicalized grandparent vs. freshly
-re-canonicalized `{task-root}` (reuse no prior canonicalized string or conclusion); (2) **compare
-identity** — `Bash`: `stat -c '%d:%i' '<path>'` (BSD: `stat -f '%d:%i' '<path>'`) vs. step A2's recorded pair,
+re-canonicalized parent matching `^PM[0-9]+__.+$` and grandparent vs. freshly re-canonicalized
+`{task-root}` (reuse no prior canonicalized string or conclusion); (2) **compare identity** — `Bash`:
+`stat -c '%d:%i' '<path>'` (BSD: `stat -f '%d:%i' '<path>'`) vs. step A2's recorded pair,
 character-for-character (differing → the file at that path is not the one this run validated/read).
 Either failing → **stop** `POSTMORTEM — stopped`, reason `"--report <path> changed between
 validation and write — nothing written"`; write nothing at all (no report, no partial, no scratch
 copy, no Continuation entry). **Never re-validate-and-proceed** — the composed report is discarded,
 the prior report on disk is left exactly as it was. **Guarantee:** a check immediately before the
-write, **not atomic**. Each check is a separate step from the `Write`, and the `Write` goes
-through the path, so any interval between any check and the `Write` is a window a concurrent actor
-can use: a file or symlink swapped in there is written to or followed. The procedure narrows those
-windows but cannot close them, and rejects only what it observes. This is the same guarantee the
-fresh-mint path states, with examples of its windows around the `mkdir`, the folder re-proof and
-the `report.md` slot probe (`task-root-containment.md`
-§"Fresh-mint target identity"; rationale: `continuation-rationale.md` §"Why Part E re-verifies from
-scratch").
+write, **not atomic** — the same guarantee the fresh-mint path states (`task-root-containment.md`
+§"Fresh-mint target identity"; the residual window: `continuation-rationale.md` §"Why Part E
+re-verifies from scratch").
