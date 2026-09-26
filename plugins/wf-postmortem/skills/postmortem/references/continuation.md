@@ -65,9 +65,9 @@ run would (lets a newly-written session join). Cap applied later (Part C, step 2
 `read`/`read in part`/`skipped (reader error)`/`skipped (access denied)` (re-naming it requests a
 re-read; Part C's upsert makes it take effect). Resolve each (Phase 1 step 5), match against the
 fresh locate-mode return by path: **present** → reuse the entry (date, subagent records, hunt-session
-flag, seam counts, `Omitted:` entries), move to the retry set's front ahead of the ranked remainder; **absent** →
-dispatch the locator **a second time**, attach-only mode, over just the missing values (a stated,
-bounded exception to "exactly once per run" — `SKILL.md` Safety Rules), merged the same way.
+flag, seam counts, `Omitted:` entries), move to the retry set's front ahead of the ranked
+remainder; **absent** → dispatch the locator **a second time**, attach-only mode, over just the
+missing values (a stated, bounded exception to "exactly once per run" — `SKILL.md` Safety Rules), merged the same way.
 **Ranked remainder** = fresh locate-mode return, its own order, **excluding**: sessions already
 `read`/`read in part (…)`/`skipped (reader error: …)`/`skipped (access denied)`/`skipped
 (unrecognized shape: …)` in the prior Coverage
