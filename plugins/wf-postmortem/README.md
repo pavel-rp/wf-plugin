@@ -10,10 +10,11 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
 ## What the pack ships
 
 - **The `postmortem` capability** — a presence-only `feature` capability with an empty `## Fragments`
-  table: no phase fragment, no provider surface. Registering it changes no `wf:*` phase behaviour;
-  it exists so registry validation acknowledges the pack and a project can record the skill as
-  active, exactly as the `sandbox-testing` capability registered ahead of its own first
-  contribution fragment.
+  table: no phase fragment, no provider surface. Registering it changes no `wf:*` phase behaviour,
+  but the guided skill **requires** it: every pack-owned reference and agent the skill uses resolves
+  only through the `## Plugin Roots` mapping registration writes, so an unregistered install stops
+  the skill before it writes anything, with `Next: /wf-postmortem:init`. It also declares one
+  profile value, `eval-log-path` (see "Eval-log wiring" below).
 - **`/wf-postmortem:postmortem`** — the guided skill. Reads `_local/config.md` first (stops toward
   `/wf:init` when absent), resolves a required failure description plus optional skill / folder or
   repository / read-cap override, echoes every resolved value and every applied default into a
@@ -47,7 +48,10 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
   redacts every quoted excerpt before its block leaves isolation; and reports the model it actually
   ran on. Raw session content never reaches the skill's own context — only these compact blocks do,
   and the skill composes the report's Summary, Evidence Record, Measured Effect, Coverage and
-  Hypotheses from them alone. A hunt that matches nothing says "not found" rather than inventing one.
+  Hypotheses from them alone. A hunt that matches nothing — or a resolved scope that locates no
+  session — still writes a valid report whose Summary says "not found" rather than inventing one;
+  with no confirmed factor its Fix Direction is marked `— (no confirmed factor)`, and the
+  recommendation is a terminus only when no hypothesis remains either (`recommendation.md`).
 - **`locator`** — the pack's isolated locate/rank/count agent, dispatched exactly once per run. It
   owns all host-specific knowledge of where sessions live, how subagent records attach, and the
   30-day retention window, behind one replaceable seam (`references/locator.md`); it reads only
@@ -74,20 +78,41 @@ Still deliberately out of scope:
   reports that project's sessions, but does not enumerate its task folders or delivery history —
   both sources are bound to the launch workspace — and Coverage says so rather than comparing this
   project's runs against another project's sessions.
-- **Eval-log wiring.** The `**Eval Log Path:**` key under a project's own `postmortem` section in
-  `_local/config.md` is read verbatim under that exact heading when present, confined to the
-  workspace and size-capped; no pack scaffolds or asks for it, so it contributes nothing until a
-  project sets it by hand.
+
+## Eval-log wiring
+
+The coverage cross-check's optional eval-log source (`coverage-cross-check.md`) resolves its path
+in this order:
+
+1. **The capability profile (primary).** `resolve_profile({ workspaceRoot, capability:
+   "postmortem" })` returns `eval-log-path`. The pack's `profile.template.json` declares it with
+   default `null`; a project sets it in its own `_local/profiles/postmortem.profile.json` override,
+   creating that file when `/wf:init` did not seed one (it seeds an override only on divergence
+   from the template default).
+2. **Legacy fallback.** Only when the profile value is absent or unset, the skill reads the
+   pre-profile `**Eval Log Path:**` heading (that exact spelling) from `_local/config.md`'s own
+   `## Postmortem` section. A value found there is used, and Coverage states once that it should
+   move onto the profile — never a stop, never a silent migration.
+3. **Neither set** — the source is "not configured" and contributes nothing; never an error.
+
+Whichever source supplies it, the value is untrusted: it is canonicalized, refused unless it lies
+inside the workspace (or if it is a symlink at read time), and read through the same
+200,000-character window as every other source. A refused, unreadable, or truncated log is stated
+in Coverage on its own line, never a stop.
 
 ## Install and register
 
 Install the pack, then run `/wf:init` (or the compatibility alias `/wf-postmortem:init`) to add
-`postmortem` to the project's `## Capabilities` registry. An installed-but-unregistered pack
-contributes nothing and every core phase behaves exactly as before.
+`postmortem` to the project's `## Capabilities` registry. Registration is **required** for
+`/wf-postmortem:postmortem` to run: an installed-but-unregistered pack stops the skill with
+`Next: /wf-postmortem:init` and writes nothing. It contributes nothing to any core phase either
+way — every core phase behaves exactly as before.
 
 ## Files
 
 - `capabilities/postmortem/manifest.md` — the presence-only capability manifest.
+- `capabilities/postmortem/profile.template.json` — the profile seed template declaring
+  `eval-log-path` (default `null`).
 - `agents/session-reader.md` — the isolated per-session reader agent (no `tools:` field, no pinned
   model; the model comes from the dispatch and the block reports what it ran on).
 - `agents/locator.md` — the isolated locate/rank/count dispatch agent (no `tools:` field, no pinned
