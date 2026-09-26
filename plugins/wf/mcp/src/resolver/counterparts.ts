@@ -73,6 +73,7 @@ const stripTicks = (v: string): string => v.trim().replace(/^`+/, "").replace(/`
 /** A declared location must be a forward-slash, repo-relative path that stays inside the workspace. */
 export function locationShapeError(p: string): string | null {
   if (p.length === 0) return "empty location";
+  if (/[\u0000-\u001F\u007F]/.test(p)) return "control character in location";
   if (p.includes("\\")) return "backslash in location";
   if (p.startsWith("/") || /^[A-Za-z]:/.test(p)) return "absolute location";
   if (p.split("/").some((seg) => seg === "..")) return "location escapes the workspace";
@@ -99,7 +100,8 @@ export function parseCounterpartMap(text: string): {
     if (!line.startsWith("|")) return;
     const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
     if (cells.every((c) => /^:?-{3,}:?$/.test(c))) return; // separator row
-    if (cells[0]?.toLowerCase() === "key") return; // header row
+    // Header row: the whole `Key | Kind | Locations` triple, so a declared literal key "key" survives.
+    if (cells.map((c) => c.toLowerCase()).join("|") === "key|kind|locations") return;
     if (cells.length !== 3) {
       diagnostics.push(`row ${row}: expected 3 cells (Key | Kind | Locations), found ${cells.length}`);
       return;

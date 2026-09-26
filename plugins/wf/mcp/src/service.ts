@@ -5792,6 +5792,13 @@ export class ResolverService {
     const mapPath = slash >= 0 ? `${registryRel.slice(0, slash)}/${COUNTERPART_MAP_FILENAME}` : COUNTERPART_MAP_FILENAME;
     const base = { mapPath, baseRef, listings: [] as CounterpartListing[], suppressed: [] as SuppressedKey[] };
 
+    // The registry path is project-configurable, so the map beside it is held to the
+    // same containment shape the snapshot build applies — never read outside the workspace.
+    const registryShapeError = registryPathShapeError(registryRel);
+    if (registryShapeError) {
+      return { ...base, status: "unavailable", diagnostics: [`registry path refused: ${registryShapeError}`] };
+    }
+
     if (!isSafeBaseRef(baseRef)) {
       return { ...base, status: "unavailable", diagnostics: [`base ref refused: ${JSON.stringify(baseRef)}`] };
     }

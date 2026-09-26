@@ -23761,7 +23761,7 @@ function registerResolverTools(server, selectService) {
     "list_counterparts",
     {
       title: "list counterparts",
-      description: "Deterministically list the declared counterparts of every key the working-tree change touched. Reads the project's declared counterpart map (`counterparts.md` beside the registry file: a `| Key | Kind | Locations |` table, kind `mirror` | `writer-parser` | `reference`) and the diff against `baseRef`. A declared key is changed when any added or removed line contains it; each of its declared locations is returned with the lines holding the key and a `changed` flag. A listing is returned only when at least one declared location was left unchanged. Keys shorter than 4 characters come back under `suppressed` (`too-short`); a listing with more than 25 unchanged occurrences is `summarized` to the first 10 plus a `total`. Status: `listed`, `no-map` (no map declared: nothing to list, and no diff taken), `no-diff` (nothing changed against the base), or `unavailable` (the base ref was refused or the diff could not be taken \u2014 never an empty success). Read-only; no model judgment enters any listing.",
+      description: "Deterministically list the declared counterparts of every key the working-tree change touched. Reads the project's declared counterpart map (`counterparts.md` beside the registry file: a `| Key | Kind | Locations |` table, kind `mirror` | `writer-parser` | `reference`) and the diff against `baseRef`. A declared key is changed when any added or removed line contains it; each of its declared locations is returned with the lines holding the key and a `changed` flag. A listing is returned only when at least one declared location was left unchanged. Keys shorter than 4 characters come back under `suppressed` (`too-short`); a listing with more than 25 unchanged occurrences is `summarized` to the first 10 plus a `total`. Status: `listed`, `no-map` (no map declared: nothing to list, and no diff taken), `no-diff` (nothing changed against the base), or `unavailable` (the base ref or an out-of-workspace registry path was refused, or the diff could not be taken \u2014 never an empty success). Read-only; no model judgment enters any listing.",
       inputSchema: listCounterpartsInput
     },
     async (args) => selected(args, (service) => service.listCounterparts(args.baseRef))
@@ -30622,6 +30622,7 @@ var isKind = (v) => COUNTERPART_KINDS.includes(v);
 var stripTicks = (v) => v.trim().replace(/^`+/, "").replace(/`+$/, "").trim();
 function locationShapeError(p) {
   if (p.length === 0) return "empty location";
+  if (/[\u0000-\u001F\u007F]/.test(p)) return "control character in location";
   if (p.includes("\\")) return "backslash in location";
   if (p.startsWith("/") || /^[A-Za-z]:/.test(p)) return "absolute location";
   if (p.split("/").some((seg) => seg === "..")) return "location escapes the workspace";
@@ -30637,7 +30638,7 @@ function parseCounterpartMap(text) {
     if (!line.startsWith("|")) return;
     const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
     if (cells.every((c) => /^:?-{3,}:?$/.test(c))) return;
-    if (cells[0]?.toLowerCase() === "key") return;
+    if (cells.map((c) => c.toLowerCase()).join("|") === "key|kind|locations") return;
     if (cells.length !== 3) {
       diagnostics.push(`row ${row}: expected 3 cells (Key | Kind | Locations), found ${cells.length}`);
       return;
@@ -34465,6 +34466,10 @@ var ResolverService = class _ResolverService {
     const slash = registryRel.lastIndexOf("/");
     const mapPath = slash >= 0 ? `${registryRel.slice(0, slash)}/${COUNTERPART_MAP_FILENAME}` : COUNTERPART_MAP_FILENAME;
     const base = { mapPath, baseRef, listings: [], suppressed: [] };
+    const registryShapeError = registryPathShapeError(registryRel);
+    if (registryShapeError) {
+      return { ...base, status: "unavailable", diagnostics: [`registry path refused: ${registryShapeError}`] };
+    }
     if (!isSafeBaseRef(baseRef)) {
       return { ...base, status: "unavailable", diagnostics: [`base ref refused: ${JSON.stringify(baseRef)}`] };
     }

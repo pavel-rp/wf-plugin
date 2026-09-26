@@ -166,6 +166,14 @@ test("map hygiene: malformed rows are diagnosed and skipped", () => {
   assert.ok(diagnostics.some((d) => d.includes("absolute location")));
 });
 
+test("map hygiene: a declared literal key 'key' is kept; a control character in a location is refused", () => {
+  const { entries, diagnostics } = parseCounterpartMap(
+    map(["| key | reference | a.md, b.md |", "| `ctl` | mirror | a\u0000.md |"]),
+  );
+  assert.deepEqual(entries.map((e) => e.key), ["key"]);
+  assert.ok(diagnostics.some((d) => d.includes("control character")));
+});
+
 test("diff parsing: a removed line beginning with dashes is content, not a header", () => {
   const diff = fileDiff("docs/a.md", [{ start: 3, removed: ["-- retry limit note"], added: ["kept"] }]);
   const changes = parseUnifiedDiff(diff);
@@ -310,6 +318,24 @@ test("real port: the git-backed diff lists a dirty working-tree change against H
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("service: a registry path escaping the workspace is refused before any map read", () => {
+  const { ports, diffCalls } = makePorts({ map: map(["| retry limit | mirror | a.md |"]), diff: "" });
+  const reads: string[] = [];
+  const readFile = ports.readFile;
+  ports.readFile = (p) => {
+    reads.push(p);
+    return readFile(p);
+  };
+  for (const bad of ["../outside/config.md", "/etc/config.md", "a\\b/config.md"]) {
+    ports.registryRelPath = () => bad;
+    const res = new ResolverService(ports).listCounterparts("main");
+    assert.equal(res.status, "unavailable", bad);
+    assert.ok(res.diagnostics[0].startsWith("registry path refused"), bad);
+  }
+  assert.deepEqual(reads, []);
+  assert.deepEqual(diffCalls, []);
 });
 
 test("service: an unsafe base ref is refused before any diff is taken", () => {

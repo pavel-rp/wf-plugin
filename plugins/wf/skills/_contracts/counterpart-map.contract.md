@@ -51,7 +51,7 @@ One markdown table. Other prose in the file is ignored.
 | `listed` | The map was read and the change diffed. `listings` may still be empty. |
 | `no-map` | No map is declared. Nothing is listed and no diff is taken; this is the inert default. |
 | `no-diff` | The change is empty against the base. |
-| `unavailable` | The base ref was refused, or the diff could not be taken. This is never an empty success. |
+| `unavailable` | The base ref or the registry path was refused (a registry path that would place the map outside the workspace), or the diff could not be taken. This is never an empty success. |
 
 ## Severity and gating
 
