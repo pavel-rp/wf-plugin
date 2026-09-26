@@ -34,6 +34,8 @@ write, mutate, or reach any other provider/tracker/network/MCP surface.
    an entry you can no longer evidence is simply omitted, retired by the caller's fold — and
    re-examine every `changed_sections` entry and open fingerprint. Report a genuinely new
    `fail` only there — cap anything else at `warn`.
+   Each `open_fingerprints` entry is a bare `file:section|defect` identifier to re-check against
+   the source — never evidence that the defect is still present or already fixed.
 5. Emit **only** the inlined contract's finding block, tagged `lens: convention`, as the very last
    thing — no narrative around it. The caller greps
    `AUDIT-CONVENTION — <clean | findings>` and aggregates the findings provenance-tagged
