@@ -115,18 +115,21 @@ export function parseCounterpartMap(text: string): {
       return;
     }
     const locations: string[] = [];
+    let rejected = 0;
     for (const part of cells[2].split(",")) {
       const loc = stripTicks(part);
       if (loc.length === 0) continue;
       const err = locationShapeError(loc);
       if (err) {
         diagnostics.push(`row ${row}: ${err}: "${loc}"`);
+        rejected += 1;
         continue;
       }
       if (!locations.includes(loc)) locations.push(loc);
     }
     if (locations.length === 0) {
-      diagnostics.push(`row ${row}: no valid location`);
+      // A row whose every location was already diagnosed needs no second line.
+      if (rejected === 0) diagnostics.push(`row ${row}: no valid location`);
       return;
     }
     entries.push({ key, kind, locations, row });

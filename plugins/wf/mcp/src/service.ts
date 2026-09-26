@@ -200,6 +200,14 @@ import {
   type RunEvidenceUnmatchedReason,
 } from "./resolver/run-evidence.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
+import {
+  COUNTERPART_MAP_FILENAME,
+  computeCounterparts,
+  parseCounterpartMap,
+  parseUnifiedDiff,
+  type CounterpartListing,
+  type SuppressedKey,
+} from "./resolver/counterparts.js";
 import type {
   InstalledPlugin,
   PluginListContractIssue,
@@ -334,6 +342,12 @@ export interface ResolverServicePorts {
    *  stays valid — an absent port normalizes to `unestablished`, exactly as an
    *  absent signal does. NEVER derived from a tool caller's input. */
   runModeSignal?(): string | null;
+  /** The working-tree diff against `baseRef`, in `--unified=0` form, for the
+   *  counterpart listing (WF-758). Returns `null` when the diff cannot be taken
+   *  (no repository, unknown ref). OPTIONAL, so every existing in-memory port
+   *  double stays valid; when absent the listing reports `unavailable` rather
+   *  than an empty success. The service validates `baseRef` before calling. */
+  workspaceDiff?(baseRef: string): string | null;
   /** Write a secret with owner-only permissions. Separate from `writeFile` so the
    *  restrictive mode belongs to the one caller that needs it and never changes
    *  the permissions of ordinary project content.
@@ -5766,10 +5780,73 @@ export class ResolverService {
     };
   }
 
+  // --- counterpart listing (WF-758) ------------------------------------------
+  //
+  // Deterministic and read-only: the declared map beside the registry file plus
+  // the working-tree diff against `baseRef` decide every listing, so no model
+  // reasoning enters it. No capability resolution and no write happens here.
+
+  listCounterparts(baseRef: string): ListCounterpartsResponse {
+    const registryRel = this.ports.registryRelPath();
+    const slash = registryRel.lastIndexOf("/");
+    const mapPath = slash >= 0 ? `${registryRel.slice(0, slash)}/${COUNTERPART_MAP_FILENAME}` : COUNTERPART_MAP_FILENAME;
+    const base = { mapPath, baseRef, listings: [] as CounterpartListing[], suppressed: [] as SuppressedKey[] };
+
+    if (!isSafeBaseRef(baseRef)) {
+      return { ...base, status: "unavailable", diagnostics: [`base ref refused: ${JSON.stringify(baseRef)}`] };
+    }
+
+    const mapText = this.ports.readFile(this.absolutize(mapPath));
+    if (mapText === null) return { ...base, status: "no-map", diagnostics: [] };
+
+    const { entries, diagnostics } = parseCounterpartMap(mapText);
+    if (!this.ports.workspaceDiff) {
+      return { ...base, status: "unavailable", diagnostics: [...diagnostics, "this runtime cannot take a workspace diff"] };
+    }
+    const diff = this.ports.workspaceDiff(baseRef);
+    if (diff === null) {
+      return { ...base, status: "unavailable", diagnostics: [...diagnostics, `diff against ${baseRef} could not be taken`] };
+    }
+    const changes = parseUnifiedDiff(diff);
+    if (changes.size === 0) return { ...base, status: "no-diff", diagnostics };
+
+    const { listings, suppressed } = computeCounterparts({
+      entries,
+      changes,
+      readLocation: (p) => this.ports.readFile(this.absolutize(p)),
+    });
+    return { ...base, status: "listed", listings, suppressed, diagnostics };
+  }
+
   /** Resolve a caller-supplied path against the workspace root when relative. */
   private absolutize(p: string): string {
     const norm = p.replace(/\\/g, "/");
     if (/^(\/|[A-Za-z]:)/.test(norm)) return norm;
     return `${this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
   }
+}
+
+/** `list_counterparts` result (WF-758). `listed` is the only status that carries listings. */
+export type ListCounterpartsResponse = {
+  status: "listed" | "no-map" | "no-diff" | "unavailable";
+  /** Workspace-relative path of the declared map this call read (or looked for). */
+  mapPath: string;
+  baseRef: string;
+  listings: CounterpartListing[];
+  suppressed: SuppressedKey[];
+  diagnostics: string[];
+};
+
+/**
+ * A base ref reaches `git diff` as an argument, so it is held to a plain
+ * revision shape: no leading `-` (never read as an option), no whitespace, no
+ * `..` range, bounded length.
+ */
+export function isSafeBaseRef(ref: string): boolean {
+  return (
+    ref.length > 0 &&
+    ref.length <= 256 &&
+    /^[A-Za-z0-9_][A-Za-z0-9._/@{}^~-]*$/.test(ref) &&
+    !ref.includes("..")
+  );
 }

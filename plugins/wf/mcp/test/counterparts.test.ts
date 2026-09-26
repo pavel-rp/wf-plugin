@@ -236,7 +236,7 @@ function makePorts(opts: { map?: string; diff?: string | null; noDiffPort?: bool
   if (!opts.noDiffPort) {
     ports.workspaceDiff = (ref: string) => {
       diffCalls.push(ref);
-      return opts.diff ?? "";
+      return opts.diff === undefined ? "" : opts.diff;
     };
   }
   return { ports, diffCalls };
