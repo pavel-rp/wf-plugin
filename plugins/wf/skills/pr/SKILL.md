@@ -43,6 +43,7 @@ Confirm the project is initialized by querying the bundled `wf-resolver` MCP ser
 - Read-only resolution for ID/branch inference (`workspace-root-resolve` via `resolve_config({ workspaceRoot, ... })` `workspaceRoot`, `current-branch-query` via `resolve_provider({ workspaceRoot, surface: "delivery" })`).
 - Resolve providers once for the run (Phase 1.5): call `resolve_provider({ workspaceRoot, surface: "delivery" })` and `resolve_provider({ workspaceRoot, surface: "tracker" })` on the `wf-resolver` service — metadata records only; the diff and PR body stay inside the subagents.
 - Invoke the **Task** tool with `subagent_type` `wf:commit` and `wf:pr`.
+- Resolve the declared `pr.body-check` slot (Phase 2.5) once via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: pr`, `point: body-check`) and, only on a `composed` outcome, forward the served body to the `wf:pr` agent unchanged.
 
 **Forbidden:**
 
@@ -86,7 +87,19 @@ Gate on its `COMMIT —` block:
 
 Surface a single one-line summary of the commit result (e.g. "Committed 4 files, pushed." or "Nothing new to commit; branch up to date."). Do **not** reprint the full `COMMIT` block — the `PR` block is this skill's final output.
 
-If `--no-commit` was passed, skip straight to Phase 3.
+If `--no-commit` was passed, skip straight to Phase 2.5.
+
+## Phase 2.5 — Resolve the body check (the `pr.body-check` slot)
+
+This is the declared `pr.body-check` composition point (declared in `skills/pr/interface.md`, merge policy `append`): a check a registered capability runs over the composed body **before** the pull request is created. The host resolves it and the `wf:pr` agent follows it, because the body exists only inside that agent. Resolve it with **one** call: `resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: pr`, `point: body-check`. Act on the typed outcome — never improvise a check at this marker:
+
+- **`{status: unfilled}`** (no slot contribution registered and no personal `_local/slots/pr.body-check.md` override) → execute **exactly** the inline-default region below, then continue to Phase 3.
+- **`{status: composed, content, policy, …}`** → hold the served `content` **verbatim** as the run's body check and forward it in Phase 3. The host never follows, edits, summarizes, or selects among its parts.
+- **`{status: unresolved}`** or **`{status: refused}`** → run the inline-default region below, state the resolver's reason in one line, and continue to Phase 3 — never a wrong-path body, never a raw-read fall-through.
+
+<!-- wf:slot pr.body-check -->
+No body check runs here. Nothing is forwarded to the `wf:pr` agent for this point, and the body it composes goes to creation unchecked, exactly as it would with no composition point at all.
+<!-- wf:slot-end pr.body-check -->
 
 ## Phase 3 — Compose the body and create the PR
 
@@ -107,6 +120,7 @@ Invoke the **Task** tool with `subagent_type: wf:pr`, passing:
 - `draft` — `true` if `--draft` was passed, else `false`
 - `base` — the `--base` value, or omit to let the subagent resolve the repository's default base via the delivery provider
 - the forwarded `delivery` and `tracker` resolution records from Phase 1.5, so `wf:pr` consumes both surfaces without a resolution walk of its own (`invocation-runtime.ops.md` §"Run-scoped provider forwarding")
+- `body-check` — the Phase 2.5 served `content`, verbatim, **only** when that slot resolved `composed`; omit it otherwise
 
 Emit the subagent's `PR —` block verbatim as this skill's final output.
 
@@ -117,6 +131,7 @@ Emit the subagent's `PR —` block verbatim as this skill's final output.
 - **Not on a task branch + `--no-commit`:** the subagent stops (`PR — Error`) — it won't create a branch in no-commit mode. Drop `--no-commit` (so `wf:commit` runs its branch gate) or run `/wf:branch` first.
 - **No resolvable workspace root** — `PR — Error`; with a delivery provider active, `workspace-root-resolve` found no working tree to resolve.
 - **Push failed in Phase 2:** stop before PR creation — the branch isn't on the remote.
+- **A forwarded body check flags the composed body:** the subagent returns `PR — Error` naming what the check flagged, and no pull request is created. Fix the body's source or the change, then re-run `/wf:pr`. With `pr.body-check` unfilled nothing is checked and creation proceeds as before.
 - **PR already open for this branch:** the subagent returns `PR — exists` with the existing URL rather than creating a duplicate.
 - **Delivery provider not authenticated:** the subagent returns `PR — Error` with the provider's own authentication-remedy hint.
 - **No readable delivery provider (two-mode diagnosis):** the subagent returns `PR — Error`; no delivery operation of any kind is attempted. It splits the reason on the `resolve_provider({ workspaceRoot, surface: "delivery" })` record's `state`: **(a) `state: unconfigured`** (no capability owns `delivery`) — states plainly that no delivery provider is registered and names the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`); **(b) `state: unrecoverable`** (a registered capability's manifest can't be read — its recorded root dangled and the install-manifest self-heal recovered nothing) — names the record's `diagnostics` pack as a hedged candidate ("if this is your `delivery` provider, fix its stale root / re-run its init"), never asserting one owns the surface and never telling you to register a provider you already have.
