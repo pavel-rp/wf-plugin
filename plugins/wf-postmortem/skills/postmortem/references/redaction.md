@@ -2,7 +2,9 @@
 
 Runtime-read only from the write path (Phase 3 of `SKILL.md`) — never read at boot. Every report
 write and every scratch write this skill performs routes through this one path before anything
-reaches disk. The guarantee is **shape-based**: a string matching a recognized credential- or
+reaches disk — with exactly one exception: the UnitId digest preimage (`unitid-digest.md`), a
+resolved path written verbatim into its own fresh `mktemp` directory and removed in the same step,
+because redacting it would change the digest it exists to produce. The guarantee is **shape-based**: a string matching a recognized credential- or
 token-shape is replaced with a redaction marker before the write; a secret of an unrecognized shape
 is an **accepted residual risk**, not a defect (spec Scope, charter risk table).
 
@@ -47,7 +49,7 @@ credential-shape redaction before this write path's second pass ever sees them (
 
 - **Does:** guarantee that a string matching one of the shapes above never reaches disk through
   this skill's own writes — the report file and any scratch file under the fixed, literal
-  `_local/scratch/`.
+  `_local/scratch/`, except the UnitId digest preimage (see the exception above).
 - **Does not:** guarantee that every secret is caught. A credential or token of an unrecognized
   shape is an accepted residual risk (charter risk table, spec Scope) — this skill ships no
   general-purpose secret scanner, only the shape list above.
@@ -56,7 +58,7 @@ credential-shape redaction before this write path's second pass ever sees them (
 
 ## Applying it
 
-Before any `Write` to the report file or a scratch file, run the text through every shape in order
+Before any `Write` to the report file or a scratch file (the UnitId digest preimage excepted), run the text through every shape in order
 and substitute `[REDACTED]` for each match, then write the substituted text. Apply this to every
 value pulled from the prompt — the failure description, any resolved skill/folder/repository name,
 every named session record path (resolved or unresolved), and a `--cap` override value — before it

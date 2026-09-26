@@ -106,7 +106,7 @@ For each hypothesis carrying a `locator:` field other than `none`:
   the locator string itself.
 - **Session side.** Route and dispatch `excerpt-fetcher` the way Phase 3.5 step 3 routes
   `session-reader` — `resolve_routing` with `role: "excerpt-fetcher"`, `unitIds`
-  (`excerpt-fetcher:<16-hex-digest>`, the digest computed by `SKILL.md`'s **UnitId digest primitive** —
+  (`excerpt-fetcher:<16-hex-digest>`, the digest computed by **the UnitId digest primitive** (`unitid-digest.md`) —
   the same definition step 3 uses — over the one resolved real path; a primitive failure → session side
   **failed**, never dispatched),
   `shapeEvidence` identical to step 3's **except** `ambiguity: "none"`, `toolWork: "bounded"`,
