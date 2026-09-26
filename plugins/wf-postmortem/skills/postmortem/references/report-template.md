@@ -1,7 +1,9 @@
 # postmortem report template
 
-Runtime-read only on the write path (Phase 4 of `SKILL.md`) — never read at boot. The verbatim
-shape every `{task-root}/PM<NNN>__<slug>/report.md` follows, in this section order.
+Runtime-read on the write path (Phase 4 of `SKILL.md`), and additionally at Phase 0.5 on a
+`--report` follow-up, whose parser (`continuation.md` Part A step 4) follows this file's **Report-state
+contract** — never read at boot. The verbatim shape every `{task-root}/PM<NNN>__<slug>/report.md`
+follows, in this section order.
 
 Summary, Scope, both halves of Contributing Factors, Evidence Record, Measured Effect, Component and
 Version, Localisation, and Coverage are **filled from the reader return blocks and the two-sided
@@ -63,7 +65,7 @@ promoted, "none confirmed this run — every mechanism below is checked two-side
 passed both sides.">
 
 - <mechanism, one line> — `<file:line>` at version `<version>` — locator: `<session path>` — tier:
-  `<independently-verified | mechanically-observed>`
+  `<independently-verified | mechanically-observed>` — retired id: H<n>
 
 ### Hypotheses
 
@@ -86,16 +88,12 @@ in which case "suggested from" names the candidate's own task-folder path or del
 a session locator, since none exists for this candidate) and the mechanism text is drawn from that
 candidate's own fallback-sourced artifacts.
 
-**`H<n>` id — minted once, never reused or renumbered.** Assigned the first time an entry is created
-(first run, or a later run that introduces a genuinely new mechanism/candidate not already present).
-The next id is one past the **highest `H<n>` this report has ever carried**, not one past the count
-currently present — the same monotonic-id discipline this repo's own constitution record uses for
-`proj.N` clauses (never reused after a hypothesis is promoted or otherwise leaves this list). A
-continuation follow-up parsing a prior report (`continuation.md` Part A step 4) reads each entry's
-existing `H<n>` id back and carries it forward unchanged; only a newly-introduced entry mints a fresh
-one. This id — never the mechanism text, never a merge-order position — is what
-`coverage-cross-check.md`'s trigger-(a) draw key uses to stay identical across runs regardless of
-merge order.>
+**`H<n>` id — minted once, never reused or renumbered** (Report-state contract, below). Assigned the
+first time a mechanism is merged, whether it lands here or is promoted directly; a promoted
+mechanism carries its id to the confirmed half as `retired id: H<n>`. The id — never the mechanism
+text, never a merge-order position — is what the draw keys use to stay identical across runs.>
+
+**Highest minted id:** <H<n> | none>
 
 - **H<n>** <mechanism, one line> — suggested from `<session locator | task-folder path |
   delivery-entry id | "no locator">` — <reason it was not promoted>
@@ -110,14 +108,14 @@ prevent.>
 **Supporting**
 
 - <what was observed, one line> — locator: `<session path | task-folder path | delivery-entry id>` |
-  tier: <reader-observed | run-reported | inferred | mechanically-observed> <[fallback evidence] when
-  labelled>
+  tier: <reader-observed | run-reported | inferred | mechanically-observed> <[fallback evidence] ·
+  draw key: `<key>` when labelled>
 
 **Disconfirming**
 
 - <what was observed that counts against the described failure> — locator: `<session
   path#subagent:<file> | task-folder path | delivery-entry id>` | tier: <reader-observed | run-reported
-  | inferred | mechanically-observed> <[fallback evidence] when labelled>
+  | inferred | mechanically-observed> <[fallback evidence] · draw key: `<key>` when labelled>
 
 <When either list is empty, state "- none" rather than dropping the heading — a reader must be able
 to tell "nothing found" from "not looked for". A `run-reported` tier marks a statement in which the
@@ -267,6 +265,8 @@ recomputed, and it is deliberately unbounded: no pruning, consolidation, or entr
 release (`continuation.md` Part D states why).>
 
 **<YYYY-MM-DD HH:MM> follow-up:**
+- Legacy state normalized: <one line per Report-state contract normalization this run — an id
+  assigned, a high-water derived, or a keyless fallback entry kept — or "none">
 - Newly read this run: <one path per session, including any explicit `--session` retry (listed here
   even when it names a session the prior report already marked `read` — its fresh entry replaced the
   prior one), or "none">
@@ -307,6 +307,61 @@ Coverage: <path>=<read|read in part (<reason>)|skipped (budget)|skipped (reader 
 Finding:  <one line — what was found | not found>
 Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <framing> | file a work item from this report, then /wf:spec <id>>
 ```
+
+## Report-state contract
+
+The one format both the writer (Phase 4, this template) and the follow-up parser (`continuation.md`
+Part A step 4) follow. A report is a complete state record: everything a follow-up needs to keep
+identities and dedup keys stable is written on **every** run, the first run included, and nothing
+is reconstructed from memory of an earlier run.
+
+1. **Hypothesis ids.** An id is `H` followed by a positive integer with no leading zero
+   (`^H[1-9][0-9]*$`). It appears as a Hypotheses entry's leading bold token (`- **H<n>** …`) or as a
+   confirmed factor's trailing `retired id: H<n>`. Each id belongs to exactly one mechanism for the
+   report's whole life; moving between the two halves (promoted, or no longer confirmed on a later
+   recompute) never changes it.
+2. **High-water line.** Every report writes `**Highest minted id:** H<n>` directly under the
+   Hypotheses heading — or `**Highest minted id:** none` when no id has ever been minted — even when
+   the Hypotheses list itself is empty. It never decreases.
+3. **Minting.** The next id is one past the maximum of the high-water line, every Hypotheses id, and
+   every `retired id:` value — so an id promoted or otherwise gone from the Hypotheses list is never
+   minted again. The high-water line is rewritten after minting.
+4. **Draw keys.** Every `fallback evidence` entry in the Evidence Record ends with the literal
+   `· draw key:` followed by its key in backticks, on every run the entry is written, first run
+   included. The key is exactly one of these, fields separated by ` | `:
+   - `(a) | <locator> | <source> | H<n>` — trigger (a);
+   - `(b-i) | <run> | <locator> | H<n>` — trigger (b), filed against an existing hypothesis;
+   - `(b-ii) | <run>` — trigger (b), a new Hypotheses entry for the run.
+
+   `<locator>` is the resolved session path in the hypothesis's own locator, or the literal
+   `no locator`. `<source>` is the resolved source the material came from: the task-folder path,
+   `_local/fleet/scoreboard.md`, the canonicalized eval-log path, or `delivery:<entry id>`. `<run>` is
+   `task:<id>` for a group carrying an extracted task id, else `delivery:<entry id>` for an id-less
+   singleton (`coverage-cross-check.md` Part A step 5). `H<n>` is the hypothesis's own id. The
+   Continuation entry's drawn, retired, and suppressed lines quote the same `<key>` string verbatim;
+   dedup compares keys as exact strings (`coverage-cross-check.md` §"Follow-up behaviour").
+5. **Legacy normalization — before a follow-up relies on any id or key.** A prior report written
+   before this contract may lack ids, the high-water line, or draw keys. Normalize it once, in this
+   fixed order, and never renumber a valid id:
+   1. Walk the confirmed factors, then the Hypotheses entries, in document order. The first
+      occurrence of each valid id keeps it. An entry with no id, an invalid one, or one repeating an
+      earlier occurrence's id is **unassigned**.
+   2. The high-water is the maximum of the recorded `**Highest minted id:**` (when present and
+      valid) and every id kept in step 1 — `0` when there is none.
+   3. Assign the unassigned entries fresh ids, one past the high-water upward, in the step-1 walk
+      order; raise the high-water to the last one assigned.
+   4. Keep a `fallback evidence` entry that carries no draw key, verbatim and still labelled, but
+      never match it in dedup: its draw may recur once, now under a complete key.
+   5. Record every change in this follow-up's Continuation entry, one line each under
+      `Legacy state normalized:` — `<mechanism, one line> — assigned H<n> (no id | invalid id
+      "<value>" | duplicate of H<m>)`; `highest minted id derived from visible ids (H<n>) — an id
+      retired before this report recorded its high-water cannot be recovered` when the line was
+      absent; `fallback entry without draw key kept: <locator>` per keyless entry. A duplicate id is
+      the one ambiguity this cannot resolve silently, so it is always logged, never merged. Nothing
+      normalized → `none`.
+
+   The overwritten report is written in the current format, so normalization happens once per
+   report: every later follow-up reads the ids and keys back unchanged.
 
 ## Filling rules
 
