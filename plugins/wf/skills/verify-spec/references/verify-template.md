@@ -32,6 +32,11 @@ The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.
    - Found: <what the code actually has>
    - Location: `path/to/file:L`
    - Remedy: <one-line bounded edit, only when one exists — omit the line entirely otherwise>
+   - Disposition: <pending | escalated>
+
+3. [UNVERIFIABLE] <requirement text>
+   - Found: <why it cannot be verified>
+   - Disposition: accepted
 
 ...
 
@@ -156,12 +161,17 @@ an entry a prior round saw but this run doesn't stays here as `fixed`, never dro
 `**Round:**` line always renders first, even when the table is empty — it is the one place the
 report carries the round number this run derived.
 
+Every row carries exactly one `Disposition`, derived from its `Status` per `finding-disposition.md`
+§"Ledger-row derivation" — no row is ever left undisposed. `## Counterparts` and
+`## Adversarial findings` entries never appear here and carry no disposition
+(`finding-disposition.md` §"Exclusions").
+
 **Round:** <N> of the current loop
 
-| Fingerprint | Defect | First-seen round | Status | Contributing lenses |
-|---|---|---|---|---|
-| `path/to/file:<section>\|<defect>` | `<defect>` | `<first-seen round>` | `<open \| fixed \| refuted \| warn \| pre-existing \| accepted>` | `<lens>/<check>, <lens>/<check>` |
-| none | | | | |
+| Fingerprint | Defect | First-seen round | Status | Disposition | Contributing lenses |
+|---|---|---|---|---|---|
+| `path/to/file:<section>\|<defect>` | `<defect>` | `<first-seen round>` | `<open \| fixed \| refuted \| warn \| pre-existing \| accepted>` | `<pending \| escalated \| fixed \| refuted \| accepted>` | `<lens>/<check>, <lens>/<check>` |
+| none | | | | | |
 
 `none` renders as the single row above only when the ledger is empty (no round of the current
 loop has inserted a fingerprint yet); otherwise every ledger entry gets its own row, in any
@@ -206,7 +216,8 @@ This section is present only when `list_counterparts` returned a listing, a supp
 diagnostic, or an `unavailable` status, or when a contributor returned a finding marked
 `counterpart`. Omit it otherwise, so a project with no declared map and no extractor sees no
 counterpart term. Every entry is advisory `warn`. It never changes `**Verdict:**`, never enters the
-ledger, and `/wf:verify-fix` skips it; a copy left unchanged on purpose is a normal outcome.
+ledger, carries no disposition (`finding-disposition.md` §"Exclusions"), and `/wf:verify-fix` skips
+it; a copy left unchanged on purpose is a normal outcome.
 Entries marked `mechanical` render first.
 
 - **core** — `<key>` (<kind>) changed at `path/to/file:L` — unchanged: `path/to/copy:L, L`,

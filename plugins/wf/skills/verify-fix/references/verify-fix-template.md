@@ -1,6 +1,6 @@
 # `05_verify-fix.md` fix-log template
 
-The verbatim template `/wf:verify-fix` writes to `{fix-log-dir}05_verify-fix.md` (Phase 7; `{fix-log-dir}` per `SKILL.md` §"The fix-log location" — the task folder, or the sibling of the override path). Rotate any existing file into `{fix-log-dir}05_verify-fix.history.md` first (prepend the old contents above a `---` separator, newest first). Substitute the placeholders; keep the `## Auto-fixed`, `## Awaiting user`, and `## Next` shape.
+The verbatim template `/wf:verify-fix` writes to `{fix-log-dir}05_verify-fix.md` (Phase 7; `{fix-log-dir}` per `SKILL.md` §"The fix-log location" — the task folder, or the sibling of the override path). Rotate any existing file into `{fix-log-dir}05_verify-fix.history.md` first (prepend the old contents above a `---` separator, newest first). Substitute the placeholders; keep the `## Auto-fixed`, `## Awaiting user`, `## Dispositions`, and `## Next` shape. `## Dispositions` is always rendered; its `none` line appears only when the source report has no ledger.
 
 ## Contents
 
@@ -39,6 +39,16 @@ The verbatim template `/wf:verify-fix` writes to `{fix-log-dir}05_verify-fix.md`
 - ...
 
 (Questions are printed in full in chat; this list is for traceability.)
+
+## Dispositions (<d>)
+
+- `path/to/file:<section>|<defect>` — accepted — first seen round 1
+- `path/to/file:<section>|<defect>` — pending — first seen round 2 — this run: FIXED
+- `path/to/file:L|R<n>` — escalated — this run: awaiting user
+- none — source report carries no ledger
+
+(Copied from the source report per `finding-disposition.md` §"Copying it into the fix log";
+counterpart and adversarial entries carry none.)
 
 ## Next
 

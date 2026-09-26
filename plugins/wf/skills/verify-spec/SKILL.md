@@ -367,7 +367,7 @@ nothing was aggregated.
 
 ## The finding ledger
 
-Apply `finding-ledger.md`'s §"Match / insert / retire" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`) once more — `N` and this run's own aggregated findings against the ledger-so-far from §"Fire the `verify` phase" — then render `## Ledger` per `verify-template.md`'s shape (fetched at `## Output` below) — round `N` renders only as `## Ledger`'s `**Round:**` line.
+Apply `finding-ledger.md`'s §"Match / insert / retire" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`) once more — `N` and this run's own aggregated findings against the ledger-so-far from §"Fire the `verify` phase" — then render `## Ledger` per `verify-template.md`'s shape (fetched at `## Output` below) — round `N` renders only as `## Ledger`'s `**Round:**` line. Before rendering, give every ledger row and every non-`PASS`/non-`N/A` requirement item its one disposition per `finding-disposition.md` (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-disposition.md`) — a projection of status plus the stop predicate; it changes no bucket, blocking set, or `**Verdict:**`.
 
 ---
 

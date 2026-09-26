@@ -121,7 +121,7 @@ Hold the resolved `k` for the ledger rebuild (below) and the Phase 7 write.
 
 ## Phase 2: Load and Parse the Report
 
-Read `04_verify.md` in full. Extract the header metadata and five lists, preserving order and each finding's identifier (the numbered requirement, or the capability finding's own id — e.g. `MIG-<n>` for a migration-capability finding).
+Read `04_verify.md` in full. Extract the header metadata and the lists below, preserving order and each finding's identifier (the numbered requirement, or the capability finding's own id — e.g. `MIG-<n>` for a migration-capability finding).
 
 1. **Header metadata** — capture `Branch:`, `Commit:` (HEAD SHA the audit ran against), base SHA, `Tree:` (clean or dirty), and `**Audited at:**` (the timestamp the staleness check below compares against). These may be absent on reports produced before the header was extended — treat as unknown and skip the staleness check below.
 2. **Requirements list** — each numbered `[PASS | FAIL | PARTIAL | N/A | UNVERIFIABLE]` item. Capture verdict, requirement text, `Expected`, `Found`, `Location` / `Evidence`, and a `Remedy` line (the concrete bounded edit) when the report carries one. Mint its fingerprint as `path/to/file:L|R<n>` — its own `Location` plus this item's own list number (stable for the life of one loop: the Safety Rules already forbid touching `00_reqs.md`/`01_spec.md`, so the spec never shifts mid-loop).
@@ -132,6 +132,12 @@ Read `04_verify.md` in full. Extract the header metadata and five lists, preserv
    skill has nothing mechanical to apply. Reports that carry no such section simply omit it.
 6. **Counterparts**, when the report carries that section — informational only; do not act on
    these. They are advisory by contract and never change a verdict.
+7. **Dispositions** — every `## Ledger` row (fingerprint, first-seen round, `Disposition`) and
+   every requirement item's `- Disposition:` line, copied as the report records them, per
+   `finding-disposition.md` §"Copying it into the fix log" (`resolve_content({ workspaceRoot, ... })`,
+   `class: references-template`, `skill: verify-spec`, `ref: finding-disposition.md`). This skill
+   never decides or changes a disposition; it records them so every `warn` and every open finding
+   has its fate in the fix log too. Counterpart and adversarial entries have none (§"Exclusions").
 
 > **Remedy carrier.** `/wf:verify-spec`'s report schema renders `Remedy` as a structured field on FAIL/PARTIAL requirement items and as a trailing clause on capability findings, whenever the underlying `finding` carries one. Capture it verbatim when present. Reports produced before this field existed simply omit it — fall back to the `Expected` state in that case (Phase 5).
 
@@ -176,6 +182,8 @@ A blocking fingerprint (a requirement `FAIL`/`PARTIAL`, or a capability finding'
 - Every entry under `## Counterparts` — advisory by contract; a listed copy may be left
   unchanged on purpose. This skill reports each one as skipped and never edits a listed
   location on its strength.
+- Every non-blocking ledger finding (`warn`, `accepted`, `refuted`, `pre-existing` status) —
+  never edited here. Its fate is still recorded, under `## Dispositions` (Phase 7).
 
 ### AUTO — apply the fix directly
 
@@ -306,6 +314,8 @@ Write `{fix-log-dir}05_verify-fix.md` (see "The fix-log location" — `{task-roo
 The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at `verify-fix-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-fix`, `ref: verify-fix-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 7), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 Populate the `**Attempt:** <k>` header with the scope resolved in Phase 1.5, and each entry's `- Fingerprint:` line with the fingerprint minted in Phase 2 — these become the attempt ledger's own source data for the next invocation's rebuild.
+
+Populate `## Dispositions` with one line per entry of Phase 2's list 7, in the report's order: its fingerprint, first-seen round (ledger rows only), and copied disposition. When this run also acted on that fingerprint, append its outcome here (`FIXED`, `FAILED`, `SKIPPED`, `awaiting user`, or `routed`) so the log shows the recorded fate beside what this cycle did. This section never changes the attempt ledger's parse, which reads `## Auto-fixed` only.
 
 If the write fails (permissions, path missing), stop and report. Do not fall back to printing the log inline instead of to disk — the durable artifact matters for later re-runs.
 
