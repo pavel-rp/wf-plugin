@@ -98,41 +98,48 @@ context, and only there:
    and compared character-for-character against `<path>` as given — a mismatch means an ancestor
    directory became a symlink since locate time, which the leaf check alone cannot catch). Any failing
    → **read denied**, the same outcome as any other denied read.
-2. **Fetch the excerpt, bounded by both lines and raw bytes.** Every fetch command is piped through
-   `head -c 16000` before its output is used for anything else — a raw, pre-redaction byte ceiling on
+2. **Fetch the excerpt, bounded by both lines and raw bytes.** Every fetch emits at most 16,000 raw
+   bytes before its output is used for anything else — a raw, pre-redaction byte ceiling on
    the byte stream as a whole (4x the 4,000-character post-redaction ceiling in step 4), independent of
    and applied strictly before both step 3's redaction pass and step 4's truncation. This bounds a
    single pathologically oversized line (e.g. a JSONL tool-result payload) long before it fully enters
    context — it is **not** a guarantee that an ordinary 200-line window or ~41-line `grep` context
    always fits under it (200 lines at 100-120 chars/line alone can run 20,000-24,000 bytes), and a
    legitimate window may itself be bytewise-clipped by this ceiling too; that is an accepted,
-   non-harmful side effect, since steps 3-4 still apply to whatever survives either way. Piping through
-   `head` collapses the upstream command's own exit status to `head`'s (always ~0 on empty input), so
-   each fetch command ends by exiting with the upstream command's own captured status
-   (`exit "${PIPESTATUS[0]}"`) rather than trusting the piped exit code — because each fetch runs as its
-   own process, this makes that captured status the dispatch's own observed exit code. **The observed
-   code is interpreted, never treated as a bare pass/fail:** `0` (completed without the ceiling
-   engaging) and `141` (`SIGPIPE` — `head` had already read its 16,000 bytes and closed the pipe,
-   killing the still-writing upstream command mid-output) **both mean the fetch succeeded** — `141` is
-   the ceiling doing exactly its intended job on a large fetch, never a failure. Step 1's readability
-   check already rules out "can't be opened," so any other nonzero code is a genuine, unexpected
-   failure.
-   - **`window` given** — `Bash`: `sed -n '<start>,<end>p' '<path>' | head -c 16000; exit
-     "${PIPESTATUS[0]}"`, clamped to **200 lines** before the fetch runs — a window naming a wider span
-     is clamped to its own first 200 lines, not refused, since both the byte ceiling above and the
-     excerpt ceiling below still bound what the fetcher returns.
-   - **No window, a search anchor given** — `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>' |
-     head -c 16000; exit "${PIPESTATUS[0]}"`, the anchor single-quoted the same way. `-F` treats it as a
-     literal string, never a regular expression. `0` (the producer finished writing 16,000 bytes or
-     fewer on its own) or `141` (`SIGPIPE` — a match was found and the ceiling closed the pipe while
-     `grep` was still writing its `-B20 -A20` context, so the ceiling engaged; the match itself still
-     stands) → fetched. An observed exit code of `1` (`grep`'s own "no match" code) within that bounded
-     search → **not found** — never a wider retry. **A redacted anchor (one containing `[REDACTED]`)
-     can never match raw text** — a stated, accepted limitation of this interim fetcher, not a silent
-     misclassification: the resulting `not found` is the honest outcome, since the anchor genuinely
-     cannot appear literally in unredacted material.
-   - A denied read is any exit code that is nonzero and **neither `141` (the ceiling's own SIGPIPE)
-     nor `grep`'s own `1` ("no match")** → **read denied**. `141` is never treated as a denied read.
+   non-harmful side effect, since steps 3-4 still apply to whatever survives either way.
+
+   **Clipping is measured, never inferred from an exit status.** Both routes run their producer
+   inside one bounded-fetch shape — the exact command `agents/excerpt-fetcher.md` step 2 states — that
+   strips NUL bytes, caps the producer's stream at **16,001** bytes (one past the ceiling) held only
+   in the command's own shell variable, emits only the first **16,000**, and ends with one
+   `[fetch-meta] producer-status=<n> clipping=<clipped|complete>` trailer line. The two facts are
+   separate: `clipping=clipped` holds exactly when more than 16,000 bytes arrived (16,000 exactly is
+   `complete`), measured under `LC_ALL=C` on the bytes themselves; `producer-status` is the producer's
+   own captured status, never `head`'s (which exits `0` on empty input whatever the producer did). An
+   exit status cannot carry the clipping fact: a producer whose whole output fits in the OS pipe
+   buffer finishes before the cap closes the pipe and exits `0` even after writing far more than
+   16,000 bytes, so an exit-code-only rule would leave step 3's guard off on a genuinely clipped
+   excerpt. The trailer is never part of the excerpt, no second read is made to learn either fact,
+   and the 16,001st byte never reaches the agent's context. **`producer-status` is interpreted, never
+   treated as a bare pass/fail:** `0` and `141` (`SIGPIPE` — the cap closed the pipe while the
+   producer was still writing) **both mean the fetch succeeded**; `141` is never a failure and never
+   the clipping signal. Step 1's readability check already rules out "can't be opened," so any other
+   nonzero status is a genuine, unexpected failure.
+   - **`window` given** — producer `sed -n '<start>,<end>p' '<path>'`, clamped to **200 lines** before
+     the fetch runs — a window naming a wider span is clamped to its own first 200 lines, not refused,
+     since both the byte ceiling above and the excerpt ceiling below still bound what the fetcher
+     returns.
+   - **No window, a search anchor given** — producer `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>'`,
+     the anchor single-quoted the same way; same shape, same trailer, same clipping rule. `-F` treats
+     it as a literal string, never a regular expression. `producer-status` `0` or `141` (a match was
+     found; `141` only means the cap closed the pipe mid-context, and the match itself still stands)
+     → fetched. `1` (`grep`'s own "no match" code) within that bounded search → **not found** — never
+     a wider retry. **A redacted anchor (one containing `[REDACTED]`) can never match raw text** — a
+     stated, accepted limitation of this interim fetcher, not a silent misclassification: the
+     resulting `not found` is the honest outcome, since the anchor genuinely cannot appear literally
+     in unredacted material.
+   - A denied read is any `producer-status` that is nonzero and **neither `141` nor `grep`'s own `1`
+     ("no match")** → **read denied**. `141` is never treated as a denied read.
 3. **Redact first, before any truncation.** The agent obtains `redaction.md` itself (the same
    reference the skill's own write path uses) and runs the **entire fetched excerpt** through every
    recognized shape, substituting `[REDACTED]` for each match — **before** truncation (step 4), and
@@ -144,16 +151,15 @@ context, and only there:
 
    **Boundary-truncation guard, scoped to when the ceiling actually engaged.** Because the byte ceiling
    in step 2 can itself cut a token/hex/base64/JWT run mid-pattern, the agent first consults step 2's
-   own observed exit code — the same single-execution signal already used to classify the fetch as
-   successful, never a separate re-read: only when that code is **`141`** (SIGPIPE — the ceiling
-   engaged) does it additionally redact any trailing run of 16+ characters from `[A-Za-z0-9+/=_.-]`
-   (rules 3-4's own classes, plus `.` for rule 2's JWT segment-joining character) reaching the exact
-   final character of the excerpt, even below the matching rule's own length threshold — an exit code
-   of `0` never triggers this guard, including a fetch that naturally lands at exactly 16,000 bytes
-   (which also exits `0`, never `141`, so the exit code — unlike the truncated output's own length,
-   which is always 16,000 bytes or fewer either way — correctly tells the two cases apart). This closes
-   the boundary
-   gap for rules 2-4; **rule 1 (Bearer tokens) is a stated, accepted residual risk at this boundary**,
+   own `[fetch-meta]` trailer — from the same single execution that produced the bytes, never a
+   separate re-read — and keys on its `clipping=` fact alone, never on `producer-status`: only when it
+   reads **`clipped`** does it additionally redact any trailing run of 16+ characters from
+   `[A-Za-z0-9+/=_.-]` (rules 3-4's own classes, plus `.` for rule 2's JWT segment-joining character)
+   reaching the exact final character of the excerpt, even below the matching rule's own length
+   threshold — whatever the producer's exit status, so a clipped fetch whose producer exited `0` is
+   guarded exactly like one that exited `141`. `clipping=complete` never triggers this guard,
+   including a fetch that naturally lands at exactly 16,000 bytes (only a 16,001st byte makes it
+   `clipped`). This closes the boundary gap for rules 2-4; **rule 1 (Bearer tokens) is a stated, accepted residual risk at this boundary**,
    the same category `redaction.md` already accepts for shapes outside its own list — widening the
    guard to Bearer's unrestricted-non-whitespace alphabet would trade a narrow truncation-boundary gap
    for routine over-redaction of ordinary trailing text.
