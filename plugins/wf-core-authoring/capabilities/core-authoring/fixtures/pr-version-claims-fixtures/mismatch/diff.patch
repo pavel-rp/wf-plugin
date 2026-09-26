@@ -1,0 +1,23 @@
+diff --git a/plugins/wf/.claude-plugin/plugin.json b/plugins/wf/.claude-plugin/plugin.json
+--- a/plugins/wf/.claude-plugin/plugin.json
++++ b/plugins/wf/.claude-plugin/plugin.json
+@@ -1,5 +1,5 @@
+ {
+   "name": "wf",
+-  "version": "0.10.0",
++  "version": "0.11.0",
+   "description": "fixture"
+ }
+diff --git a/.claude-plugin/marketplace.json b/.claude-plugin/marketplace.json
+--- a/.claude-plugin/marketplace.json
++++ b/.claude-plugin/marketplace.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "fixture-marketplace",
+-  "version": "1.4.2",
++  "version": "1.5.0",
+   "plugins": [
+     {
+       "name": "wf",
+-      "version": "0.10.0",
++      "version": "0.11.0",
