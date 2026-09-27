@@ -993,6 +993,28 @@ export interface ReadRunEvidenceResponse {
   diagnostic: string | null;
 }
 
+/**
+ * The worktree-family-scoped read (WF-832).
+ *
+ * The same populations as `ReadRunEvidenceResponse`, judged entirely against the
+ * MEMBER worktree's own identity — its run id, its ledger, its out-of-workspace
+ * issuer binding, and its own tree for artifact re-observation — plus one extra
+ * outcome: `foreign-root`, returned when the named root is not provably a
+ * worktree of this workspace's family. A `foreign-root` read reads nothing at all,
+ * so `runId` and `destination` are `null` there and every population is empty.
+ */
+export type ReadFamilyRunEvidenceResponse = Omit<
+  ReadRunEvidenceResponse,
+  "status" | "runId" | "destination"
+> & {
+  status: ReadRunEvidenceResponse["status"] | "foreign-root";
+  runId: string | null;
+  destination: string | null;
+  /** The member's canonical worktree root the read was judged against, or `null`
+   *  when no family proof could be made. */
+  memberRoot: string | null;
+};
+
 export class ResolverService {
   private current: ResolverSnapshot | null = null;
   private invalidated = false;
@@ -5357,10 +5379,10 @@ export class ResolverService {
    * it (an in-memory double), the binding degrades to a workspace-relative path
    * that still works but no longer has that property.
    */
-  private runEvidenceIssuerPath(): string {
-    const rel = runEvidenceIssuerRelPath(this.ports.workspaceRoot);
+  private runEvidenceIssuerPath(root: string = this.ports.workspaceRoot): string {
+    const rel = runEvidenceIssuerRelPath(root);
     const home = this.ports.machineLocalHome ? this.ports.machineLocalHome() : null;
-    if (home === null || home.length === 0) return this.absolutize(`_local/${rel}`);
+    if (home === null || home.length === 0) return ResolverService.absolutizeUnder(root, `_local/${rel}`);
     return `${home.replace(/\\/g, "/").replace(/\/$/, "")}/${rel}`;
   }
 
@@ -5378,8 +5400,14 @@ export class ResolverService {
    * an untrusted binding refuses, which is the same version-before-shape posture
    * the ledger reader takes.
    */
-  private runEvidenceIssuerKey(mint: boolean): { key: string | null; diagnostic: string | null } {
-    const abs = this.runEvidenceIssuerPath();
+  private runEvidenceIssuerKey(
+    mint: boolean,
+    root: string = this.ports.workspaceRoot,
+  ): { key: string | null; diagnostic: string | null } {
+    // A foreign root's binding is only ever READ: minting one for a root this
+    // service does not own would manufacture an issuer that issued nothing.
+    if (root !== this.ports.workspaceRoot) mint = false;
+    const abs = this.runEvidenceIssuerPath(root);
     const raw = this.runEvidenceRead(abs);
     const existing = parseRunEvidenceIssuer(raw);
     if (existing !== null) return { key: existing.key, diagnostic: null };
@@ -5457,11 +5485,14 @@ export class ResolverService {
    */
   private observeArtifact(
     namedPath: string,
+    root: string = this.ports.workspaceRoot,
   ): { ok: true; rel: string; sha256: string; bytes: number } | { ok: false; reason: "outside" | "missing" } {
     const rel = ResolverService.containedRelPath(namedPath);
     if (rel === null) return { ok: false, reason: "outside" };
 
-    const abs = this.absolutize(rel);
+    // Containment is judged against the root whose record this is — for a family
+    // read, the MEMBER's tree, never the reader's (WF-832).
+    const abs = ResolverService.absolutizeUnder(root, rel);
     // The canonical check needs a real filesystem, so the port is OPTIONAL and
     // absence degrades to the lexical containment `containedRelPath` already
     // performed — the pre-existing behaviour, which keeps every in-memory port
@@ -5472,8 +5503,7 @@ export class ResolverService {
       const canonicalTarget = this.ports.canonicalizeRoot(abs);
       if (canonicalTarget === null) return { ok: false, reason: "missing" };
       const canonicalRoot =
-        this.ports.canonicalizeRoot(this.ports.workspaceRoot) ??
-        this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+        this.ports.canonicalizeRoot(root) ?? root.replace(/\\/g, "/").replace(/\/$/, "");
       if (canonicalTarget !== canonicalRoot && !canonicalTarget.startsWith(`${canonicalRoot}/`)) {
         return { ok: false, reason: "outside" };
       }
@@ -5508,11 +5538,12 @@ export class ResolverService {
   private runEvidenceArtifactState(
     artifact: RunEvidenceArtifact | null,
     cache: Map<string, string | null>,
+    root: string = this.ports.workspaceRoot,
   ): RunEvidenceArtifactState {
     if (artifact === null) return "n/a";
     let observed = cache.get(artifact.path);
     if (observed === undefined) {
-      const result = this.observeArtifact(artifact.path);
+      const result = this.observeArtifact(artifact.path, root);
       observed = result.ok ? result.sha256 : null;
       cache.set(artifact.path, observed);
     }
@@ -5712,7 +5743,68 @@ export class ResolverService {
    * unmatched record up to a receipt.
    */
   readRunEvidence(taskId: string): ReadRunEvidenceResponse {
-    const runId = this.runEvidenceRunId(taskId);
+    return this.readRunEvidenceAt(this.ports.workspaceRoot, taskId);
+  }
+
+  /**
+   * Read and match one task's run evidence as filed by ANOTHER worktree of this
+   * workspace's family (WF-832) — the read a fan-out orchestrator needs, because
+   * each shipper files its receipts from its own isolated worktree, under that
+   * worktree's own run identity and issuer binding.
+   *
+   * MEMBERSHIP IS PROVED, NEVER ASSUMED FROM LOCATION. `memberRoot` is caller
+   * input, so it is admitted only when its canonical Git common directory equals
+   * this workspace's — the exact family test `prepareWorkspace` applies. Anything
+   * else (another repository, a plain directory, a path that does not exist) is
+   * `foreign-root` and reads nothing: no ledger, no issuer binding.
+   *
+   * PROOF STILL COMES FROM THE SEAL. Admission only selects WHICH identity the
+   * records are judged against; every record must still verify against the
+   * member's own out-of-workspace issuer binding, answer the member's run id, and
+   * name the asked-for task. A record written into the member's ledger by anything
+   * other than its issuer stays `unmatched` exactly as it would on an own-root read.
+   *
+   * READ-ONLY. It never mints an issuer and never writes a byte.
+   */
+  readFamilyRunEvidence(memberRoot: string, taskId: string): ReadFamilyRunEvidenceResponse {
+    const foreign = (diagnostic: string): ReadFamilyRunEvidenceResponse => ({
+      status: "foreign-root",
+      runId: null,
+      destination: null,
+      memberRoot: null,
+      formatVersion: null,
+      observedVersion: null,
+      matched: [],
+      unmatched: [],
+      unreadableRecords: 0,
+      provenPhases: [],
+      receiptBearingPhases: [...RECEIPT_BEARING_PHASES],
+      observedRunMode: this.runEvidenceRunMode(),
+      diagnostic,
+    });
+
+    let own: { worktreeRoot: string; commonDir: string };
+    let member: { worktreeRoot: string; commonDir: string };
+    try {
+      own = resolveGitIdentity(this.ports.workspaceRoot);
+    } catch (err) {
+      return foreign(`this workspace has no worktree family: ${messageOf(err)}`);
+    }
+    try {
+      member = resolveGitIdentity(memberRoot, "memberRoot");
+    } catch (err) {
+      return foreign(`the member root is not a worktree: ${messageOf(err)}`);
+    }
+    if (member.commonDir !== own.commonDir) {
+      return foreign("the member root is not a worktree of this workspace's family.");
+    }
+
+    return { ...this.readRunEvidenceAt(member.worktreeRoot, taskId), memberRoot: member.worktreeRoot };
+  }
+
+  /** The one read/match implementation, judged against `root`'s identity. */
+  private readRunEvidenceAt(root: string, taskId: string): ReadRunEvidenceResponse {
+    const runId = runEvidenceRunId(root, taskId);
     const destination = runEvidenceDestination(runId);
     const receiptBearingPhases = [...RECEIPT_BEARING_PHASES];
     const base = {
@@ -5726,7 +5818,9 @@ export class ResolverService {
       observedRunMode: this.runEvidenceRunMode(),
     };
 
-    const parsed = parseRunEvidenceLedger(this.runEvidenceRead(this.absolutize(destination)));
+    const parsed = parseRunEvidenceLedger(
+      this.runEvidenceRead(ResolverService.absolutizeUnder(root, destination)),
+    );
     if (parsed.status === "absent") {
       return {
         ...base,
@@ -5758,7 +5852,7 @@ export class ResolverService {
     // The expectation is passed explicitly so a ledger is judged against the
     // question actually asked, not against its own self-description — see
     // `matchRunEvidence`'s note on the copied-ledger attack.
-    const matches = matchRunEvidence(parsed.ledger, this.runEvidenceIssuerKey(false).key, {
+    const matches = matchRunEvidence(parsed.ledger, this.runEvidenceIssuerKey(false, root).key, {
       runId,
       taskId,
     });
@@ -5785,7 +5879,11 @@ export class ResolverService {
           // anywhere: the resolver re-reads the named artifact and re-digests it
           // now, and compares against the digest sealed at issue. A caller that
           // could supply this could declare its own stale approval fresh.
-          artifactState: this.runEvidenceArtifactState(match.record.artifact, artifactObservations),
+          artifactState: this.runEvidenceArtifactState(
+            match.record.artifact,
+            artifactObservations,
+            root,
+          ),
         })),
       unmatched: matches
         .filter((match) => !match.matched)
@@ -6085,9 +6183,14 @@ export class ResolverService {
 
   /** Resolve a caller-supplied path against the workspace root when relative. */
   private absolutize(p: string): string {
+    return ResolverService.absolutizeUnder(this.ports.workspaceRoot, p);
+  }
+
+  /** Resolve a path against an explicit root when relative. */
+  private static absolutizeUnder(root: string, p: string): string {
     const norm = p.replace(/\\/g, "/");
     if (/^(\/|[A-Za-z]:)/.test(norm)) return norm;
-    return `${this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
+    return `${root.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
   }
 }
 

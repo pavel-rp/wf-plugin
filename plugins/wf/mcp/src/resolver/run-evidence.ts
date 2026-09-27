@@ -85,10 +85,12 @@
 //
 //   * VERIFIABILITY IS SCOPED TO THE ISSUING WORKSPACE. Both the run identity and
 //     the issuer binding are keyed on the resolved workspace root. A receipt filed
-//     from an isolated worktree is therefore not matchable from a different
-//     checkout of the same repository. Re-anchoring on the worktree family is a
-//     resolver-boundary question owned by the worktree-isolation work, not a
-//     property to change here.
+//     from an isolated worktree is therefore not matchable by an own-root read
+//     from a different checkout of the same repository. The service's family
+//     read (`readFamilyRunEvidence`, WF-832) reaches it WITHOUT changing that
+//     property: it proves the named root is a worktree of the reader's family,
+//     then judges every record against THAT worktree's own run id and issuer
+//     binding — so the keying here stays exactly as it is.
 //
 //   * THE LEDGER IS APPEND-ONLY AND BOUNDED. A re-run appends rather than
 //     replacing, so a phase run twice files two receipts; `provenPhases`

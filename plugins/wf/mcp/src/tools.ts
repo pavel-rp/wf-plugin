@@ -177,6 +177,27 @@ const readRunEvidenceInput = fromJsonSchema(withWorkspaceRoot({
   additionalProperties: false,
 }));
 
+// --- read_family_run_evidence (WF-832) -------------------------------------------
+// `memberRoot` selects WHICH worktree's identity the records are judged against;
+// it is admitted only on a canonical same-family proof, never on location alone.
+
+const readFamilyRunEvidenceInput = fromJsonSchema(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    memberRoot: {
+      type: "string",
+      minLength: 1,
+      maxLength: 4096,
+      pattern: safeTerminalStringPattern,
+      description:
+        "Absolute path of the worktree whose receipts to read — a worktree of this workspace's own repository family (read-only). A root outside the family reads nothing and returns `foreign-root`.",
+    },
+    taskId: runEvidenceTaskIdProperty,
+  },
+  required: ["memberRoot", "taskId"],
+  additionalProperties: false,
+}));
+
 // --- prepare_workspace (WF-831) -------------------------------------------------
 // `sourceRoot` is read-only input, never a resolution root: the service admits it
 // only when it shares this worktree's family and is not this worktree itself.
@@ -1382,6 +1403,18 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     },
     async (args: WorkspaceArgs & { taskId: string }) =>
       selected(args, (service) => service.readRunEvidence(args.taskId)),
+  );
+
+  server.registerTool(
+    "read_family_run_evidence",
+    {
+      title: "read family run evidence",
+      description:
+        "Read and match one task's run evidence as filed by ANOTHER worktree of this workspace's repository family — the read a fan-out orchestrator uses for receipts its isolated shippers filed. `memberRoot` is admitted only when its canonical Git common directory equals this workspace's; otherwise the result is `foreign-root` and nothing is read. For an admitted member the response is exactly `read_run_evidence`'s shape, with the run identity, ledger, machine-local issuer binding, task expectation and artifact re-observation all derived from the MEMBER's canonical worktree root (echoed as `memberRoot`) — so every record must still verify against that worktree's own out-of-workspace issuer binding: a tampered record is `seal-mismatch`, a hand-written one `seal-absent`, a copied ledger `run-mismatch`, and none is ever rounded up to a receipt. Read-only: never mints an issuer and never writes.",
+      inputSchema: readFamilyRunEvidenceInput,
+    },
+    async (args: WorkspaceArgs & { memberRoot: string; taskId: string }) =>
+      selected(args, (service) => service.readFamilyRunEvidence(args.memberRoot, args.taskId)),
   );
 
   // --- fresh-worktree preparation (WF-831) -------------------------------------
