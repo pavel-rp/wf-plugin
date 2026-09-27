@@ -1,7 +1,7 @@
 ---
 name: address-pr
 description: Reads a pull request's review comments and CI-check failures, verifies each claim against the actual code, and addresses only the valid ones on the PR branch. Treats review-tool output (Copilot, CodeRabbit, human reviewers) as hypothesis, never truth — every claim is confirmed against real code before any fix is applied. Routes all host interaction through the active delivery provider. Use after a PR has picked up review comments or a failing check and you want the valid feedback resolved.
-allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Task]
+allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Task, Skill]
 ---
 
 # /wf-review:address-pr — Verify review feedback, then address the valid parts
@@ -71,6 +71,11 @@ Zero-argument invocation addresses the PR for the current branch.
   (replies), `review-thread-resolve`, `commit`, `push-upstream`.
 - Invoke the **Task** tool with `subagent_type: wf:context-distiller` (bulk distillation);
   invoke `/wf:index` through the **Skill** tool (catalogue the run).
+- Run the Phase 8 drift check (core's `certified-commit.ops.md`, obtained via
+  `resolve_content`, `class: contract` — never a filesystem read of a core path): read the task
+  folder's `04_verify.md` and `04_drift.md`, append a `carry-forward` row to `04_drift.md`
+  (only inside the task folder), and invoke `/wf:verify-spec` through the **Skill** tool at
+  most once per drift event, only on a `reverify` outcome.
 
 **Forbidden:**
 
@@ -83,6 +88,8 @@ Zero-argument invocation addresses the PR for the current branch.
   merging the PR.
 - Any AI-attribution, "generated with" footer, emoji tagline, or promotional content in a
   posted comment or a commit message. Write like a human.
+- Running a second re-verify for the same drift event, or reporting a `refuse` drift-check
+  outcome as anything but a head that must not merge.
 
 ---
 
@@ -215,6 +222,37 @@ Then invoke `/wf:index` through the **Skill** tool (when a resolvable task folde
 exists for this branch) to catalogue the run under the `address-pr` slot; its wrapper writes
 `index.md` inline — a stale index loses nothing, so an `INDEX — Error` never fails the run.
 
+## Phase 8 — Drift check (the certified commit)
+
+A fix push moves the PR head off the commit `/wf:verify-spec` certified, so every head this
+skill pushes is checked before it can reach a merge. Run this phase **only** when Phase 7's
+`push-upstream` landed (`Push: pushed`); otherwise nothing moved on the PR and `Drift:` reads
+`n/a`. Resolve the task folder from the branch's first 3+-digit run against `coreConfig.taskRoot`
+(from `resolve_config`), matching folder names the same way; no single matching folder →
+`Drift: n/a (no task folder)`.
+
+Follow the drift check in core's `certified-commit.ops.md` (`resolve_content({ workspaceRoot,
+... })`, `class: contract`, `ref: certified-commit.ops.md`) §"The drift check" against
+`{task-root}/{task-id}/` and the head just pushed — the same call-in `/wf:pr` and `/wf:ship`
+make — and act on its single outcome:
+
+- **`inert`**, **`bound`**, or **`carried`** → done. On `carried` the check has appended its
+  `carry-forward` row to `04_drift.md` with `Path` `address-pr`, naming both commits and the kind.
+- **`reverify`** → invoke `/wf:verify-spec {task-id}` through the **Skill** tool **exactly once**
+  for this drift event — it runs in drift mode, scoped to the binding..head diff, turns fresh
+  findings on code unchanged since the certified commit into drift residuals, and writes its own
+  report and ledger row — then re-run the check once without re-entering its re-verify step.
+  `bound` → done; anything else → the `refuse` bullet.
+- **`refuse`** → report `Drift: refused — head <B> drifted from the certified commit <A> —
+  <reason>` (`uncertified`, `reverified-fail`, or `unreadable`). The push already landed and is
+  never undone; the head simply cannot merge — `/wf:tf` and `/wf:ship` re-run this check before
+  any merge and stop on it. A drift re-verify that does not PASS is never a trigger for another
+  verify⇄fix round; `Next:` names `/wf:verify-spec {task-id}` once the drift code is fixed.
+
+Each run pushes at most once, so it spends at most one re-verify. A later push is its own drift
+event, scoped from whatever the previous event rebound to — a second push to C after a rebind to
+B re-verifies B..C only — so the total never exceeds the pushes a human makes.
+
 ---
 
 ## Edge Cases
@@ -237,6 +275,11 @@ exists for this branch) to catalogue the run under the `address-pr` slot; its wr
   No provider`, two-mode diagnosis); no host operation is attempted.
 - **Detached HEAD** — `ADDRESS-PR — Error`, reason "Detached HEAD; check out the PR branch
   first."
+- **The push drifts from the certified commit** — Phase 8 carries a `base-sync`/`version-bump`
+  drift forward with an `address-pr` ledger row, runs one scoped `/wf:verify-spec` for any other
+  drift, and reports `Drift: refused …` on an uncertified head, a re-verify that did not PASS, or
+  an unreadable record — the status token is unchanged, and the head cannot merge until a PASS
+  certifies it. No `04_verify.md` (a task never verified) is `inert` and changes nothing.
 
 ---
 
@@ -253,6 +296,7 @@ Checks: <n failing> (<c> code, <d> infra/transient)
 Addressed: <short list of the fixes applied, or "none">
 Deferred: <valid-but-out-of-scope items, or "none">
 Push: <pushed (origin/<branch>) | not-pushed | failed (<reason>) | n/a>
+Drift: <inert | bound | carried (<kind>, <A>→<B>) | re-verified PASS (<A>..<B>) | refused — <reason> | n/a>
 Next: <re-request review, then /wf-review:review-pr, or /wf:pr to open a PR if none exists>
 ```
 
