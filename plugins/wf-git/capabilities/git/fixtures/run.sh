@@ -17,7 +17,8 @@
 #      consumer can be written against a surface only one of them honours.
 #   4. TYPED-RESULT DISCIPLINE — each typed read documents its `<read-performed>` flag, and
 #      newest-published-version-read documents every `<reason>` token reachable from a
-#      registered provider plus the performed return.
+#      registered provider plus the performed return; branch-head-read likewise documents
+#      its remote-read performed return (<commit>, <tree>) and each reachable reason token.
 #
 # Usage:  run.sh    run every check (default; used by CI)
 set -uo pipefail
@@ -98,7 +99,7 @@ check_cross_owner_parity() {
 
 # Reads whose result is TYPED with a <read-performed> flag, so a degraded result can never be
 # mistaken for a performed read (capability-registry contract, "Degradation shape").
-TYPED_READS=(review-threads-read newest-published-version-read)
+TYPED_READS=(review-threads-read newest-published-version-read branch-head-read)
 
 # Print one operation's own section body — from its `## <op>` heading to the next `## `.
 # Scoping every typed-result assertion to this body is what stops the check passing because
@@ -137,6 +138,21 @@ check_typed_results() {
   done
   printf '%s\n' "$section" | grep -qF -- 'no-provider' \
     || err "typed-result: the newest-published-version-read section does not record that 'no-provider' is core's own token"
+  # branch-head-read (WF-839): the performed return carries the REMOTE head's commit and tree, and
+  # each degraded return a closed reason — a stale local head must never pass as a performed read.
+  section=$(op_section "$OPS" branch-head-read)
+  printf '%s\n' "$section" | grep -qF -- '= true' \
+    || err "typed-result: the branch-head-read section documents no performed return (<read-performed> = true)"
+  for token in '<commit>' '<tree>' 'ls-remote'; do
+    printf '%s\n' "$section" | grep -qF -- "$token" \
+      || err "typed-result: the branch-head-read section never names '$token' (the remote head it must read)"
+  done
+  for token in read-failed not-published; do
+    printf '%s\n' "$section" | grep -qF -- "\`$token\`" \
+      || err "typed-result: the branch-head-read section documents no '$token' reason token"
+  done
+  printf '%s\n' "$section" | grep -qF -- 'no-provider' \
+    || err "typed-result: the branch-head-read section does not record that 'no-provider' is core's own token"
   [ "$fail" = "$before" ] && ok "typed-result: each typed read's own section documents read-performed and every reachable reason token"
 }
 
