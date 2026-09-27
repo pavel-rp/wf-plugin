@@ -398,6 +398,27 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   caller reports them rather than falling back to its own checkout.
 - **`no-provider` is core's token, not this file's.**
 
+## review-request-read (read)
+
+- **Why a verification read at all.** Unattended runs merged pull requests with
+  no completed review, and every one of them recorded the same thing: "no
+  review". The causes behind that are not alike — a request that never
+  registered (a silent no-op, an unsupported reviewer, a spend limit) versus a
+  request that registered and was never answered — and they call for different
+  remedies (WF-837). The pre-merge review step can only tell them apart by
+  reading the request state back from the host.
+- **Two reads, because one of them forgets.** The pull request's outstanding
+  review requests drop to zero both when a reviewer answers and when the host
+  withdraws a request it could not serve, so the pending list alone cannot tell
+  "registered and dropped" from "never registered". The issue timeline keeps
+  every review-request event, so it is read back as well; a request that
+  appears there registered, whatever happened to it afterwards.
+- **Read-only by construction.** It requests nothing. A read that could also
+  re-request would erase the very evidence it exists to report — whether the
+  original request landed.
+- **One failure token.** Any host error on either read is `read-failed`; there
+  is no partial result. `no-provider` is core's token, not this file's.
+
 ---
 
 ## Edge cases reproduced
@@ -462,6 +483,10 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   archive/extract → `<reason>` = `read-failed` (a partial export removed); otherwise
   `<read-performed>` = true with `<merge-commit>`, `<tree>` and, when `<dest>` was
   supplied, `<root>` — even when the local checkout predates the merge.
+- **Review requests** — `review-request-read`: step 1 or step 2 non-zero (host
+  error, no such pull request) → `<reason>` = `read-failed`; otherwise
+  `<read-performed>` = true with `<pending>`, `<request-events>`, `<reviews>` and
+  `<requested>` — `<requested>` = false only when all three counts are zero.
   None of these is thrown as an environment error, and none may be returned as a bare
   empty — the C011 failure the typing exists to prevent is a consumer reading an unrun
   check as "the installation is current". `no-provider`, the contract's third token, is
