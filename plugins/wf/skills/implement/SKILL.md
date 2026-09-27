@@ -1,12 +1,12 @@
 ---
 name: implement
-description: Executes a task's implementation plan (02_plan.md) step by step, ticking each checkbox on completion and stopping immediately on anything unexpected. Does not commit — hands off to the user. Use after /wf:plan to actually make the code changes.
+description: Executes a task's implementation plan (02_plan.md) step by step, recording each step's completion in its own progress artifact (02_progress.md) so the approved plan stays byte-identical, and stopping immediately on anything unexpected. Does not commit — hands off to the user. Use after /wf:plan to actually make the code changes.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:implement — Execute a plan step by step
 
-Execute a task's implementation plan step by step. Accepts a task id, resolves the task folder under `{task-root}/`, reads `02_plan.md`, implements each unchecked step in order, ticks the checkbox on completion, and stops immediately if anything unexpected is found.
+Execute a task's implementation plan step by step. Accepts a task id, resolves the task folder under `{task-root}/`, reads `02_plan.md`, implements each step not yet recorded done in order, records its completion in `02_progress.md`, and stops immediately if anything unexpected is found. The approved plan is never written: its bytes stay exactly as they were when its gate was approved.
 
 **One task at a time. No skipping steps. No assumptions.**
 
@@ -18,7 +18,30 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 
 **Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). All references to `{task-root}` below come from `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. A registered tracker capability resolves its own project-scoped config from its own fragment binding; core never reads it directly.
 
-`02_plan.md` is the authoritative input this skill executes. When the upstream `tasks` phase has run, a `03_tasks.md` decomposition also exists in the task folder — read it for the finer-grained, independently-testable ordering and let it guide how each plan step is carried out; the plan's checkboxes remain the units this skill ticks. When `03_tasks.md` is absent, execute the plan directly — the `tasks` phase is optional on the chain.
+`02_plan.md` is the authoritative input this skill executes. When the upstream `tasks` phase has run, a `03_tasks.md` decomposition also exists in the task folder — read it for the finer-grained, independently-testable ordering and let it guide how each plan step is carried out; the plan's `STEP-NNN` steps remain the units this skill records progress against. When `03_tasks.md` is absent, execute the plan directly — the `tasks` phase is optional on the chain.
+
+### The progress record (`02_progress.md`)
+
+Every write this phase makes to the task folder lands in `{task-root}/{task-id}/02_progress.md`, which this skill creates on its first write. `02_plan.md` is **read-only** here: an approved gate binds the plan by the digest of its bytes, so a phase that wrote into it would turn its own gate's approval stale. The record carries one status line per plan step, keyed by the plan's own `STEP-NNN` ids:
+
+```markdown
+# {task-id} — Implementation progress
+
+**Plan:** 02_plan.md
+**Implemented by:** <model identifier>
+
+- [x] STEP-001: <title>
+  > Implemented: <one sentence, or "as planned">
+- [ ] STEP-002: <title>
+
+## Resolution Summary
+
+<written at Phase 7>
+```
+
+A registered `implement.start`/`implement.milestone`/`implement.finish` slot fill records its own guard lines in this file's metadata block. A step is **done** when its line here is `[x]`.
+
+**Resume.** Start at the first step not marked done in `02_progress.md`. When `02_progress.md` is absent, or carries no `STEP-NNN` status line (only a slot fill's guard lines), and `02_plan.md` carries ticked checkboxes — a task implemented before this record existed — read those ticks as the done set, read-only (legacy fallback — `wf-legacy-progress-fallback`), and on the first step write seed the full `STEP-NNN` list from them into `02_progress.md` (creating it, or adding the list beneath its existing guard lines), then record all further progress there. When both exist, `02_progress.md` wins only when it carries at least one `STEP-NNN` status line — a record holding only a slot fill's guard lines (written at Phase 1.5, before any step runs) does not displace the plan's legacy ticks.
 
 ---
 
@@ -33,7 +56,7 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 | Argument                | Required | Description                                                   |
 | ----------------------- | -------- | ------------------------------------------------------------- |
 | `<id>`                  | NO       | Task id — whatever shape the active tracker capability produced when the task folder was created (opaque to core), or a local `T<NNN>` id when none was registered. Falls back to inferring from the current branch. |
-| `--steps <range>`       | NO       | Restrict execution to a subset of steps. Accepts: a single step (`3`), a range (`2-5`), or a comma-separated list (`2,4,6`). When omitted, all unchecked steps are executed. |
+| `--steps <range>`       | NO       | Restrict execution to a subset of steps. Accepts: a single step (`3`), a range (`2-5`), or a comma-separated list (`2,4,6`). When omitted, every step not yet recorded done is executed. |
 | `--mode <mode>`         | NO       | `nonstop` (default) or `step`. Nonstop runs all steps without pausing. Step pauses after each step for review. |
 
 ### Folder Resolution
@@ -47,15 +70,15 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 - **Branch-name matching tokens.** Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. The Phase 1 branch-gate quick-check matches an already-existing branch name against **either** `{task-id}` or `{numeric-id}`, compared case-insensitively; `{numeric-id}` is used **only** there — it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim — the lower-casing is for comparison only and never changes what is written or emitted.
 - If the task folder doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
 - If `02_plan.md` does not exist in the task folder, stop: "No plan file found. Run `/wf:plan {id}` first."
-- If all steps are already checked, report: "All steps complete for {task-id}." and stop.
+- If every step is already recorded done (per §"Resume"), report: "All steps complete for {task-id}." and stop.
 - **Task title:** read from `02_plan.md` heading, or from `01_spec.md`, or from `00_reqs.md`. First available wins.
 - If `--steps` is provided, parse the range and validate that all referenced step numbers exist in the plan.
 
 **`--steps` behavior:**
 
-When `--steps` is provided, only the specified steps are executed (plus STEP-001 if unchecked — the gate is always enforced). Steps outside the range are skipped.
+When `--steps` is provided, only the specified steps are executed (plus STEP-001 if not yet done — the gate is always enforced). Steps outside the range are skipped.
 
-- Already-checked steps within the range are skipped (not re-executed)
+- Steps within the range already recorded done are skipped (not re-executed)
 - The verification and final handoff steps are only executed if they fall within the range
 - When `--steps` excludes the final handoff step, do NOT run Phase 5 (manual handoff checks) or Phase 6 (final completion report). Output a partial progress summary instead, using the `IMPLEMENT — Partial` shape from Phase 6's Final Output section (status line + steps-completed count + Next line pointing back at `/wf:implement {id}` to continue).
 
@@ -84,8 +107,8 @@ When `--steps` is provided, only the specified steps are executed (plus STEP-001
 - Commit, stage, push application code, or open a PR — always hand off to the user manually for review. (`push --set-upstream` performed by wf:branch is the one exception, and only for publishing the new task branch — never for pushing implementation commits.) The user runs `/wf:commit` and `/wf:pr` for that step; `wf:implement` itself still never commits.
 - Run any destructive version-control operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above).
 - Run builds, tests, linters, or installs other than the verify command specified in the plan.
-- Skip steps in `02_plan.md`, or expand scope beyond what's explicitly checked off in the loaded plan.
-- Modify `00_reqs.md`, `01_spec.md`, or `02_plan.md` content other than ticking the plan's checkboxes as steps complete — **except** a single bookkeeping guard line (e.g. `**Tracker impl item:**`, `**Tracker umbrella:**`, `**Impl finished:**`) that a registered `implement.start`/`implement.milestone`/`implement.finish` slot fill writes into `02_plan.md` as its own documented composition-point contract (Phases 1.5/2.5/5.5 below). That write belongs to the slot fill, not to this skill's own body, and is the sole named exception.
+- Skip steps in `02_plan.md`, or expand scope beyond what the loaded plan states.
+- Write `00_reqs.md`, `01_spec.md`, or `02_plan.md` in any way — no tick, no note, no summary, no guard line. Every progress write, including a slot fill's guard lines, goes to `02_progress.md` (§"The progress record").
 
 ---
 
@@ -148,11 +171,11 @@ STEP-001 is always "Read affected files and confirm approach."
 2. Locate the specific code areas relevant to the task
 3. Make a judgment:
 
-**If the approach is sound and no conflicts exist:** Tick STEP-001's checkbox in `02_plan.md`, report what you found, proceed to the next step.
+**If the approach is sound and no conflicts exist:** Mark STEP-001 done in `02_progress.md`, report what you found, proceed to the next step.
 
 **If recent changes conflict with the plan:** Stop. Report exactly what was found. Do not proceed. The plan may need revision.
 
-**If the task is already done** (already fully implemented): Stop. Report this. Tick STEP-001 and add a note:
+**If the task is already done** (already fully implemented): Stop. Report this. Mark STEP-001 done in `02_progress.md` and add a note under it:
 
 ```markdown
 > ⚠️ Task already implemented as of YYYY-MM-DD. Confirmed by: [what you observed]. No implementation needed.
@@ -168,8 +191,8 @@ below, as that checkpoint is reached, never batched at the end:
 
 | # | Checkpoint | Reached when |
 |---|------------|--------------|
-| **1** | approach confirmed | STEP-001's gate has been ticked — the affected files are read and the approach judged sound (Phase 2) |
-| **2** | plan step completed | a step after STEP-001 is ticked, or halts unfinished — fires **once per such step** (Phase 3) |
+| **1** | approach confirmed | STEP-001's gate has been marked done — the affected files are read and the approach judged sound (Phase 2) |
+| **2** | plan step completed | a step after STEP-001 is marked done, or halts unfinished — fires **once per such step** (Phase 3) |
 | **3** | verification run | the plan's verification command has run and its result is known (Phase 4, step 4a) |
 | **4** | acceptance criteria resolved | every "Done When" criterion has been recorded as met or unmet (Phase 4, step 4b) |
 | **5** | handoff checks complete | the scope-confinement guard has run and the work is ready for review (Phase 5) |
@@ -196,20 +219,20 @@ the typed outcome — never improvise an announcement at this marker:
   improvise: run the inline-default region below and state the resolver's reason. Follow the content
   surface's degradation discipline — never a wrong-path body, never a raw-read fall-through.
 
-A failure at any checkpoint never blocks execution and never un-ticks a step: the plan's checkboxes
-remain the run's durable progress record either way, and a later checkpoint still fires normally.
+A failure at any checkpoint never blocks execution and never un-marks a step: `02_progress.md`
+remains the run's durable progress record either way, and a later checkpoint still fires normally.
 
 <!-- wf:slot implement.milestone -->
 Nothing is announced anywhere. The checkpoint is reached and execution continues — no external
 record is opened, updated, or annotated, and no operation of any kind is emitted at this point. The
-plan's own checkboxes and step notes remain the only progress record this phase produces.
+status lines and step notes in `02_progress.md` remain the only progress record this phase produces.
 <!-- wf:slot-end implement.milestone -->
 
 ---
 
 ## Phase 3: Implement Steps in Order
 
-For each unchecked step after STEP-001, in order:
+For each step after STEP-001 not yet recorded done, in order:
 
 **Before starting the step:**
 
@@ -227,13 +250,12 @@ For each unchecked step after STEP-001, in order:
 **After completing the step:**
 
 - Re-read the changed file(s) to verify the change is correct
-- Tick the step's checkbox in `02_plan.md`
-- Write a one-line implementation note below the checkbox:
+- Mark the step done in `02_progress.md`
+- Write a one-line implementation note below its status line:
 
 ```markdown
-### - [x] STEP-002: <title>
-
-> Implemented: <one sentence describing what was actually done, or "as planned" if exact>
+- [x] STEP-002: <title>
+  > Implemented: <one sentence describing what was actually done, or "as planned" if exact>
 ```
 
 **If something unexpected is encountered mid-step:**
@@ -242,7 +264,7 @@ For each unchecked step after STEP-001, in order:
 - Do not partially implement the step
 - Revert any partial changes to that step's files
 - Report what was found and why it blocks the step
-- Leave the checkbox unchecked
+- Leave the step's status line in `02_progress.md` not done
 
 ---
 
@@ -257,19 +279,18 @@ The second-to-last step is always a build/typecheck command.
 - If the criterion is an observable state, verify by reading the implementation.
 - Record each criterion as PASS or FAIL.
 
-**If all pass:** Tick the checkbox. Proceed to pre-commit checks.
+**If all pass:** Mark the step done in `02_progress.md`. Proceed to pre-commit checks.
 
 **If anything fails:**
 
 - Stop immediately. Do not commit.
 - Report the full error output and which Done When criteria failed.
 - Revert changes that caused the failure if they can be isolated.
-- Add a failure note to `02_plan.md`:
+- Add a failure note under the step's status line in `02_progress.md`:
 
 ```markdown
-### - [ ] STEP-NNN: Run build/typecheck
-
-> ⚠️ Failed on YYYY-MM-DD: [error summary]. Changes reverted. Needs investigation.
+- [ ] STEP-NNN: Run build/typecheck
+  > ⚠️ Failed on YYYY-MM-DD: [error summary]. Changes reverted. Needs investigation.
 ```
 
 ---
@@ -280,16 +301,15 @@ The final step is a handoff check. Do not commit, push, or open a PR.
 
 **Run manual handoff checks (always):**
 
-- **Scope-confinement guard.** Cross-check the set of files this skill itself modified via `Edit`/`Write` this run — the set it knows deterministically from its own in-context edits — against the union of every executed step's Files table (plus STEP-001's confirmed target files). On a resumed run, augment that set with the files named by the plan's already-ticked steps, so edits from an earlier, interrupted session are still covered. If this skill edited a file that no step's Files table names, stop and report it — the "unexpected edits" guard, expressed against the plan's own bookkeeping rather than a live repository diff.
+- **Scope-confinement guard.** Cross-check the set of files this skill itself modified via `Edit`/`Write` this run — the set it knows deterministically from its own in-context edits — against the union of every executed step's Files table (plus STEP-001's confirmed target files). On a resumed run, augment that set with the files named by the steps already recorded done (§"Resume"), so edits from an earlier, interrupted session are still covered. If this skill edited a file that no step's Files table names, stop and report it — the "unexpected edits" guard, expressed against the plan's own bookkeeping rather than a live repository diff.
 - **Contract-completeness gap, documented, not worked around.** This guard covers only the files this skill edited directly; it cannot enumerate files the Phase 4 verification command touched as a side effect (lockfiles, generated artifacts, snapshots, coverage output), because the delivery contract's operation set (`plugins/wf/skills/_contracts/capability-registry.contract.md` §"The delivery provider surface") has no changed-files/diff-review operation today. Surfacing those side effects — and reviewing the accumulated diff content itself — is left to whatever review step the user runs next (`/wf:commit`, `/wf:pr`, or a manual review), not reproduced here.
 - List every file that should be staged by the user (the same file list the scope-confinement guard checked against).
 
-Tick the final step checkbox and add a ready-for-review note:
+Mark the final step done in `02_progress.md` and add a ready-for-review note:
 
 ```markdown
-### - [x] STEP-NNN+1: Commit
-
-> Ready for review. Audit against spec with `/wf:verify-spec <id>`, QA it with `/wf:qa-gen <id>` then `/wf:qa-auto <id>` (or `/wf:qa-run <id>`), or ship it: `/wf:commit <id> --push` then `/wf:pr <id>` (or commit manually).
+- [x] STEP-NNN+1: Commit
+  > Ready for review. Audit against spec with `/wf:verify-spec <id>`, QA it with `/wf:qa-gen <id>` then `/wf:qa-auto <id>` (or `/wf:qa-run <id>`), or ship it: `/wf:commit <id> --push` then `/wf:pr <id>` (or commit manually).
 ```
 
 ---
@@ -297,7 +317,7 @@ Tick the final step checkbox and add a ready-for-review note:
 ## Phase 5.5: Execution-End Announcement
 
 This is the declared `implement.finish` composition point — reached **after** the handoff checks
-have run and the final step is ticked, so the work being announced is finished and its outcome is
+have run and the final step is marked done, so the work being announced is finished and its outcome is
 known, and **before** the completion report is emitted. Resolve it lazily with **one** call:
 `resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: implement`, `point: finish`.
 Act on the typed outcome — never improvise an announcement at this marker:
@@ -312,8 +332,8 @@ Act on the typed outcome — never improvise an announcement at this marker:
   improvise: run the inline-default region below and state the resolver's reason. Follow the content
   surface's degradation discipline — never a wrong-path body, never a raw-read fall-through.
 
-A failure here never invalidates the work: the source changes are already made, the plan's
-checkboxes are already ticked, and the completion report is emitted unchanged either way.
+A failure here never invalidates the work: the source changes are already made, every step is
+already recorded done, and the completion report is emitted unchanged either way.
 
 <!-- wf:slot implement.finish -->
 Nothing is announced anywhere. Execution simply ends — no external record is opened, updated, or
@@ -325,7 +345,7 @@ annotated, and no operation of any kind is emitted at this point. Proceed to the
 
 ## Phase 6: Completion Report
 
-After all steps are ticked, output a completion summary.
+After every step is recorded done, output a completion summary.
 
 ```
 IMPLEMENT — Complete
@@ -348,43 +368,41 @@ The `Next:` line is **always present**, branched on the status:
 
 - **Complete** → pick a fork: `/wf:verify-spec {id}` (audit the implementation against `00_reqs.md` before shipping), `/wf:commit {id} --push` then `/wf:pr {id}` to ship (or commit manually), or `/wf:qa-gen {id}` then `/wf:qa-auto {id}` (or `/wf:qa-run {id}` to drive it yourself) to QA first.
 - **Partial** (`--steps` excluded the final handoff step, per the Command Syntax note above) → `/wf:implement {id}` to continue with the remaining steps.
-- **Blocked** (Phase 2/3/4 stopped on a conflict, unexpected finding, or verification failure) → resolve the blocking issue, then re-run `/wf:implement {id}` to resume from the first unchecked step.
+- **Blocked** (Phase 2/3/4 stopped on a conflict, unexpected finding, or verification failure) → resolve the blocking issue, then re-run `/wf:implement {id}` to resume from the first step not yet recorded done.
 
 **The last line of the output block must always be the very last thing output to chat.**
 
 ---
 
-## Phase 7: Update Plan
+## Phase 7: Resolution Summary
 
-Append a `## Resolution Summary` section at the bottom of `02_plan.md`:
+Append a `## Resolution Summary` section at the bottom of `02_progress.md` (never `02_plan.md`), and make sure its `**Implemented by:**` line names the model:
 
 ```markdown
 ## Resolution Summary
 
-**Implemented by:** <model identifier>
-
 <paragraph summarizing what was actually done — deviations from plan, key decisions made, and files changed>
 ```
 
-**After appending the Resolution Summary**, invoke `/wf:index {id} plan "implemented · <n> steps"` to refresh the `plan` row's summary so the index reflects the post-implementation state. Substitute the total step count from the plan.
+**After appending the Resolution Summary**, invoke `/wf:index {id} progress "implemented · <n> steps"` to refresh the `progress` row's summary so the index reflects the post-implementation state. Substitute the total step count from the plan.
 
 ### Record the phase-completion receipt
 
 **Last, after the Resolution Summary is appended** — deliberately here and not before the
 completion report, because the resolver digests the artifact at call time and this phase keeps
-writing to `02_plan.md` in this section. A receipt filed earlier would seal a digest that the
+writing to `02_progress.md` in this section. A receipt filed earlier would seal a digest that the
 phase's own next step invalidates, making the one receipt of the seven that is guaranteed stale.
 
 Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind:
 "phase-receipt", subject: "implement", taskId: {task-id}, artifactPath:
-"{task-root}/{task-id}/02_plan.md" })` — the plan is the artifact this phase leaves changed, and by
-this point every checkbox is ticked and the Resolution Summary is written. The resolver derives the
+"{task-root}/{task-id}/02_progress.md" })` — the progress record is the artifact this phase
+writes, and by this point every step is recorded done and the Resolution Summary is written. The resolver derives the
 run identity, the workspace, the timestamp and the sequence itself, digests the named artifact
 itself, and seals the record — this skill asserts none of them, which is what makes the receipt
 proof rather than a claim, and why it never writes the destination directly.
 
 **Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line
-and changes nothing else: the source changes are already made and the checkboxes already ticked, no
+and changes nothing else: the source changes are already made and the steps already recorded, no
 gate is added, no prompt is raised, and the completion report already emitted stands unchanged.
 
 ---
@@ -401,7 +419,7 @@ Proceed? (or type 'stop' to pause here)
 
 **`--mode nonstop` (default):** Execute all steps continuously. Still output the `STEP-00N complete` line after each step for visibility. Always stop on errors regardless of mode.
 
-In both modes, if the session is interrupted, the plan's checkboxes record exactly where work stopped — re-running the skill will resume from the first unchecked step.
+In both modes, if the session is interrupted, `02_progress.md` records exactly where work stopped — re-running the skill will resume from the first step not yet recorded done.
 
 ---
 
@@ -414,4 +432,5 @@ In both modes, if the session is interrupted, the plan's checkboxes record exact
 - **Complexity L task:** After STEP-001, output a warning: "This is an L-complexity item. Each step may take significant time."
 - **Merge conflict:** Stop immediately. Do not attempt to resolve automatically.
 - **No `02_plan.md`:** Stop and suggest `/wf:plan`.
-- **All steps already checked:** Report complete and stop.
+- **All steps already recorded done:** Report complete and stop.
+- **Legacy task (plan ticked, no `02_progress.md`):** resume from the plan's ticks read-only per §"Resume"; never write the plan to continue it.

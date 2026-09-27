@@ -68,8 +68,9 @@ implementation log is built from many firings rather than one.
 
 The four artifact fills share **one** umbrella per task and never collide: each creates a
 **distinct** prefixed child and records its id under a **distinct** metadata key in its **own**
-local artifact (`**Tracker spec item:**` in `01_spec.md`, `**Tracker plan item:**` and
-`**Tracker impl item:**` in `02_plan.md`, `**Tracker tasks item:**` in `03_tasks.md`), each guarded
+local artifact (`**Tracker spec item:**` in `01_spec.md`, `**Tracker plan item:**` in `02_plan.md`,
+`**Tracker impl item:**` in the implement-owned `02_progress.md` — the implement fills never write
+the approved plan — and `**Tracker tasks item:**` in `03_tasks.md`), each guarded
 by a read-back so a re-run reuses the recorded id instead of double-publishing. None of them patches
 the task's own description — `spec`'s pre-existing Phase-0 `update` remains the only write to it.
 

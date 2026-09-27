@@ -209,12 +209,14 @@ policy does **not** mean: it governs how *contributions* compose, not how *firin
 each firing still appends exactly its own one entry, guarded by the per-checkpoint key list in
 `**Impl log:**` so a resumed run never double-posts a checkpoint an earlier session already logged.
 
-**Where each guard line lives.** All three record into `02_plan.md`, the artifact `implement`
-executes: `**Tracker umbrella:**` and `**Tracker impl item:**` (from `implement.start`),
+**Where each guard line lives.** All three record into `02_progress.md`, the implement-owned
+progress artifact `implement` creates on its first write: `**Tracker umbrella:**` (from
+`implement.start`, only when the plan does not already carry one) and `**Tracker impl item:**`,
 `**Impl log:**` (the comma-separated checkpoint keys already posted), and `**Impl finished:** done`
-(from `implement.finish`). `**Tracker impl item:**` is distinct from `plan.publish`'s
-`**Tracker plan item:**`, so the two fills coexist in the same file without ever touching the same
-field.
+(from `implement.finish`). None of them writes `02_plan.md` — the approved plan stays byte-identical
+after its gate approval (WF-830); the fills only *read* the umbrella id and the umbrella description
+from it. `**Tracker impl item:**` is distinct from `plan.publish`'s `**Tracker plan item:**`, and the
+two now live in different files, so the fills never touch the same field.
 
 **The `tf` reconciliation, in one place.** `tf` finalizes with `post_comment({task-id}, …)` and a
 terminal `set_status({task-id}, …)` on the umbrella. The implement fills are disjoint from both on

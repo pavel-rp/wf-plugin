@@ -39,8 +39,8 @@ _(none)_
 `current-branch-query` (the `wf-resolver`
 `resolve_provider({ workspaceRoot, surface: "delivery" })` query); create and
 modify source files anywhere the loaded `02_plan.md` step dictates — this is the
-one core skill authorized to write outside `_local/`; tick this task's plan
-checkboxes and append its resolution summary; run **only** the verification
+one core skill authorized to write outside `_local/`; write this task's
+`02_progress.md` (step status, notes, resolution summary); run **only** the verification
 command the plan's verify step names; resolve the `implement.start`,
 `implement.milestone` and `implement.finish` slots via
 `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: implement`) —
@@ -55,8 +55,8 @@ body.
 **Forbidden:** commit, stage, push, or open a pull request; run any destructive
 version-control operation directly; run builds, tests, linters, or installs other
 than the plan's named verification command; skip a plan step or expand scope
-beyond what the loaded plan states; modify `00_reqs.md`, `01_spec.md`, or
-`02_plan.md` other than ticking checkboxes and appending the resolution summary;
+beyond what the loaded plan states; write `00_reqs.md` or `01_spec.md`; make
+any write to `02_plan.md` — the approved plan stays byte-identical;
 write, from this skill's own body, any external record of any kind (a composed
 slot body's own named operations are authorized by the Allowed clause above,
 never by improvisation here); improvise an announcement, a log entry, or any

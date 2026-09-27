@@ -110,7 +110,7 @@ The write below runs in this same caller context and is the sole path that mutat
 
 Callers pass one of the keys below, or any other alphanumeric+hyphen key for a **custom slot** (appended to the table as a custom row on first sight — not an error). Status cells are auto-derived here — callers don't compute them.
 
-- **File slots:** `triage`→`triage.md` · `reqs`→`00_reqs.md` · `spec`→`01_spec.md` · `plan`→`02_plan.md` · `tasks`→`03_tasks.md` · `migration-map`→`03_migration-map.md` · `verify`→`04_verify.md` · `verify-fix`→`05_verify-fix.md` · `qa`→`06_qa.md` · `qa-report`→`07_qa-report.md` · `qa-fix`→`08_qa-fix.md` · `lite`→`lite.md`
+- **File slots:** `triage`→`triage.md` · `reqs`→`00_reqs.md` · `spec`→`01_spec.md` · `plan`→`02_plan.md` · `progress`→`02_progress.md` · `tasks`→`03_tasks.md` · `migration-map`→`03_migration-map.md` · `verify`→`04_verify.md` · `verify-fix`→`05_verify-fix.md` · `qa`→`06_qa.md` · `qa-report`→`07_qa-report.md` · `qa-fix`→`08_qa-fix.md` · `lite`→`lite.md`
 - **String slots:** `qa-host` · `branch` · `classify` · `commit` · `pr` · `page-tests`
 - **Folder slots:** `tests`→`tests/` · `research`→`research/` · `assets`→`assets/` · `artifacts`→`artifacts/`
 
@@ -144,6 +144,7 @@ Catalog of artifacts and small results for this task. Every `wf:*` skill updates
 | `reqs`          | N/A    | —       |
 | `spec`          | N/A    | —       |
 | `plan`          | N/A    | —       |
+| `progress`      | N/A    | —       |
 | `tasks`         | N/A    | —       |
 | `migration-map` | N/A    | —       |
 | `verify`        | N/A    | —       |

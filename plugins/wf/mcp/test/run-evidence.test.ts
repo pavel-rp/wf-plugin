@@ -816,6 +816,58 @@ test("an approval whose artifact has since changed reads stale, and a deleted on
   assert.equal(service.readRunEvidence(TASK).matched[0].artifactState, "missing");
 });
 
+// WF-830 — implement records its progress in its own artifact, so the plan a gate
+// approved stays byte-identical through implement. The two tests below are the
+// pair ship's pre-PR re-check relies on: a clean run keeps the plan approval
+// fresh, and a real edit to the plan still reads stale.
+test("a clean implement run that writes only the progress record keeps the plan approval fresh", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  const plan = "_local/WF-490/02_plan.md";
+  seedArtifact(ports, plan, "# plan\n\n- [ ] STEP-001: Read affected files\n- [ ] STEP-002: Change\n");
+  service.recordRunEvidence({
+    kind: "gate-approval",
+    subject: "gate:plan",
+    taskId: TASK,
+    artifactPath: plan,
+  });
+
+  // Implement writes its ticks, notes and Resolution Summary to 02_progress.md
+  // and never touches the plan.
+  seedArtifact(
+    ports,
+    "_local/WF-490/02_progress.md",
+    "# WF-490 — Implementation progress\n\n- [x] STEP-001: Read affected files\n- [x] STEP-002: Change\n\n## Resolution Summary\n\nDone.\n",
+  );
+
+  const read = service.readRunEvidence(TASK);
+  assert.equal(read.matched.length, 1);
+  assert.equal(read.matched[0].subject, "gate:plan");
+  assert.equal(read.matched[0].evidenceClass, "artifact-backed");
+  assert.equal(read.matched[0].artifactState, "fresh");
+});
+
+test("a one-byte edit to the approved plan still reads stale", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  const plan = "_local/WF-490/02_plan.md";
+  const body = "# plan\n\n- [ ] STEP-001: Read affected files\n";
+  seedArtifact(ports, plan, body);
+  service.recordRunEvidence({
+    kind: "gate-approval",
+    subject: "gate:plan",
+    taskId: TASK,
+    artifactPath: plan,
+  });
+  seedArtifact(ports, "_local/WF-490/02_progress.md", "# WF-490 — Implementation progress\n");
+
+  // The planted edit: one byte, the kind a writer ticking a checkbox makes.
+  seedArtifact(ports, plan, body.replace("[ ]", "[x]"));
+  const read = service.readRunEvidence(TASK);
+  assert.equal(read.matched.length, 1);
+  assert.equal(read.matched[0].artifactState, "stale");
+});
+
 test("an artifact-less record reports n/a rather than being rounded up to fresh", () => {
   const ports = makePorts();
   const service = new ResolverService(ports);

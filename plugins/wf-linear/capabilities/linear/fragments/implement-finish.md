@@ -1,6 +1,6 @@
 # implement.finish — close the implementation record and hand the task to review (slot fill)
 
-**Version:** 1.0.0 (WF-408 — the `implement.finish` third of the C021 implement-phase mirror)
+**Version:** 1.1.0 (WF-408 — the `implement.finish` third of the C021 implement-phase mirror; WF-830 — every write moves to the implement-owned `02_progress.md`, the approved `02_plan.md` is read-only)
 **Model:** claude-opus-5[1m]
 
 Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
@@ -57,14 +57,16 @@ tracker contract is used, described, or implied.**
 
 ## Step 1 — Resolve the target, or return
 
-Read back `**Tracker impl item:** <id>` and `**Tracker umbrella:** <id>` from `02_plan.md`.
+Read back `**Tracker impl item:** <id>` from `02_progress.md` (an absent file means no line), and
+`**Tracker umbrella:** <id>` by `implement.start`'s Step 1 order (`02_plan.md` read-only, else
+`03_tasks.md`, else `02_progress.md`, else `01_spec.md`).
 
 **No impl item recorded → return immediately**, write nothing. There is no record to close: either
 no tracker is bound, or `implement.start` never resolved. Do **not** create the record here —
 creating it is `implement.start`'s job alone, and minting one at phase end would produce a record
 that was never In Progress, misrepresenting the very lifecycle this mirror exists to show.
 
-Also read back the `**Impl finished:**` line. If it already reads `done`, this phase was already
+Also read back the `**Impl finished:**` line from `02_progress.md`. If it already reads `done`, this phase was already
 closed once (a resumed run): **return immediately**, rewrite nothing, re-transition nothing.
 
 ## Step 2 — Rewrite the record's description
@@ -72,8 +74,9 @@ closed once (a resumed run): **return immediately**, rewrite nothing, re-transit
 Invoke `update(<impl-item-id>, description: <composed-document>)` **once**, replacing the short
 placeholder body `implement.start` wrote with the finished document. Four sections, in this order:
 
-- **`## Summary`** — what was actually implemented, in a short paragraph, drawn from `02_plan.md`'s
-  `## Resolution Summary` when present and from the ticked steps' implementation notes otherwise.
+- **`## Summary`** — what was actually implemented, in a short paragraph, drawn from `02_progress.md`'s
+  `## Resolution Summary` when present and from its `- [x] STEP-NNN` status lines' `> Implemented:`
+  notes otherwise.
   Deviations from the plan belong here.
 - **`## Audit`** — the scope-confinement result from the handoff checks: the list of files the work
   touched, and an explicit statement of whether every one of them was named by a plan step.
@@ -101,7 +104,7 @@ table above). On failure, state one line and continue.
 
 On success **or** stated failure-and-continue of both Step 3 and Step 4 — i.e. once this step is
 reached and its `set_status` call has been attempted — record `**Impl finished:** done` in
-`02_plan.md`. Writing the guard only here, after both `set_status` attempts, means an interrupted run
+`02_progress.md`. Writing the guard only here, after both `set_status` attempts, means an interrupted run
 (e.g. the session ends between Step 2 and Step 4) still retries Steps 3–4 on resume instead of Step
 1's own "already `done`" short-circuit skipping transitions that never actually ran.
 
@@ -124,8 +127,8 @@ emoji, or promotional tagline into any title, description, or comment.
 | either `set_status` fails | state one line, continue — the description rewrite stands either way |
 | Tracker unconfigured or unrecoverable | this fill never resolves at all; `implement` runs its no-op inline default instead |
 
-A failure here never invalidates the work: the source changes are made, the plan's checkboxes are
-ticked, and the completion report is emitted unchanged.
+A failure here never invalidates the work: the source changes are made, `02_progress.md`'s step status
+lines are recorded, and the completion report is emitted unchanged.
 
 Rationale, the charter this fill belongs to, and the full `tf` reconciliation record:
 [`../references/onboarding.md`](../references/onboarding.md) — read by authors, never at slot-fire.
