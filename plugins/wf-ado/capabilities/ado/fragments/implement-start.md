@@ -51,11 +51,12 @@ with its H1 and `**Plan:** 02_plan.md` line if absent). This is a one-time, read
 plan (legacy fallback — `wf-legacy-progress-fallback`); the plan is never written.
 After a re-plan, `/wf:implement` sets the old record aside as `02_progress.superseded.md`. When
 `02_progress.md` carries none of the three lines and that file exists, copy only its
-`**Tracker umbrella:**` and `**Tracker impl item:**` lines forward instead, so the new pass reuses
-the same records. The per-pass `**Impl log:**` and `**Impl finished:**` lines stay behind. Once it has run,
-this fill, `implement.milestone` and `implement.finish` read every guard line from `02_progress.md`
-alone, so no later step needs a plan fallback of its own. When `02_progress.md` already carries any
-of the three, or the plan carries none, do nothing.
+`**Tracker umbrella:**` and `**Tracker impl item:**` lines forward, so the new pass reuses the same
+records; the per-pass `**Impl log:**` and `**Impl finished:**` lines stay behind. When both sources
+exist, the superseded record wins and the plan is not read. Once this step has run, this fill,
+`implement.milestone` and `implement.finish` read every guard line from `02_progress.md` alone, so
+no later step needs a fallback of its own. When `02_progress.md` already carries any of the three,
+or neither `02_plan.md` nor `02_progress.superseded.md` carries a line to copy, do nothing.
 
 ## Step 1 — Idempotency guard (read the lines back first)
 
