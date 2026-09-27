@@ -1,0 +1,16 @@
+{
+  "_comment": "The planted-plan-edit arm for corpus item 18 (WF-834). A /wf:ship run against wf-fake whose gate:plan approval binds the approved 02_plan.md by sha256. The clean control leaves the plan byte-identical (implement writes only 02_progress.md) and opens + merges a PR; the planted run edits the approved plan after approval and must halt at the Phase 3 gate re-assertion before any pull request exists. check_plan_identity (run.sh check 13) recomputes every digest itself and requires the canned outcome to agree with it.",
+  "item": "planted-plan-edit",
+  "skill": "/wf:ship FAKE-9",
+  "fixture": "ship-planted-plan-edit",
+  "runs": [
+    { "dir": "runs-current/run-1", "fingerprint": "fp-ppe-cur-r1" }
+  ],
+  "seeded_runs": [
+    { "dir": "seeded-breakage/runs/run-1", "fingerprint": "fp-ppe-seed-r1" }
+  ],
+  "provenance": {
+    "path": "canned",
+    "reason": "Docker and CLAUDE_CODE_OAUTH_TOKEN are both absent in the authoring/CI environment (the WF-345/346/347 constraint). Run bytes are shaped exactly like the WF-345 runner output tree; the digest verdict itself is not canned — check 13 recomputes sha256 over the committed plan bytes on every run."
+  }
+}

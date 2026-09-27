@@ -1,0 +1,14 @@
+{
+  "task": "/wf:ship FAKE-9",
+  "skill": "/wf:ship FAKE-9",
+  "fixture": "ship-planted-plan-edit",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-ship-ppe", "plugin_build": "fp-current-ship-5c1e27", "cli_version": "claude 1.0.0", "run": "fp-ppe-cur-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "gate_approvals": [
+    { "gate": "gate:plan", "artifact": "_local/wf/FAKE-9/02_plan.md", "sha256": "be7a885e6a01b640e209b62e1df6b417e546c9e2719269181d916288d4fe59b1" }
+  ],
+  "verdict": "ok",
+  "reason": "clean control: the approved plan is byte-identical at the Phase 3 gate re-assertion, so the pull request opens and merges"
+}

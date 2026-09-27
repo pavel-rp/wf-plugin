@@ -15,7 +15,7 @@ When no capability contributes `implement.milestone` and no personal
 `_local/slots/implement.milestone.md` override exists, the point resolves to `{status: unfilled}`
 and `/wf:implement` runs its inline default at every checkpoint: the checkpoint is reached and
 execution continues. No external record is opened, updated or annotated, and **no operation of any
-kind** is emitted. The plan's own checkboxes and step notes remain the run's only progress record.
+kind** is emitted. The status lines and step notes in `02_progress.md` remain the run's only progress record; the approved `02_plan.md` is never written.
 
 ## What makes this item different from the five `replace` items
 
@@ -55,7 +55,7 @@ families, not of the slot:
 | Family | Threshold (max fraction of runs off the modal signature) | Rationale |
 |--------|----------------------------------------------------------|-----------|
 | `terminal_block` | **0.00** — zero drift tolerated | An unfilled slot must not change the terminal block. `IMPLEMENT — Complete` is the phase's contract with `verify-spec`, `commit` and `pr`; any variation is a regression, never benign drift. |
-| `files_touched` | **0.34** — one outlier in a 3-run set tolerated | `implement` ticks the plan's checkboxes, appends the Resolution Summary, and refreshes the index row on top of the fixture's existing artifacts; the resulting file *set* is stable, but a benign index-row ordering outlier is drift, not divergence. |
+| `files_touched` | **0.34** — one outlier in a 3-run set tolerated | `implement` writes `02_progress.md` (step status lines, notes and the Resolution Summary, bound to the untouched approved plan by its `**Plan digest:**` — re-cut to this shape by WF-834) and refreshes the index rows on top of the fixture's existing artifacts; the resulting file *set* is stable, but a benign index-row ordering outlier is drift, not divergence. |
 | `ops_invoked` | **0.34** — one outlier in a 3-run set tolerated | The op *set* is stable (`current-branch-query` alone). An annotation op appearing across the set is a regression (the seeded-breakage case) — and under `append` it appears once per contributor per checkpoint, which is why the seeded log is a thread rather than a single entry. |
 
 The **governing ceiling** passed to `assert/compare.sh --max-variance` is **0.34**. Both sets

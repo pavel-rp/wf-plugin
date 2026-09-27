@@ -37,7 +37,7 @@ families, not of the slot:
 | Family | Threshold (max fraction of runs off the modal signature) | Rationale |
 |--------|----------------------------------------------------------|-----------|
 | `terminal_block` | **0.00** — zero drift tolerated | An unfilled slot must not change the terminal block. `IMPLEMENT — Complete` is the phase's contract with `verify-spec`, `commit` and `pr`; any variation is a regression, never benign drift. This point sits immediately before the completion report, so it is the one most able to perturb that block — hence zero tolerance. |
-| `files_touched` | **0.34** — one outlier in a 3-run set tolerated | `implement` ticks the plan's checkboxes, appends the Resolution Summary, and refreshes the index row on top of the fixture's existing artifacts; the resulting file *set* is stable, but a benign index-row ordering outlier is drift, not divergence. |
+| `files_touched` | **0.34** — one outlier in a 3-run set tolerated | `implement` writes `02_progress.md` (step status lines, notes and the Resolution Summary, bound to the untouched approved plan by its `**Plan digest:**` — re-cut to this shape by WF-834) and refreshes the index rows on top of the fixture's existing artifacts; the resulting file *set* is stable, but a benign index-row ordering outlier is drift, not divergence. |
 | `ops_invoked` | **0.34** — one outlier in a 3-run set tolerated | The op *set* is stable (`current-branch-query` alone). A record-updating or state-transitioning op appearing across the set is a regression (the seeded-breakage case). |
 
 The **governing ceiling** passed to `assert/compare.sh --max-variance` is **0.34**. Both sets
