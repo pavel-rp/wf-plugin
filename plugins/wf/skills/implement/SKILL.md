@@ -28,6 +28,7 @@ Every write this phase makes to the task folder lands in `{task-root}/{task-id}/
 # {task-id} — Implementation progress
 
 **Plan:** 02_plan.md
+**Plan digest:** <sha256 of 02_plan.md's raw bytes, taken when the first step line is written>
 **Implemented by:** <model identifier>
 
 - [x] STEP-001: <title>
@@ -40,6 +41,8 @@ Every write this phase makes to the task folder lands in `{task-root}/{task-id}/
 ```
 
 A registered `implement.start`/`implement.milestone`/`implement.finish` slot fill records its own guard lines in this file's metadata block. A step is **done** when its line here is `[x]`.
+
+**Superseded record.** `/wf:plan` rewrites `02_plan.md` without touching this file, so a record can outlive the plan it tracked. Before Phase 1, compute the sha256 of `02_plan.md`'s raw bytes. When `02_progress.md` carries a `**Plan digest:**` that differs, the record belongs to an earlier plan: rename it to `02_progress.superseded.md` (replacing any earlier one) and proceed as if `02_progress.md` were absent. A record with no `**Plan digest:**` line holds only guard lines written before any step ran, and is kept.
 
 **Resume.** Start at the first step not marked done in `02_progress.md`. When `02_progress.md` is absent, or carries no `STEP-NNN` status line (only a slot fill's guard lines), and `02_plan.md` carries ticked checkboxes — a task implemented before this record existed — read those ticks as the done set, read-only (legacy fallback — `wf-legacy-progress-fallback`), and on the first step write seed the full `STEP-NNN` list from them into `02_progress.md` (creating it, or adding the list beneath its existing guard lines), then record all further progress there. When both exist, `02_progress.md` wins only when it carries at least one `STEP-NNN` status line — a record holding only a slot fill's guard lines (written at Phase 1.5, before any step runs) does not displace the plan's legacy ticks.
 
@@ -70,7 +73,7 @@ A registered `implement.start`/`implement.milestone`/`implement.finish` slot fil
 - **Branch-name matching tokens.** Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. The Phase 1 branch-gate quick-check matches an already-existing branch name against **either** `{task-id}` or `{numeric-id}`, compared case-insensitively; `{numeric-id}` is used **only** there — it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim — the lower-casing is for comparison only and never changes what is written or emitted.
 - If the task folder doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
 - If `02_plan.md` does not exist in the task folder, stop: "No plan file found. Run `/wf:plan {id}` first."
-- If every step is already recorded done (per §"Resume"), report: "All steps complete for {task-id}." and stop.
+- Apply §"Superseded record" first. Then, if every step is already recorded done (per §"Resume"), report: "All steps complete for {task-id}." and stop.
 - **Task title:** read from `02_plan.md` heading, or from `01_spec.md`, or from `00_reqs.md`. First available wins.
 - If `--steps` is provided, parse the range and validate that all referenced step numbers exist in the plan.
 
@@ -433,4 +436,5 @@ In both modes, if the session is interrupted, `02_progress.md` records exactly w
 - **Merge conflict:** Stop immediately. Do not attempt to resolve automatically.
 - **No `02_plan.md`:** Stop and suggest `/wf:plan`.
 - **All steps already recorded done:** Report complete and stop.
+- **Re-planned task (`**Plan digest:**` mismatch):** the old record is set aside as `02_progress.superseded.md` per §"Superseded record" and implementation starts over against the new plan; never resume a new plan from an old plan's ticks.
 - **Legacy task (plan ticked, no `02_progress.md`):** resume from the plan's ticks read-only per §"Resume"; never write the plan to continue it.
