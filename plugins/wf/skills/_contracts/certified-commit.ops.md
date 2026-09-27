@@ -80,8 +80,8 @@ exactly one outcome; `refuse` carries a reason. Fail closed: an unreadable repor
 
 **One re-verify per drift event.** The re-verify rewrites `04_verify.md` either way: a PASS certifies `T_B`
 (step 3 now holds), a non-PASS leaves the task `unbound` (step 2 now refuses). No state reaches step 5 twice
-for the same (`From`, `To`) pair. A new head is a new event with its own single re-verify, so the total never
-exceeds the number of drift events.
+for the same (`From`, `To`) pair. A new head is a new event with its own single re-verify,
+so the total never exceeds the number of drift events.
 
 A `refuse` stops the guarded path before its guarded action, stating the outcome, reason, `From`, and `To`.
 

@@ -556,6 +556,30 @@ else
   fail=$((fail + 1))
 fi
 
+# WF-818 — the certified-commit contract keeps its five drift-check outcomes, its
+# refuse reasons, its closed change-kind set and its one-re-verify-per-drift-event
+# bound, and verify-spec and /wf:pr stay wired to it. The self-test seeds eight
+# defective ops docs that must each be rejected.
+echo ""
+echo "=== Certified-commit guard — seeded self-test ==="
+if bash "$DIR/../certified-commit-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "certified-commit guard self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "certified-commit guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== Certified-commit guard — real-tree scan ==="
+if bash "$DIR/../certified-commit-guard.sh"; then
+  printf 'PASS: %s\n' "certified-commit guard real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "certified-commit guard real-tree scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
