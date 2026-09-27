@@ -12,7 +12,8 @@ merged anyway. Four shippers stated as fact that **no review existed** when find
 all four. Three PRs attached a reviewer that resolved **zero files** ("wasn't able to review
 any files") and that was read as a clean pass. WF-313 distilled five hardening requirements;
 this gate is their single home, homed in the contributing pack so that — per CLAUDE.md §2 —
-with the contribution unregistered `/wf:ship` shows no review term at all.
+with the contribution unregistered `/wf:ship` runs no review step, and its `Review:` slot reads core's
+own `none — no review step ran` fallback.
 
 ## The five requirements → gate steps
 
@@ -89,8 +90,8 @@ conservative and single-purpose, and keeps all code-mutation in the one skill bu
 coherent behaviour with one owner, not an additive list, so a fill supersedes the inline
 default wholesale rather than appending to it. Homing the fill in `pr-review` (charter
 Assumption #2, confirmed at spec time) keeps every review term inside the contributing pack:
-`ship`'s core body names no reviewer, and a project that has not registered `pr-review` sees a
-review-free `/wf:ship`. Registration is via `/wf-review:init` (WF-325), a compatibility alias
+`ship`'s core body names no reviewer, and a project that has not registered `pr-review` gets a
+`/wf:ship` that runs no review step (its `Review:` slot reads core's `none — no review step ran`). Registration is via `/wf-review:init` (WF-325), a compatibility alias
 onto the canonical `/wf:init` lifecycle whose apply is idempotent and refreshes the resolver
 snapshot so the new `slot` row resolves.
 

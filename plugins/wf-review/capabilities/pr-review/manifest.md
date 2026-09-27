@@ -35,7 +35,8 @@ Beyond those three skills it contributes **two `slot` fills**, each `replace`:
   drift apart.
 
 Both compose via the **registry**, so each fires only once this capability is registered; with it
-unregistered, `/wf:ship` and `/wf:fleet` show no review term at all (CLAUDE.md §2).
+unregistered, `/wf:ship` and `/wf:fleet` run no review step (CLAUDE.md §2) — their `Review:`/`review:`
+slots read core's own `none — no review step ran` fallback.
 
 **Registration in the `## Capabilities` registry is required** — run `/wf-review:init` once after
 `/wf:init`. Both `slot` fills — and `/wf-review:sweep-pr` itself — resolve only through a registered row; `/wf-review:init` is a

@@ -28,7 +28,8 @@ Beyond its three user-invoked skills, `pr-review` contributes **two `slot` fills
 is the post-merge sweep at `/wf:fleet`'s `fleet.closeout-review` point, which runs the same shared
 procedure `/wf-review:sweep-pr` follows for a single pull request. When the capability is registered,
 `/wf:ship` runs the gate between green checks and the merge on every run; with it unregistered,
-`/wf:ship` shows no review term at all (CLAUDE.md §2). The gate is **conservative by
+`/wf:ship` runs no review step (CLAUDE.md §2) — its `Review:` slot reads core's own `none — no
+review step ran` fallback. The gate is **conservative by
 construction** — it performs an API read-back at HEAD_SHA (`review-threads-read`), treats a poll
 timeout or an unperformed read-back as **unknown** (blocks, never "clean"), surfaces a
 zero-files-reviewed review as a distinct **failure** (never "no findings"), and posts a reply on
