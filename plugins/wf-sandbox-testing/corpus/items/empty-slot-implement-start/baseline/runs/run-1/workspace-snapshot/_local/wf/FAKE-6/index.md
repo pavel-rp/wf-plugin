@@ -6,7 +6,8 @@ Catalog of artifacts and small results for this task.
 | -------- | -------------------- | -------------------------------- |
 | `reqs`   | [open](00_reqs.md)   | fetched                          |
 | `spec`   | [open](01_spec.md)   | feat · S · 2 success criteria    |
-| `plan`   | [open](02_plan.md)   | implemented · 3 steps            |
+| `plan`   | [open](02_plan.md)   | 3 steps                          |
+| `progress` | [open](02_progress.md) | implemented · 3 steps |
 
 ---
 

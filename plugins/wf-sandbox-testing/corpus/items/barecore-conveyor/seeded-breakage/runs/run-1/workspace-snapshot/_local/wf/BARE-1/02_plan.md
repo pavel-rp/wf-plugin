@@ -16,26 +16,19 @@ plan was written to the workspace and no external child record was created.
 
 ## Progress
 
-- [x] STEP-001: Read affected files and confirm approach
-- [x] STEP-002: Apply the demo change
-- [x] STEP-003: Ready for review
+- [ ] STEP-001: Read affected files and confirm approach
+- [ ] STEP-002: Apply the demo change
+- [ ] STEP-003: Ready for review
 
 ---
 
 ## Execution Plan
 
-### - [x] STEP-001: Read affected files and confirm approach
+### - [ ] STEP-001: Read affected files and confirm approach
 
-> Implemented: as planned.
+### - [ ] STEP-002: Apply the demo change
 
-### - [x] STEP-002: Apply the demo change
-
-> Implemented: as planned. implement.start / implement.milestone / implement.finish each
-> resolved unfilled; their inline defaults ran and emitted no operation.
-
-### - [x] STEP-003: Ready for review
-
-> Ready for review.
+### - [ ] STEP-003: Ready for review
 
 ---
 

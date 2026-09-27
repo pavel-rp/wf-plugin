@@ -16,31 +16,18 @@ Add the exported helper to the demo module, then update the single call site to 
 
 ## Progress
 
-- [x] STEP-001: Read affected files and confirm approach
-- [x] STEP-002: Add the helper and its call site
-- [x] STEP-003: Run the demo build and hand off for review
+- [ ] STEP-001: Read affected files and confirm approach
+- [ ] STEP-002: Add the helper and its call site
+- [ ] STEP-003: Run the demo build and hand off for review
 
 ## Execution Plan
 
-### - [x] STEP-001: Read affected files and confirm approach
+### - [ ] STEP-001: Read affected files and confirm approach
 
-> Implemented: as planned.
+### - [ ] STEP-002: Add the helper and its call site
 
-### - [x] STEP-002: Add the helper and its call site
-
-> Implemented: as planned.
-
-### - [x] STEP-003: Run the demo build and hand off for review
-
-> Ready for review.
+### - [ ] STEP-003: Run the demo build and hand off for review
 
 ## Done When
 
 The helper is exported, the call site uses it, and the demo build passes.
-
-## Resolution Summary
-
-**Implemented by:** fake-model-a
-
-Added the exported helper to the demo module and updated the single call site. The demo build
-passes and every Done When criterion is met.
