@@ -9,7 +9,7 @@
 
 **Confirmed factors:**
 
-- verdict read before write — `skills/verify/SKILL.md:20` at version `1.0.0` — locator: `/sessions/d.jsonl` — tier: `mechanically-observed` — retired id: H5
+- verdict consumed before write — `skills/verify/SKILL.md:20` at version `1.0.0` — locator: `/sessions/d.jsonl` — tier: `mechanically-observed` — retired id: H5
 
 ### Hypotheses
 
@@ -22,7 +22,7 @@
 
 **Supporting**
 
-- verdict read at step 3 — locator: `/sessions/d.jsonl` | tier: reader-observed
+- verdict consumed at step 3 — locator: `/sessions/d.jsonl` | tier: reader-observed
 
 **Disconfirming**
 
