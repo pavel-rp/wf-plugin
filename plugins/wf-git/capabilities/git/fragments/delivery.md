@@ -376,6 +376,28 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
 - **`no-provider` is core's token, not this file's** — the same boundary as
   `newest-published-version-read`.
 
+## merged-ref-read (read)
+
+- **The merge commit is the state a post-merge check judges.** The post-merge
+  review sweep verifies findings after a pull request has merged. Verifying
+  against whatever checkout the caller holds made the same finding dispose
+  differently run to run — an orchestrator holding one checkout across a run of
+  merges routinely predates the one it sweeps (WF-838). The host lookup names the
+  merge commit; the local checkout is never consulted for it.
+- **An export, not a checkout.** `git archive` of the merge commit, extracted
+  into a caller-owned directory, gives the caller a real tree it can open,
+  search, and resolve real paths in — without touching the working tree, the
+  index, or any branch, and without registering a second worktree the caller
+  would have to unregister. Symlinks survive the export as symlinks, so a
+  caller's own symlink bound still sees them.
+- **`not-merged` is distinct from `read-failed`.** A pull request that is open,
+  closed without merging, or carries no merge commit is a stated fact about the
+  pull request; every other failure (host error, no such pull request, a commit
+  that cannot be fetched, a tree that cannot be resolved, an export that fails
+  or would overwrite existing content) is `read-failed`. Both are typed so a
+  caller reports them rather than falling back to its own checkout.
+- **`no-provider` is core's token, not this file's.**
+
 ---
 
 ## Edge cases reproduced
@@ -434,6 +456,12 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   failed fetch, or an unresolvable tree → `<reason>` = `read-failed`; otherwise
   `<read-performed>` = true with the remote's `<commit>` and its `<tree>`, even when
   the local branch lags or leads it.
+- **Merged ref** — `merged-ref-read`: step 1 on an unmerged pull request or a null
+  merge commit → `<reason>` = `not-merged`; step 1 host errors, step 2 an unfetchable
+  commit, step 3 an unresolvable tree, or step 4 an existing `<dest>` or a failed
+  archive/extract → `<reason>` = `read-failed` (a partial export removed); otherwise
+  `<read-performed>` = true with `<merge-commit>`, `<tree>` and, when `<dest>` was
+  supplied, `<root>` — even when the local checkout predates the merge.
   None of these is thrown as an environment error, and none may be returned as a bare
   empty — the C011 failure the typing exists to prevent is a consumer reading an unrun
   check as "the installation is current". `no-provider`, the contract's third token, is

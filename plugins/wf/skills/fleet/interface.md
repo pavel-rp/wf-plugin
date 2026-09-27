@@ -52,22 +52,26 @@ own worktree before the ceremony (never against the orchestrator's own workspace
 `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: fleet`, `point: closeout-review`)
 and, on a `composed` outcome, follow the served body as prose in this skill's own context — which at
 that point only authorizes exactly the operations that body names: the delivery reads
-`pr-detect`, `review-threads-read` and `pr-comments-read`, the tracker write `create_child`
+`pr-detect`, `review-threads-read`, `pr-comments-read` and `merged-ref-read` (once per swept pull
+request, exporting its merge commit to the fixed `_local/scratch/wf-sweep-merged-ref` so
+verification never reads the orchestrator's own checkout), the tracker write `create_child`
 (tracker mode only, at most 10 per swept pull request),
 one `wf:context-distiller` Task dispatch per swept pull request, and `Read`/`Grep` of a source file at a review-supplied
-anchor plus three `Bash` purposes the served body names (claim verification is not among
+anchor plus four `Bash` purposes the served body names (claim verification is not among
 them — the served body requires the `Grep` tool for that) — one
-real-path resolution per candidate to bound the anchor, and one SHA-256 digest per ingested entry that
+real-path resolution per candidate, under the merged-ref root, to bound the anchor, the removal of
+the fixed `_local/scratch/wf-sweep-merged-ref` export (any leftover before the read, and the export
+after each swept pull request, regardless of outcome), and one SHA-256 digest per ingested entry that
 carries no thread node id (at most one per entry in each swept pull request's single 100-entry
 ingest) for its
 idempotency key, whose preimage is written to the fixed `_local/scratch/wf-sweep-digest.bin` (mode
 `0600`) and hashed there rather than
-placed on a command line, that file being removed after each hash regardless of outcome — the third
-and only non-read-only `Bash` purpose — bounded by that body to an
+placed on a command line, that file being removed after each hash regardless of outcome — with the merged-ref
+removal, one of the two non-read-only `Bash` purposes — bounded by that body to an
 anchor every character of which is drawn from `A`-`Z`, `a`-`z`, `0`-`9`, `.`, `_`, `/` and `-`
 (checked before any `Bash` call, since the real-path resolution puts the anchor on a command line),
 which is relative and free of any `..` segment, no component of which is a symlink, whose
-resolved real path is inside the workspace root,
+resolved real path is inside the merged-ref root, itself inside the workspace root,
 and which does not resolve into a secret-bearing or machine-state location — the version-control
 metadata directory, the resolver's committed lifecycle tree, the resolved task root, any
 dot-prefixed path component, at most 25 per pull request — supplying

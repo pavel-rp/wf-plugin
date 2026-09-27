@@ -9,9 +9,9 @@
 # obligations; this file evaluates the shipped prose against them.
 #
 # WHAT THE THREE FIXTURE CASES REQUIRE, and why each is here rather than left to review.
-# (Eight evaluators run: the three fixture-declared cases below, plus the fixture-corpus check
-# and four more — the unfiled-survivor obligation, artifact-path resolution, untrusted-input
-# controls, and
+# (Nine evaluators run: the three fixture-declared cases below, plus the fixture-corpus check
+# and five more — the unfiled-survivor obligation, artifact-path resolution, untrusted-input
+# controls, verification at the merged ref (WF-838), and
 # stated-count agreement — each added after a real defect slipped past the ones before it.)
 #
 #   1. REACHABILITY (seeded-thread.md). The recorded-reference fallback must be keyed
@@ -595,6 +595,51 @@ security_violations() {
     flatten "$sk" | grep -qEi 'carrying no failure reason|no failure reason' \
       || printf 'the standalone caller does not gate its clean token on absent carrying no failure reason, so a pull request whose read could not run renders clean\n'
   fi
+}
+
+# --- Evaluator 6b: verification reads the merged ref (WF-838) -----------------
+#
+# merged_ref_violations <fragment> <fleet> <fleet-interface> <skill>
+#
+# ADDED AFTER A REAL VARIANCE. Step 4 used to open anchors in whatever checkout the caller held,
+# and a fleet orchestrator holds one checkout across a run of merges — so the same finding disposed
+# differently run to run, once with every candidate `unverifiable` because the checkout predated
+# every merge. The sweep now resolves the swept pull request's merge commit through the delivery
+# `merged-ref-read` read and verifies against an export of it. What must hold, and stay held:
+#   - the procedure names the read, verifies AT the merged ref, and never falls back to the checkout;
+#   - an unresolvable ref is reported with an explicit reason, never as an empty result;
+#   - the export lives at a FIXED scratch path and is removed regardless of outcome;
+#   - the pre-fix "current source is the authority" wording is gone;
+#   - every caller's Allowed region names the read and the export path, so the operation set is
+#     amended explicitly rather than widened silently under a Forbidden clause that calls it closed.
+merged_ref_violations() {
+  local f="$1" fl="$2" fi="${3:-}" sk="${4:-}" flat c
+  flat="$(flatten "$f")"
+
+  printf '%s' "$flat" | grep -qF 'merged-ref-read' \
+    || printf 'the procedure names no merged-ref read, so verification still runs against whatever checkout the caller holds\n'
+  printf '%s' "$flat" | grep -qEi 'at the merged ref|against the merged ref' \
+    || printf 'the procedure does not verify candidates at the merged ref\n'
+  printf '%s' "$flat" | grep -qEi "never fall back to the caller.s checkout|never a fall-back to the caller.s checkout" \
+    || printf 'the procedure does not bar falling back to the caller checkout when the merged ref cannot be resolved\n'
+  printf '%s' "$flat" | grep -qF 'merged ref could not be resolved' \
+    || printf 'an unresolvable merged ref has no explicit stated reason, so it can surface as an empty result\n'
+  printf '%s' "$flat" | grep -qF '_local/scratch/wf-sweep-merged-ref' \
+    || printf 'the merged-ref export has no fixed scratch path, so a derived operand could reach a shell\n'
+  printf '%s' "$flat" | grep -qEi 'merged-ref tree regardless of outcome|export.{0,80}regardless of outcome' \
+    || printf 'the merged-ref export is not removed regardless of outcome, leaving a source tree on disk\n'
+
+  # The defective literal itself: the checkout named as the authority.
+  printf '%s' "$flat" | grep -qEi 'current source is the authority|as it stands now\*\* — the merge has landed' \
+    && printf 'the procedure still names the caller checkout ("current source") as the verification authority\n'
+
+  for c in "$fl" "$fi" "$sk"; do
+    [ -n "$c" ] && [ -f "$c" ] || continue
+    allowed_region "$c" | grep -qF 'merged-ref-read' \
+      || printf 'a caller does not authorize merged-ref-read in its Allowed region, though its composed body performs it: %s\n' "${c##*/}"
+    allowed_region "$c" | grep -qF 'wf-sweep-merged-ref' \
+      || printf 'a caller does not name the fixed merged-ref export path or its removal in its Allowed region: %s\n' "${c##*/}"
+  done
 }
 
 # --- Evaluator 7: stated counts match what they enumerate ---------------------
@@ -1276,6 +1321,52 @@ the `**Swept issues:** <ids>` line of `09_finalize.md` in the resolved task fold
 PIDONLY
   expect_rejected "paths/idempotency-key-missing" "$(path_violations "$tmp/skill-path-idonly.md")"
 
+  # -- Merged ref (WF-838): the pre-fix wording, which verified against the caller's checkout.
+  cat > "$tmp/frag-mr-prefix.md" <<'MRPRE'
+For each candidate whose anchor passed, open it at the named lines with `Read` / `Grep` and
+decide against the code **as it stands now** — the merge has landed, so current source is the
+authority.
+MRPRE
+  cat > "$tmp/caller-mr-prefix.md" <<'CMRPRE'
+**Allowed:** pr-detect review-threads-read pr-comments-read, one real-path resolution per candidate.
+**Forbidden:** anything else.
+CMRPRE
+  expect_rejected "merged-ref/prefix-verifies-the-checkout" \
+    "$(merged_ref_violations "$tmp/frag-mr-prefix.md" "$tmp/caller-mr-prefix.md" "" "$tmp/caller-mr-prefix.md")"
+
+  # -- Merged ref: a repaired procedure and callers.
+  cat > "$tmp/frag-mr-ok.md" <<'MROK'
+Resolve the merged ref first: invoke `merged-ref-read` with `<dest>` = the fixed path
+`_local/scratch/wf-sweep-merged-ref`. On a false read every candidate is `unverifiable` with the
+evidence `merged ref could not be resolved (<reason>)`. **Never fall back to the caller's checkout.**
+Remove the merged-ref tree regardless of outcome. Decide against the code **at the merged ref**.
+MROK
+  cat > "$tmp/caller-mr-ok.md" <<'CMROK'
+**Allowed:** pr-detect review-threads-read pr-comments-read merged-ref-read, exporting to the fixed
+`_local/scratch/wf-sweep-merged-ref` and removing it regardless of outcome.
+**Forbidden:** anything else.
+CMROK
+  expect_accepted "merged-ref/repaired" \
+    "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-ok.md" "" "$tmp/caller-mr-ok.md")"
+
+  # -- Merged ref: the fall-back ban removed alone must still be caught — it is the variance itself.
+  grep -v 'Never fall back' "$tmp/frag-mr-ok.md" > "$tmp/frag-mr-fallback.md"
+  expect_rejected "merged-ref/checkout-fallback-allowed" \
+    "$(merged_ref_violations "$tmp/frag-mr-fallback.md" "$tmp/caller-mr-ok.md" "" "$tmp/caller-mr-ok.md")"
+
+  # -- Merged ref: the unresolvable reason removed alone — a failed read would surface as empty.
+  sed 's/`merged ref could not be resolved (<reason>)`/nothing/' "$tmp/frag-mr-ok.md" > "$tmp/frag-mr-noreason.md"
+  expect_rejected "merged-ref/unresolvable-unstated" \
+    "$(merged_ref_violations "$tmp/frag-mr-noreason.md" "$tmp/caller-mr-ok.md" "" "$tmp/caller-mr-ok.md")"
+
+  # -- Merged ref: a caller that names the read only in its Forbidden clause widens silently.
+  cat > "$tmp/caller-mr-forbidden.md" <<'CMRF'
+**Allowed:** pr-detect review-threads-read pr-comments-read.
+**Forbidden:** never invoke merged-ref-read or touch _local/scratch/wf-sweep-merged-ref.
+CMRF
+  expect_rejected "merged-ref/caller-silent-widening" \
+    "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-forbidden.md" "" "$tmp/caller-mr-ok.md")"
+
   if [ "$st_fail" -ne 0 ]; then
     printf 'FAIL: closeout sweep guard self-test (%s case(s))\n' "$st_fail"
     exit 1
@@ -1328,6 +1419,8 @@ run_evaluator "task-artifact reads resolve the archived location and every recor
   "$(path_violations "$SKILL")" || fail=1
 run_evaluator "untrusted review text is bounded at the anchor, the reasoning sink and the caller" \
   "$(security_violations "$FRAGMENT" "$FLEET" "$FLEET_IFACE" "$SKILL" "$DISTILLER")" || fail=1
+run_evaluator "verification reads the merged ref, never the caller's checkout, at every site" \
+  "$(merged_ref_violations "$FRAGMENT" "$FLEET" "$FLEET_IFACE" "$SKILL")" || fail=1
 run_evaluator "every stated count matches the enumeration that defines it" \
   "$(count_claim_violations "$FRAGMENT" "$SKILL" "$FLEET" "$FLEET_IFACE" "$RATIONALE" "$FIX_DIR"/*.md)" || fail=1
 

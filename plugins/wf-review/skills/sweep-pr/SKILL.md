@@ -1,6 +1,6 @@
 ---
 name: sweep-pr
-description: Sweeps one already-shipped pull request for review threads and review comments that landed after its merge, verifies every claim against current source, and records exactly one disposition per finding - issue filed, verified-invalid, moot, unverifiable, or absent. Files each verified survivor through the active tracker naming the PR, the claim, and the verification evidence. Reads and files only; it fixes nothing in place. Use after a task has merged to catch feedback that arrived too late for the pre-merge gate.
+description: Sweeps one already-shipped pull request for review threads and review comments that landed after its merge, verifies every claim against the source the pull request merged, and records exactly one disposition per finding - issue filed, verified-invalid, moot, unverifiable, or absent. Files each verified survivor through the active tracker naming the PR, the claim, and the verification evidence. Reads and files only; it fixes nothing in place. Use after a task has merged to catch feedback that arrived too late for the pre-merge gate.
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Task, Skill]
 ---
 
@@ -72,20 +72,23 @@ Zero-argument invocation sweeps the pull request for the current branch.
   `resolve_content({ workspaceRoot, ... })` (`class: fragment`) to obtain an operation's or the shared
   procedure's body.
 - Read-side delivery operations: `current-branch-query`, `pr-detect`, `review-threads-read`,
-  `pr-comments-read`. `pr-detect` is the identity probe the shared procedure's Step 1 uses. All are
-  existing surface operations — this skill adds none.
+  `pr-comments-read`, `merged-ref-read`. `pr-detect` is the identity probe the shared procedure's
+  Step 1 uses; `merged-ref-read` resolves the swept pull request's merge commit and exports its tree
+  to the fixed `_local/scratch/wf-sweep-merged-ref` once per pull request, so Step 4 verifies against
+  the merged source and never the local checkout. All are delivery-surface operations the contract
+  declares — this skill invents none.
 - The tracker write operation `create_child`, strictly through the resolved provider, to file a
   verified survivor.
-- `Read` / `Grep` / `Glob` to verify every candidate finding against current source — the
+- `Read` / `Grep` / `Glob` to verify every candidate finding against the merged-ref root — the
   load-bearing step, and the **only** tools that ever see review-derived pattern text: the `Grep`
   tool takes a pattern as a structured argument, whereas a shell `grep` would take it as a shell
-  word. **`Bash` is authorized for exactly three purposes, and claim verification is not
+  word. **`Bash` is authorized for exactly four purposes, and claim verification is not
   one of them**: **one real-path
-  resolution per candidate** (`realpath` / `readlink -f`) to enforce the shared procedure's anchor
-  bound — over an anchor whose every character the shared procedure requires to be drawn from `A`-`Z`, `a`-`z`, `0`-`9`, `.`, `_`, `/` and `-`, checked on the string first precisely because this resolution puts an untrusted path on a command line; and **one SHA-256 digest per ingested entry that carries no thread
+  resolution per candidate** (`realpath` / `readlink -f`) of the anchor under the merged-ref root to
+  enforce the shared procedure's anchor bound — over an anchor whose every character the shared procedure requires to be drawn from `A`-`Z`, `a`-`z`, `0`-`9`, `.`, `_`, `/` and `-`, checked on the string first precisely because this resolution puts an untrusted path on a command line; and **one SHA-256 digest per ingested entry that carries no thread
   node id, at most one per entry in the 100-entry ingest** — anchorless comments, replies, and
   stale-thread inline comments alike. The budget is per *entry ingested*, not per surviving
-  candidate, and its preimage is written to the fixed `_local/scratch/wf-sweep-digest.bin` and hashed there — never inlined into a command, since it is arbitrary commenter text. **The third `Bash` purpose is removing that file after each hash, regardless of outcome** — it is the one non-read-only purpose here, and the only mechanism that can delete it (`Write` creates and overwrites; it does not remove). It is denominated per entry because the shared procedure's Step 2 dedup mints the key while deduplicating, before the
+  candidate, and its preimage is written to the fixed `_local/scratch/wf-sweep-digest.bin` and hashed there — never inlined into a command, since it is arbitrary commenter text. **The third `Bash` purpose is removing that file after each hash, regardless of outcome** — it is one of the two non-read-only purposes here, and the only mechanism that can delete it (`Write` creates and overwrites; it does not remove). **The fourth `Bash` purpose is removing the fixed `_local/scratch/wf-sweep-merged-ref` tree** — any leftover before the `merged-ref-read` call, and the export after the pull request's last candidate, regardless of outcome — the other non-read-only purpose, over a fixed path never derived from a comment. It is denominated per entry because the shared procedure's Step 2 dedup mints the key while deduplicating, before the
   candidate cap exists, so a per-candidate grant would under-authorize it. The procedure applies that
   ingest cap **once** — the first 100 entries per pull request, in Step 2, after its cross-source
   dedup and before its within-source one — and
@@ -101,14 +104,17 @@ Zero-argument invocation sweeps the pull request for the current branch.
   recording each filed issue's id in the task's own artifact, the `index.md` row the index
   writer edits inline, and the single short-lived `_local/scratch/wf-sweep-digest.bin` each
   idempotency digest is computed over — a **fixed** path, never one derived from a comment, written
-  mode `0600`, hashed, and removed regardless of outcome; never an inlined command operand.
+  mode `0600`, hashed, and removed regardless of outcome; never an inlined command operand — and
+  the merged-ref export `merged-ref-read` writes to the fixed `_local/scratch/wf-sweep-merged-ref`,
+  removed regardless of outcome.
 
 **Forbidden:**
 
 - Editing any source file — this skill sweeps and files, it does not fix. Remediation belongs to the
   issues it files, under the ordinary gated plan-then-implement flow.
 - Writing any file outside `_local/`.
-- Filing a finding you have not confirmed against current source. Unverified claims are dropped, not
+- Filing a finding you have not confirmed against the merged ref — or verifying against the local
+  checkout when the merged ref cannot be resolved (that is `unverifiable`, stated). Unverified claims are dropped, not
   hedged into the tracker — laundering reviewer noise into the tracker is worse than the silence this
   skill replaces.
 - Resolving or replying to a review thread, merging, or any destructive delivery operation. This
@@ -123,7 +129,7 @@ Zero-argument invocation sweeps the pull request for the current branch.
 ## Provider resolution — delivery surface (resolve once)
 
 Every host read this skill invokes — `current-branch-query`, `pr-detect`, `review-threads-read`,
-`pr-comments-read` — is a **`delivery`-surface** operation. Resolve the surface **once** by calling
+`pr-comments-read`, `merged-ref-read` — is a **`delivery`-surface** operation. Resolve the surface **once** by calling
 `resolve_provider({ workspaceRoot, surface: "delivery" })` — the typed query returning the run-scoped
 record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. The resolver has already
 resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any
@@ -287,7 +293,7 @@ loses nothing, so an `INDEX — Error` never fails the run.
   read.
 - **A performed read with an empty thread set and no review comments** — an honest zero, recorded
   `absent: no review present at read time` and reported as such.
-- **Every candidate dropped against current source** — a legitimate and expected outcome (the C029
+- **Every candidate dropped against the merged ref** — a legitimate and expected outcome (the C029
   triage dropped roughly 60%) → `SWEEP-PR — Clean`, with the `<invalid>` / `<moot>` counts stating
   what was judged. Nothing is filed. **`Clean` requires `<n>` = 0, `<v>` = 0, and an `<a>` carrying no failure reason.**
 `absent: no review present at read time` is an honest zero and stays `Clean`; `review read could not be performed`, `identity probe could not be performed` and `PR unreachable` are checks that did not run, and force `Partial` with that reason stated. A run whose candidates could not be read — no anchor,

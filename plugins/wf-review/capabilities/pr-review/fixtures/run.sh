@@ -45,6 +45,16 @@ else
 fi
 
 echo ""
+echo "=== Merged-ref contrast — stale checkout vs the merged ref (WF-838) ==="
+if bash "$DIR/merged-ref-contrast.sh"; then
+  printf 'PASS: %s\n' "merged-ref contrast"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "merged-ref contrast"
+  fail=$((fail + 1))
+fi
+
+echo ""
 echo "=== Gate-map drift fixture ==="
 if bash "$DIR/gate-map-drift.sh"; then
   printf 'PASS: %s\n' "gate-map drift fixture"

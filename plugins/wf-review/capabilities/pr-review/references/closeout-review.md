@@ -228,6 +228,37 @@ disposition a candidate *takes*, so it sits inside `<found>` with the other thre
 candidates were all `unverifiable` has verified nothing, which is why the clean gate tests it
 separately.
 
+## Why Step 4 verifies at the merged ref, and why an unresolvable ref is `unverifiable`
+
+Before WF-838, Step 4 opened each anchor in whatever checkout the caller held. For the standalone
+skill that is usually a recent checkout; for the fleet orchestrator it is one checkout held across a
+whole run of merges, which routinely predates the pull request being swept. The same finding then
+disposed differently run to run — `moot` against a checkout that already carried a later fix,
+`unverifiable` against one that predated the file, and in one recorded run every candidate
+`unverifiable` because the shared checkout predated every merge. A verification whose result depends
+on which directory the caller happened to be standing in is not a verification.
+
+The authority is therefore the **merge commit**, named by the host through the delivery
+`merged-ref-read` operation and never inferred from the local checkout. The merge commit — rather
+than the tip of the base branch — is chosen because it is fixed: it is what the pull request merged,
+it is the same on every re-run, and the filed issue's evidence can name it. A finding fixed by a
+*later* pull request therefore still files; the issue carries the commit it was read at, so a reader
+sees exactly what was judged, and the tracker's ordinary triage closes it if a later merge fixed it.
+
+The read **exports** that commit's tree into a fixed scratch directory rather than reading one file
+at a time. That keeps every existing mechanism intact: the four anchor bounds still resolve real
+paths and still see symlinks (an archive export keeps them as symlinks), and claim verification can
+still `Grep` across files. The root the bounds are checked against changes; nothing else about them
+does. The directory is fixed for the same reason the digest preimage path is — nothing drawn from a
+comment ever names a filesystem operand — and it is removed regardless of outcome.
+
+An unresolvable merged ref disposes every capped candidate `unverifiable`, with the reason, rather
+than stopping the pull request as `absent`. `absent` is a statement about the **review** (there was
+nothing to judge); here the review was read and there *were* candidates — what failed is the source
+they are judged against. `unverifiable` is exactly that disposition, it already bars the clean token,
+and it keeps each candidate's claim visible in the report. Falling back to the local checkout is
+barred outright: it would reintroduce the variance this section exists to remove, silently.
+
 ## Why the filing cap is per pull request and not sweep-wide
 
 A sweep-wide bound was considered and dropped. The procedure executes once per pull request, so
