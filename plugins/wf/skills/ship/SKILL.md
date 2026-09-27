@@ -239,9 +239,16 @@ Run iterations `1..5`. Each iteration:
    Tally this iteration's blocks by class (`<c>` code, `<d>` infra/transient) and record the location of every edit applied — the final block reports both, and they are the only durable diagnosis of a non-convergence.
 
 5. **Flush any fix.** If step 4 applied at least one edit, stage exactly those edits, route the commit edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "commit"` and `unitIds: ["ship:ci-commit"]` under §"Fixed sibling-Skill routing", then invoke `/wf:commit <id> --push --staged` through the Skill tool to commit and push them. Branch on its block, which has three terminals, not two:
-   - `COMMIT — committed` → the head moved; hold the new head as `HEAD_SHA` for the next iteration's step 1.
+   - `COMMIT — committed` → the head moved; hold the new head as `HEAD_SHA` for the next iteration's step 1, then run the **drift check** below on it.
    - `COMMIT — nothing-to-commit` → an edit was applied but nothing landed, so the head did **not** move and the next read cannot make progress → **`SHIP — Blocked`** ("remediation fix did not land"), stop.
    - `COMMIT — Error` → **`SHIP — Blocked`**, surface the reason, stop.
+
+   **Drift check (the certified commit).** A remediation push moves the head off the commit `/wf:verify-spec` certified, so every head this loop pushes is checked before it can reach a merge. Follow the drift check in `certified-commit.ops.md` (`resolve_content({ workspaceRoot, ... })`, `class: contract`, `ref: certified-commit.ops.md`) §"The drift check" against the task folder `{task-root}/{task-id}/` and `HEAD_SHA`, and act on its single outcome — the same call-in `/wf:pr` makes before a pull request exists:
+   - **`inert`**, **`bound`**, or **`carried`** → continue. On `carried` the check has appended its `carry-forward` row to `04_drift.md` with `Path` `ship`; surface one line naming the kind and both commits.
+   - **`reverify`** → invoke `/wf:verify-spec {task-id}` through the **Skill** tool **exactly once** for this drift event — it runs in drift mode, scoped to the binding..`HEAD_SHA` diff, and writes its own report and ledger row — then re-run the check once without re-entering its re-verify step. `bound` → continue; anything else → the `refuse` bullet.
+   - **`refuse`** → **`SHIP — Blocked`** with `Merge: not merged — head <B> drifted from the certified commit <A> — <reason>` (`uncertified`, `reverified-fail`, or `unreadable`, as the check names it). `/wf:tf` is never reached. A drift re-verify that does not PASS is a stop here, never a trigger for another verify⇄fix round.
+
+   Each remediation push is its own drift event with at most one re-verify, scoped from whatever the previous event rebound to, so the re-verifies in one run never exceed the pushes the 5-iteration bound allows.
 
    **[ceiling checkpoint]** The push has just satisfied the flush invariant, so this is a clean flush-then-yield boundary: apply the context-ceiling checkpoint (§"Context ceiling checkpoint") here, before the next iteration's `checks-read`.
 
@@ -268,6 +275,8 @@ No review step runs here. `ship` drives build → checks → merge only: at this
 ## Phase 5: Merge and finalize
 
 **[ceiling checkpoint]** Before finalizing, apply the context-ceiling checkpoint (§"Context ceiling checkpoint"). This is the safest hand-off boundary: the branch is pushed and the PR is open, so the entire durable state survives. A fresh `/wf:ship <id>` re-detects the open PR, re-reads the settled checks, and merges — no work is repeated and nothing is stranded.
+
+**Drift check before the merge.** When Phase 4.2 pushed at least one remediation commit this run, re-run the Phase 4.2 **drift check** once on the head about to merge, with the same outcome handling, before routing `/wf:tf`. On the normal path it returns `bound` or `carried` (the last push was already checked) and costs no re-verify; any other outcome is handled exactly as there, and a `refuse` stops the run with `SHIP — Blocked` before `/wf:tf` is invoked. No merge under `ship` proceeds on a remediated head that differs from the effective binding with neither a `carry-forward` row nor a PASS re-verify covering it.
 
 Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "finalize"` and `unitIds: ["ship:finalize"]` under §"Fixed sibling-Skill routing", then invoke `/wf:tf <id>` (forwarding `--status <name>` when passed) through the Skill tool. The finalizer merges the pull request through the delivery provider's `pr-merge` operation (detect-first — never a double-merge), posts the resolution comment and closes the work item through the tracker provider when one is registered, then archives the task folder and updates the index locally. Read its `TF —` block:
 
