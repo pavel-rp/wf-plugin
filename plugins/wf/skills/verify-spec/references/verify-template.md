@@ -22,7 +22,7 @@ The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.
 **Verdict:** <PASS | FAIL | PARTIAL>  (<passed>/<total> requirements)
 **Certified:** commit `<HEAD SHA>`, tree `<audited tree identity>`  |  none — verdict <FAIL | PARTIAL>
 **Drift re-verify:** `<certified commit>`..`<HEAD SHA>` (<change kind>)   ← drift mode only; omit the line otherwise
-**Lenses:** <c>/<e> completed, <i> inline   ← always; `0/0 completed, 0 inline` when no `verify`/`finding` row exists
+**Lenses:** <c>/<e> completed, <i> inline[ — incomplete: <role>, …]   ← always; `0/0 completed, 0 inline` when no `verify`/`finding` row exists; the suffix only when `<c> < <e>`
 **Audited by:** <model identifier>
 **Audited at:** <ISO 8601 timestamp>
 
@@ -223,6 +223,9 @@ is a clean delivery, not a failure):
 - **Incomplete** — `<source capability>`/`<lens>` run inline, not independent: its rubric was
   executed in the verifying agent's own context, not an isolated dispatch. Counted in the
   `**Lenses:**` inline figure, never as completed. Non-gating.
+- **Incomplete** — `<source capability>`/`<role>` did not complete at the review boundary:
+  <the recorded reason — `failed — <reason>`, `not in manifest`, `block unreadable`,
+  `malformed block`, or `manifest unreadable`>. Its rubric was not applied by this run. Non-gating.
 
 Every Coverage entry is also reflected in the header's `**Lenses:**` count (§"Lens count"
 below), which renders even when this sub-list is omitted.
@@ -272,12 +275,19 @@ The same value is echoed verbatim by the chat summary's `Lenses:` line, the `VER
   enabled. A row the gate skipped was deliberately disabled and is not expected; a row with a
   malformed `dispatch`, or whose Task target is unavailable, is expected.
 - **`<c>` completed** — expected rows that delivered a well-formed block through their declared
-  dispatch: an `inline:` row whose body was followed in-context, or a `subagent:` row whose own
-  isolated Task returned. A clean block with an empty `findings:` list is completed.
+  dispatch: an `inline:` row whose body was followed in-context, a `subagent:` row whose own
+  isolated Task returned, or — at the review boundary (`review-boundary.md`) — a `subagent:` row
+  whose block the caller's own isolated child returned and recorded for the audited tree. A clean
+  block with an empty `findings:` list is completed.
 - **`<i>` inline** — `subagent:` rows whose rubric the verifying agent executed in its own context
   instead of an isolated Task (for example, because it could not dispatch one). They count in
   `<e>` and **never** in `<c>`: a rubric the auditing agent applies to its own work is not an
   independent lens run. Each is also recorded under Coverage as `run inline, not independent`.
+
+- **Incomplete suffix** — whenever `<c> < <e>`, the value ends ` — incomplete: <role>[, <role>…]`,
+  one derived role per expected row not in `<c>` (inline, failed, unavailable, malformed, or not
+  recorded at the review boundary), in registry order. A full count carries no suffix, so a lens
+  that did not complete is always named and never reads as full.
 
 An empty registry, or no `verify`/`finding` row, renders `0/0 completed, 0 inline` — the line is
 never omitted. The count is reporting only: it never enters the blocking set, the critic, the

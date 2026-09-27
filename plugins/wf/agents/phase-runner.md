@@ -1,7 +1,7 @@
 ---
 name: phase-runner
 description: Generic per-phase executor for /wf:run's hands-off walk — runs exactly one auto-front phase (triage, spec, plan, verify-spec, or qa-gen) against a task id in an isolated context and returns only that phase's Final Output block. Invoked only by wf:run via the Task tool.
-argument-hint: 'phase (triage|spec|plan|verify-spec|qa-gen), id'
+argument-hint: 'phase (triage|spec|plan|verify-spec|qa-gen), id, args (optional)'
 user-invocable: false
 ---
 
@@ -17,6 +17,7 @@ You are invoked only via the **Task** tool from `wf:run`. There is no `/wf:phase
 
 - `phase` — one of the **auto-front** phases: `triage`, `spec`, `plan`, `verify-spec` (alias `verify`), `qa-gen`.
 - `id` — the task id in whatever shape the caller resolved it — numeric, tracker-prefixed, or local `T<NNN>` — forwarded verbatim, never re-derived.
+- `args` — optional. Extra arguments the caller supplies for this phase (today only `--review-boundary <dir>` for `verify-spec`), appended verbatim after `id` in the Skill invocation. Never invented, reordered, or dropped; absent means the bare `/<skill> <id>`.
 
 ## Step 1 — Validate the phase
 
@@ -43,7 +44,7 @@ This is a defense-in-depth guard: the orchestrator already halts before these ph
 
 ## Step 2 — Execute the phase skill
 
-1. **Route the mapped Skill edge, then invoke it.** Before the first bundled resolver call, run `pwd -P` once and retain the absolute result as `workspaceRoot`. Immediately before execution, call `resolve_routing` with `workspaceRoot: workspaceRoot`, `role: "phase-runner"`, `unitIds: ["phase-runner:skill"]`, `shapeEvidence: { workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical", contextIsolation: "none", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it and emit the compact operational record. On `status: stop` or non-null `diagnostic`, return `PHASE-RUNNER — error` before invoking the Skill. Otherwise obey the selected `inline` shape, pass no selector, and invoke the mapped `/<skill>` (from Step 1) via the **Skill tool**, passing `id` as its argument — the same invocation the user would make at the top level. The harness loads the mapped body by invocation (not a filesystem read) and runs it in your existing context — no nested spawn, no permission prompt, and no dependency on a version-pinned `${CLAUDE_PLUGIN_ROOT}` path. The phase runner evaluates the terminal block and owns any contract-defined `postAttempt`; the invoked Skill never self-replaces.
+1. **Route the mapped Skill edge, then invoke it.** Before the first bundled resolver call, run `pwd -P` once and retain the absolute result as `workspaceRoot`. Immediately before execution, call `resolve_routing` with `workspaceRoot: workspaceRoot`, `role: "phase-runner"`, `unitIds: ["phase-runner:skill"]`, `shapeEvidence: { workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical", contextIsolation: "none", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it and emit the compact operational record. On `status: stop` or non-null `diagnostic`, return `PHASE-RUNNER — error` before invoking the Skill. Otherwise obey the selected `inline` shape, pass no selector, and invoke the mapped `/<skill>` (from Step 1) via the **Skill tool**, passing `id` as its argument, followed by `args` verbatim when supplied — the same invocation the user would make at the top level. The harness loads the mapped body by invocation (not a filesystem read) and runs it in your existing context — no nested spawn, no permission prompt, and no dependency on a version-pinned `${CLAUDE_PLUGIN_ROOT}` path. The phase runner evaluates the terminal block and owns any contract-defined `postAttempt`; the invoked Skill never self-replaces.
 
 **If the Skill-tool invocation fails** (the skill cannot be loaded or invoked), hard-stop and return a `PHASE-RUNNER — error` block naming the failed invocation — never fall back to Reading the skill body.
 2. The invoked skill runs its full procedure against `id`, exactly as if the user had typed `/<skill> <id>` at the top level. The skill body owns everything: obtaining config / registry / provider facts from the bundled `wf-resolver` MCP typed interface (`resolve_config({ workspaceRoot, ... })` / `resolve_registry({ workspaceRoot, ... })` / `resolve_provider({ workspaceRoot, ... })`), resolving the task folder, the branch gate (it may invoke the **Task** tool with `subagent_type: wf:branch` — that nested call works; you have the **Task** tool), fetching from the tracker, exploring the codebase, writing its artifact, and updating `index.md` via `/wf:index`. Let it run faithfully — do not shortcut, re-derive, or second-guess the skill's logic. **Resolution facts come from the cached, fingerprint-fresh `wf-resolver` snapshot** — the wrapped phase reads resolved config, registry metadata, and provider records from the typed queries rather than re-parsing `## Capabilities` / any `manifest.md` / plugin roots, so each phase iteration in the run performs **no** registry/manifest/plugin-root rediscovery of its own (the resolve-once cache is shared across every phase boot).
@@ -57,7 +58,7 @@ Emit ONLY the wrapped skill's own Final Output block, verbatim:
 - `TRIAGE — <lite | full | split | blocked | clarify>`
 - `SPEC — Complete`
 - `PLAN — Complete`
-- `VERIFY — <PASS | FAIL | PARTIAL>`
+- `VERIFY — <PASS | FAIL | PARTIAL | Handed-off>` (`Handed-off` only when `args` carried `--review-boundary`)
 - `QA-GEN — Complete`
 - or that skill's own `… — Error` block.
 

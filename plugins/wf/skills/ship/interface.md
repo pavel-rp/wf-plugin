@@ -9,7 +9,11 @@ keys, safety rules).
 
 ## Invocation
 
-`/wf:ship [<id>] [--status <name>] [--gate extend]`
+`/wf:ship [<id>] [--status <name>] [--gate extend] [--review-boundary <dir>]`
+
+`--review-boundary <dir>` is forwarded verbatim on every `/wf:run` invocation; a hand-back at
+verify's declared review boundary ends the run `SHIP — Handed-off` with
+`Built: stopped at review boundary`.
 
 ## Terminal block
 
