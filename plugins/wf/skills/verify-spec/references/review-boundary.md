@@ -68,6 +68,17 @@ dispatcher needs and nothing it must infer:
 ~~~
 ```
 
+The run then ends with this block as the very last thing output (in place of `VERIFY — <verdict>`):
+
+```
+VERIFY — Handed-off
+
+{task-id}: review boundary reached — <e> lens row(s) requested
+Request: <task-folder>/04_lens-request.md
+Exchange: <dir>/<T>/
+Next: /wf:verify-spec {task-id} --review-boundary <dir>   (after the caller records the requested blocks)
+```
+
 One `## Row` section per enabled subagent row, in registry order. The prompt is assembled exactly
 as §"Fire the `verify` phase" assembles it — the artifact under audit, the Round context block at
 `N >= 2`, and the inlined finding contract, under the same reviewer-prompt allowlist — plus one
