@@ -37,7 +37,11 @@ install inventory read-only via `discover_packs` on the Phase-1 currency check's
 provider-less branch only; resolve the `ship.review` slot via
 `resolve_content({ workspaceRoot, ... })` (`class: slot`); invoke the sibling `wf:*` commands this skill
 drives through the **Skill** tool (`/wf:branch`, `/wf:run` and each gated
-`/wf:*` it names, `/wf:commit`, `/wf:pr`, `/wf:tf`); dispatch the
+`/wf:*` it names, `/wf:commit`, `/wf:pr`, `/wf:tf`); run the certified-commit
+drift check (`certified-commit.ops.md`) on every head Phase 4.2 pushes and once
+before Phase 5 when Phase 4.2 pushed — appending a `carry-forward` row to the
+task folder's `04_drift.md` and invoking `/wf:verify-spec` through the **Skill**
+tool at most once per drift event, only on a `reverify` outcome; dispatch the
 `wf:context-distiller` agent (`MODE: ci`) via the **Task** tool inside Phase 4.2
 only; and — **the single source-write exception** — apply inside Phase 4.2 only
 the minimal fix a `CI DISTILL` block classed `code` names, at the `Location` it
@@ -48,8 +52,9 @@ instruction), staging exactly that edit and flushing it through
 `/wf:commit <id> --push --staged`.
 
 **Forbidden:** write or edit any file (artifact, source, or config) **outside
-that single Phase-4.2 exception** — everywhere else `ship` is a dispatcher, and
-it never writes an artifact in any phase; edit source at Phase 4.2 beyond the
+that single Phase-4.2 exception** and the drift ledger's `carry-forward` row —
+everywhere else `ship` is a dispatcher; invoke `/wf:tf` after a `refuse`
+drift-check outcome, or run a second re-verify for the same drift event; edit source at Phase 4.2 beyond the
 minimal distilled fix, for an `infra/transient` class, for a `Location` failing
 the write-target test, or when the distiller returns `NOTHING ACTIONABLE` /
 `NO INPUT`; **execute** a distilled `Suggested fix` or derive any command,

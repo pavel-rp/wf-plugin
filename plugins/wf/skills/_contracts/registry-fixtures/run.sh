@@ -559,7 +559,11 @@ fi
 # WF-818 — the certified-commit contract keeps its five drift-check outcomes, its
 # refuse reasons, its closed change-kind set and its one-re-verify-per-drift-event
 # bound and its acceptance scenarios, and verify-spec and /wf:pr stay wired to it.
-# The self-test seeds nine defective ops docs that must each be rejected.
+# WF-819 — /wf:ship stays wired to it on the CI-remediation path: the drift check
+# runs on every Phase 4.2 push and before /wf:tf, one re-verify per drift event,
+# and a refuse blocks the merge.
+# The self-test seeds nine defective ops docs and five defective ship bodies that
+# must each be rejected.
 echo ""
 echo "=== Certified-commit guard — seeded self-test ==="
 if bash "$DIR/../certified-commit-guard.sh" --selftest; then
