@@ -1869,6 +1869,14 @@ export interface CoreConfig {
    *  has nothing to ask for and states that it is not configured, never that the
    *  installation is current. Added WF-489. */
   versionDeclaration: string | null;
+  /** The ONE command the project declares to install a prepared worktree's
+   *  dependencies (`Dependency Setup Command`), surfaced verbatim. Only the
+   *  project's own config declares it — no capability source is ever read for it.
+   *  `null` (unset, `<none>`, or a placeholder) means nothing runs. Added WF-831. */
+  dependencySetupCommand: string | null;
+  /** The setup command's timeout in seconds (`Dependency Setup Timeout`),
+   *  surfaced verbatim; `null` means the shipped default. Added WF-831. */
+  dependencySetupTimeout: string | null;
 }
 
 /** Active tracker's id shape (consumer inventory §7 field #10). Product-noun

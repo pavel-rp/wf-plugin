@@ -177,6 +177,26 @@ const readRunEvidenceInput = fromJsonSchema(withWorkspaceRoot({
   additionalProperties: false,
 }));
 
+// --- prepare_workspace (WF-831) -------------------------------------------------
+// `sourceRoot` is read-only input, never a resolution root: the service admits it
+// only when it shares this worktree's family and is not this worktree itself.
+
+const prepareWorkspaceInput = fromJsonSchema(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    sourceRoot: {
+      type: "string",
+      minLength: 1,
+      maxLength: 4096,
+      pattern: safeTerminalStringPattern,
+      description:
+        "Absolute path of the worktree of the same family to copy setup state FROM (read-only). Never the workspace being prepared.",
+    },
+  },
+  required: ["sourceRoot"],
+  additionalProperties: false,
+}));
+
 // --- list_counterparts (WF-758) ------------------------------------------------
 // `baseRef` reaches `git diff` as an argv element, so the schema holds it to a
 // plain revision shape (no leading `-`, no whitespace); the service re-checks it
@@ -1362,6 +1382,35 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     },
     async (args: WorkspaceArgs & { taskId: string }) =>
       selected(args, (service) => service.readRunEvidence(args.taskId)),
+  );
+
+  // --- fresh-worktree preparation (WF-831) -------------------------------------
+  //
+  // Deliberately NOT `RESIDENT`: named at one call site, the fleet shipper
+  // dispatch template, so each defers behind tool-search like every other
+  // non-boot tool.
+
+  server.registerTool(
+    "prepare_workspace",
+    {
+      title: "prepare workspace",
+      description:
+        "Prepare a fresh worktree before any task work: copy the allowlisted setup state from `sourceRoot` — a DIFFERENT worktree of the same repository family, read-only — into this workspace's `_local/`, then regenerate this workspace's machine binding ledger from its own observation of the installed packs. Exactly five file classes transfer: the registry/config file, the composed constitution, capability profiles (`profiles/*.profile.json`), per-skill settings overrides (`profiles/*.settings.json`) and personal slot overrides (`slots/*.md`). Nothing else is ever listed, so task folders, receipts, approvals, run evidence, scoreboards, scratch, snapshots, locks and the source's own binding ledger never transfer, and the committed `.wf/` tree is never written. Returns `prepared` (files written, or the binding ledger regenerated), `already-prepared` (every allowlisted file already byte-identical and a ledger present — nothing written), or `blocked` with one closed reason, writing nothing: `foreign-root` (the source is not in this family, or is this worktree), `source-uninitialized` (the source has no registry or declares no task root), `divergent` (this workspace already holds a different copy of `path`, left untouched), `unsafe-path` (a symlink, non-regular file, or a registry location outside `_local/`). Never returns a file body.",
+      inputSchema: prepareWorkspaceInput,
+    },
+    async (args: WorkspaceArgs & { sourceRoot: string }) =>
+      selected(args, (service) => service.prepareWorkspace(args.sourceRoot)),
+  );
+
+  server.registerTool(
+    "run_workspace_setup",
+    {
+      title: "run workspace setup",
+      description:
+        "Run the ONE dependency-setup command the project declares in its own config (`Dependency Setup Command`), in this workspace's root, bounded by `Dependency Setup Timeout` seconds (default 600, ceiling 3600). No capability source is ever read for the command, so a capability-declared setup command never runs. Returns `not-declared` (the key is empty — nothing ran), `succeeded`, `already-done` (this same command already succeeded here — not re-run), or `blocked` with one reason: `unprepared` (no resolved project config — prepare first), `failed` (non-zero exit, a signal, or the command could not start — `detail` names which), `timed-out`. Every outcome echoes the declared `command` verbatim, plus `exitCode`, `durationMs` and a bounded output tail.",
+      inputSchema: workspaceOnlyInput,
+    },
+    async (args: WorkspaceArgs) => selected(args, (service) => service.runWorkspaceSetup()),
   );
 
   // --- counterpart listing (WF-758) ------------------------------------------
