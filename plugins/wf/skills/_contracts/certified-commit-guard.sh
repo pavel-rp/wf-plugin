@@ -25,7 +25,10 @@
 #   W1  the verify template renders the Certified and Drift re-verify lines;
 #   W2  verify-spec points at the ops doc and the drift ledger;
 #   W3  /wf:pr runs the drift check in Phase 2.2 and may invoke the Skill tool;
-#   W4  the paired rationale doc exists.
+#   W4  the paired rationale doc exists;
+#   W5  /wf:ship runs the drift check on every Phase 4.2 remediation push and
+#       again before /wf:tf, may invoke the Skill tool for the one re-verify,
+#       and blocks on a refuse outcome before any merge (WF-819).
 #
 # --selftest runs the ops-doc evaluator over seeded synthetic docs and requires
 # it to REJECT each defective one (exit 1, never a harness error) and ACCEPT the
@@ -116,6 +119,27 @@ evaluate_ops() {
   return 0
 }
 
+# evaluate_ship <file> <label> — applies W5 to a /wf:ship skill body; returns 1
+# on any violation. The CI-remediation push path must check every pushed head
+# and the head about to merge, and must never reach the merge on a refuse.
+evaluate_ship() {
+  local file="$1" label="$2" bad=0
+  require "$file" "$label" W5 'ship runs the drift check in Phase 4.2' '^   \*\*Drift check \(the certified commit\)\.\*\*' || bad=1
+  require "$file" "$label" W5b 'ship resolves the ops doc' 'ref: certified-commit\.ops\.md' || bad=1
+  require "$file" "$label" W5c 'ship re-checks the head before the merge' '^\*\*Drift check before the merge\.\*\*' || bad=1
+  require "$file" "$label" W5d 'ship blocks on a refuse outcome' '\*\*.refuse.\*\* → \*\*`SHIP — Blocked`\*\*' || bad=1
+  require "$file" "$label" W5e 'ship runs one re-verify per drift event' '\*\*exactly once\*\* for this drift event' || bad=1
+  require "$file" "$label" W5f 'ship may invoke the Skill tool for the re-verify' '^allowed-tools: \[.*Skill.*\]' || bad=1
+  # Scenario rows — one per CI-remediation acceptance case:
+  require "$file" "$label" W5g 'scenario: a carry-forward push is recorded under the ship path' 'row to `04_drift\.md` with `Path` `ship`' || bad=1
+  require "$file" "$label" W5h 'scenario: a second push after a rebind is its own B..C event' 'scoped from whatever the previous event rebound to' || bad=1
+  require "$file" "$label" W5i 'scenario: a failed drift re-verify stops, no second round' 'never a trigger for another verify⇄fix round' || bad=1
+  require "$file" "$label" W5j 'scenario: a re-invoked run cannot merge a head an earlier run refused' 'still cannot merge a head an earlier run refused' || bad=1
+  [ "$bad" -eq 0 ] || return 1
+  printf '%s: OK — drift check on every remediation push and before every merge, one re-verify per event, refuse blocks, all four ship scenarios pinned\n' "$label"
+  return 0
+}
+
 # --- self-test --------------------------------------------------------------
 
 if [ "${1:-}" = "--selftest" ]; then
@@ -180,11 +204,49 @@ SOUND
     selftest_fail=$((selftest_fail + 1))
   fi
 
+  sound_ship() {
+    cat <<'SHIP'
+allowed-tools: [Read, Skill, Edit, Write]
+
+   **Drift check (the certified commit).** Follow `ref: certified-commit.ops.md` on every pushed head.
+   - `carried` → the check appended its `carry-forward` row to `04_drift.md` with `Path` `ship`.
+   - **`reverify`** → invoke the audit **exactly once** for this drift event.
+   - **`refuse`** → **`SHIP — Blocked`** before any merge; never a trigger for another verify⇄fix round.
+   Each push is its own event, scoped from whatever the previous event rebound to.
+
+**Drift check before the merge.** Re-run the check on every run, so a re-invoked run still cannot merge a head an earlier run refused.
+SHIP
+  }
+
+  sound_ship >"$tmp/ship-sound.md"
+  sound_ship | grep -v 'Drift check (the certified commit)' >"$tmp/ship-no-push-check.md"
+  sound_ship | grep -v 'Drift check before the merge' >"$tmp/ship-no-premerge-check.md"
+  sound_ship | grep -v '`refuse`' >"$tmp/ship-refuse-proceeds.md"
+  sound_ship | sed 's/\*\*exactly once\*\* for this drift event/as often as needed/' >"$tmp/ship-unbounded-reverify.md"
+  sound_ship | sed 's/Skill, //' >"$tmp/ship-no-skill.md"
+  sound_ship | sed 's/, so a re-invoked run still cannot merge a head an earlier run refused//' >"$tmp/ship-resume-bypass.md"
+  sound_ship | grep -v 'scoped from whatever' >"$tmp/ship-no-rebind-scenario.md"
+
+  for case in ship-no-push-check ship-no-premerge-check ship-refuse-proceeds ship-unbounded-reverify ship-no-skill ship-resume-bypass ship-no-rebind-scenario; do
+    evaluate_ship "$tmp/$case.md" "selftest/$case" >/dev/null 2>&1
+    rc=$?
+    if [ "$rc" -ne 1 ]; then
+      err "SELFTEST FAIL — seeded '$case' ship doc returned exit $rc; expected 1"
+      selftest_fail=$((selftest_fail + 1))
+    fi
+  done
+
+  if ! evaluate_ship "$tmp/ship-sound.md" "selftest/ship-sound" >/dev/null 2>&1; then
+    err "SELFTEST FAIL — the ship evaluator REJECTED the seeded sound ship doc"
+    evaluate_ship "$tmp/ship-sound.md" "selftest/ship-sound" >&2
+    selftest_fail=$((selftest_fail + 1))
+  fi
+
   if [ "$selftest_fail" -ne 0 ]; then
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "certified-commit-guard: self-test passed — nine seeded defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), and the sound doc accepted."
+  echo "certified-commit-guard: self-test passed — nine seeded ops-doc defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), seven seeded ship-wiring defects rejected (no push check, no pre-merge check, refuse proceeds, unbounded re-verify, no Skill tool, a resume that bypasses a refusal, a dropped rebind scenario), and both sound docs accepted."
   exit 0
 fi
 
@@ -195,8 +257,9 @@ CONTRACT="$ROOT/plugins/wf/skills/_contracts/certified-commit.contract.md"
 TEMPLATE="$ROOT/plugins/wf/skills/verify-spec/references/verify-template.md"
 VERIFY="$ROOT/plugins/wf/skills/verify-spec/SKILL.md"
 PR="$ROOT/plugins/wf/skills/pr/SKILL.md"
+SHIP="$ROOT/plugins/wf/skills/ship/SKILL.md"
 
-for f in "$OPS" "$TEMPLATE" "$VERIFY" "$PR"; do
+for f in "$OPS" "$TEMPLATE" "$VERIFY" "$PR" "$SHIP"; do
   if [ ! -f "$f" ]; then
     err "target file is absent: $f"
     exit 2
@@ -222,8 +285,10 @@ if [ ! -f "$CONTRACT" ]; then
 fi
 [ "$bad" -eq 0 ] || fail=$((fail + 1))
 
+evaluate_ship "$SHIP" "SHIP" || fail=$((fail + 1))
+
 if [ "$fail" -ne 0 ]; then
   err "FAIL — the certified-commit contract or its consumer wiring is incomplete."
   exit 1
 fi
-echo "certified-commit-guard: PASS — the ops doc keeps every outcome, reason, kind and bound; verify-spec certifies and runs drift mode; /wf:pr runs the drift check before any pull request exists."
+echo "certified-commit-guard: PASS — the ops doc keeps every outcome, reason, kind and bound; verify-spec certifies and runs drift mode; /wf:pr runs the drift check before any pull request exists; /wf:ship runs it on every CI-remediation push and before the merge."
