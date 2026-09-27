@@ -37,6 +37,12 @@ the C011 consumer sweep is bounded against a reviewed list and cannot silently e
 > added later — requires an **explicit reviewed update here and a class/owner assignment**,
 > not silent scope expansion into an existing sweep slice. The class set is **exactly the
 > five** named below (C011 Scope IN); nothing else is in scope.
+>
+> **Currency (WF-795).** The **references** class (§4.4 and its §5 row) is kept in step with the
+> tree by `plugins/wf/skills/_contracts/content-read-references-inventory-guard.sh` — CI fails on
+> any drift, so those rows describe the current tree. The **fragment, shared, contract-ops and
+> profile** classes (§4.1–§4.3, §4.5 and their §5 rows) are the **dated C011 baseline**, last
+> reviewed at WF-725; they are not re-derived automatically and may lag the tree.
 
 ---
 
@@ -83,7 +89,9 @@ before SUB-4, never dispatch them in parallel. (F4.2: the grep gates OUT-2, not 
 and capability fragment across nine packs — the original eight (wf-git, wf-ado, wf-linear,
 wf-node-ts, wf-audit, wf-browser-qa, wf-angular, wf-review) plus a ninth, wf-postmortem, added by
 the **reviewed update (WF-725)**: its skill, agents, references and profile template were scanned
-and added to §3, §4.4, §4.5, §5 and §6.
+and added to §3, §4.4, §4.5, §5 and §6. **WF-795** re-derived the references class across **every**
+pack under `plugins/` (adding wf-author-caps and wf-core-authoring, the core consumers of a sibling
+skill's template, and the agent consumers) and placed §4.4 and its §5 row under a CI guard.
 
 **What counts as a content-read call site.** A location in a skill/agent (or a fragment that
 in turn reads another fragment) that, at runtime, performs — or instructs — a raw
@@ -124,7 +132,7 @@ The bundled non-skill bodies the sweep serves through the resolver, by class:
 | **fragment** | `wf-git/capabilities/git/fragments/delivery.ops.md`; `wf-ado/capabilities/ado/fragments/tracker.ops.md`; `wf-linear/capabilities/linear/fragments/tracker.ops.md`; `wf-node-ts/capabilities/node-ts/fragments/test-authoring.md`; `wf-audit/capabilities/sr/fragments/self-review.md`; `wf-audit/capabilities/audit/fragments/{correctness,security,convention,consistency,operational}.md`; `wf-audit/capabilities/audit/fragments/finding-contract.md`; `wf-audit/capabilities/audit/fragments/retrospective.md` |
 | **shared** | `plugins/wf/skills/_shared/pipeline-conventions.md` |
 | **contract-ops** | `plugins/wf/skills/_contracts/capability-registry.ops.md`; `.../invocation-runtime.ops.md`; `.../pack-onboarding.ops.md` |
-| **references** | the skill `references/*` templates enumerated in §4.4 (35 across core + wf-angular + wf-browser-qa + wf-postmortem — the wf-postmortem nine: `wf-postmortem/skills/postmortem/references/{continuation,redaction,task-root-containment,unitid-digest,version-resolution,coverage-cross-check,recommendation,report-template,locator}.md`) |
+| **references** | the skill `references/*` templates enumerated in §4.4, across core and every pack that serves one (count in §5; both guard-enforced) |
 | **profile** | `wf-angular/capabilities/angular/profile.template.json`; `wf-audit/capabilities/audit/profile.template.json`; `wf-postmortem/capabilities/postmortem/profile.template.json` |
 
 > The `.md` **reference halves** of the provider fragments (`git/.../delivery.md`,
@@ -266,35 +274,60 @@ class is provably covered (target present, zero surviving call sites).
 
 ### 4.4 References class → SUB-6 (WF-307)
 
-Each skill reads its own `references/*` template on its write/execution path ("read it, then
-emit it with placeholders substituted"). One call site per (skill → template):
+A skill or agent obtains a skill's `references/*` template through `resolve_content`
+(`class: references-template`, `skill: <owner>`, `ref: <template>`, plus `plugin: <pack>` for a
+pack) on its write/execution path ("read it, then emit it with placeholders substituted"). One
+call site per (consumer → template). A template with no parenthesised owner belongs to the
+consumer skill itself; `(owner)` names the skill that owns a template another skill or an agent
+reads.
+
+> **Guard-enforced (WF-795).** This table is derived mechanically from the tree and kept in step
+> with it by `plugins/wf/skills/_contracts/content-read-references-inventory-guard.sh`, which CI
+> runs through `registry-fixtures/run.sh`. It fails when a call site is missing here, a row here
+> has no call site, a listed template is absent on disk, or the §5 references counts disagree with
+> this table. `--print` emits the derived rows, so a new call site is recorded by regenerating
+> this table, never by hand-editing a count. A call site is any `references-template` occurrence
+> in a `plugins/*/skills/**` or `plugins/*/agents/*` file whose call names a `.md` `ref:`; a call
+> written in a skill's own `references/*` file counts for that skill.
 
 | Consumer | Template(s) read |
 |---|---|
-| `wf/skills/spec` | `spec-template.md` |
-| `wf/skills/plan` | `plan-template.md` |
-| `wf/skills/verify-spec` | `verify-template.md`, `finding-disposition.md` |
-| `wf/skills/verify-fix` | `verify-fix-template.md`, `finding-disposition.md` (verify-spec) |
-| `wf/skills/triage` | `triage-template.md` |
-| `wf/skills/lite` | `lite-template.md` |
-| `wf/skills/constitution` | `constitution-template.md` |
-| `wf/skills/qa-followup` | `qa-fix-template.md` |
-| `wf/skills/qa-gen` | `qa-template.md`, `report-format.md`, `api-scenarios.md` |
+| `wf/agents/classify` | `rubric.md` (classify) |
 | `wf/skills/classify` | `rubric.md` |
-| `wf/skills/init` | `config-template.md` |
-| `wf/skills/ship` | `context-ceiling.md`, `finding-ledger.md` (verify-spec), `attempt-ledger.md` (verify-fix) |
-| `wf-browser-qa/skills/qa-engine` | `preconditions.md`, `output-format.md`, `visual-verification.md` |
+| `wf/skills/constitution` | `clause-style.md`, `constitution-template.md`, `obligation-inventory.md` |
+| `wf/skills/fleet` | `review-boundary.md` (verify-spec) |
+| `wf/skills/init` | `alias-route.md`, `config-template.md`, `core-question.md`, `envelope-relay.md`, `local-readme-template.md`, `reconcile-mode.md`, `registry-location.md`, `settle-registry.md`, `verify-command-detection.md` |
+| `wf/skills/lite` | `lite-template.md` |
+| `wf/skills/plan` | `plan-template.md` |
+| `wf/skills/qa-auto` | `report-format.md` (qa-gen) |
+| `wf/skills/qa-followup` | `qa-fix-template.md`, `report-format.md` (qa-gen) |
+| `wf/skills/qa-gen` | `api-scenarios.md`, `qa-template.md`, `report-format.md` |
+| `wf/skills/qa-run` | `report-format.md` (qa-gen) |
+| `wf/skills/run` | `finding-ledger.md` (verify-spec) |
+| `wf/skills/ship` | `context-ceiling.md`, `attempt-ledger.md` (verify-fix), `finding-ledger.md` (verify-spec) |
+| `wf/skills/spec` | `spec-template.md` |
+| `wf/skills/triage` | `triage-template.md` |
+| `wf/skills/verify-fix` | `attempt-ledger.md`, `verify-fix-template.md`, `finding-disposition.md` (verify-spec) |
+| `wf/skills/verify-spec` | `chat-summary.md`, `critic-verdict.md`, `finding-disposition.md`, `finding-ledger.md`, `review-boundary.md`, `verify-template.md` |
 | `wf-angular/skills/qa-host` | `backend-host.md`, `scaffold-templates.md` |
-| `wf-angular/skills/test-page` | `page-test-template.md`, `harness.md`, `component-injection.md`, `bootstrap.md`, `backend-smoke.md` |
-| `wf-postmortem/skills/postmortem` | `continuation.md`, `redaction.md`, `task-root-containment.md`, `unitid-digest.md`, `version-resolution.md`, `coverage-cross-check.md`, `recommendation.md`, `report-template.md` |
-| `wf-postmortem/agents/locator` | `locator.md` (postmortem skill's references) |
-| `wf-postmortem/agents/session-reader` | `redaction.md` (postmortem skill's references) |
-| `wf-postmortem/agents/excerpt-fetcher` | `redaction.md` (postmortem skill's references) |
+| `wf-angular/skills/test-page` | `backend-smoke.md`, `bootstrap.md`, `component-injection.md`, `harness.md`, `page-test-template.md` |
+| `wf-author-caps/skills/authoring-guide` | `subagents-and-vocabulary.md` |
+| `wf-author-caps/skills/new-capability` | `capability-emission.md`, `scaffolder-loop.md` (new-skill) |
+| `wf-author-caps/skills/new-pack` | `capability-emission.md` (new-capability), `scaffolder-loop.md` (new-skill) |
+| `wf-author-caps/skills/new-provider` | `capability-emission.md` (new-capability), `scaffolder-loop.md` (new-skill) |
+| `wf-author-caps/skills/new-skill` | `scaffolder-loop.md` |
+| `wf-browser-qa/agents/qa-engine` | `preconditions.md` (qa-engine) |
+| `wf-browser-qa/skills/qa-engine` | `output-format.md`, `preconditions.md`, `visual-verification.md` |
+| `wf-core-authoring/skills/new-contract` | `contract-emission.md` |
+| `wf-postmortem/agents/excerpt-fetcher` | `redaction.md` (postmortem) |
+| `wf-postmortem/agents/locator` | `locator.md` (postmortem) |
+| `wf-postmortem/agents/session-reader` | `redaction.md` (postmortem) |
+| `wf-postmortem/skills/postmortem` | `continuation.md`, `coverage-cross-check.md`, `recommendation.md`, `redaction.md`, `report-template.md`, `task-root-containment.md`, `unitid-digest.md`, `version-resolution.md` |
 
-> The three wf-postmortem agents obtain their owning skill's templates via `resolve_content`
-> (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`) — an agent consumer
-> of a skill's reference, one call site per (agent → template). The pack's authoring-only
-> reference halves are not call sites (§6).
+> Agent consumers obtain their owning skill's templates through the same call, naming the owner
+> skill (and the pack via `plugin:`) — one call site per (agent → template). Reference halves that
+> a runtime file names only as a never-read rationale pointer (verify-spec's `adversarial-pass.md`,
+> the wf-postmortem authoring-only halves) are not call sites (§6).
 
 ### 4.5 Profile class → SUB-7 (WF-308)
 
@@ -326,12 +359,14 @@ Init reads the capability's `profile.template.json` **body** to seed a downstrea
 | fragment | SUB-3 / WF-304 | 11 | 32 delivery + 8 tracker + 4 inline phase/pre-commit + 6 subagent self-boot |
 | shared | SUB-4 / WF-305 | 1 | 6 |
 | contract-ops | SUB-5 / WF-306 | 3 | 20 (registry-ops) + 8 (invocation-runtime) + 0 (pack-onboarding) |
-| references | SUB-6 / WF-307 | 35 templates | 19 consumers (37 template reads) |
+| references | SUB-6 / WF-307 | 53 templates | 31 consumers (70 template reads) |
 | profile | SUB-7 / WF-308 | 3 | 3 |
 
 Every content-read call site above has exactly one class and one named owning slice; there
 is no catch-all. Counts are call sites (a consumer that reads two targets contributes to
-each). The fragment class is dominated by the provider-fragment read, which recurs in
+each). The **references** row is guard-enforced against §4.4 and the tree (distinct templates,
+distinct consumers, and total template reads); the other four rows are the dated C011 baseline
+and are not re-derived automatically. The fragment class is dominated by the provider-fragment read, which recurs in
 nearly every provider-operation boot — the single most widespread raw read C011 removes.
 
 ---
@@ -349,6 +384,7 @@ Recorded as **inputs/targets or out-of-scope**, never as content-serving consume
 | **`capabilities/*/references/onboarding.md`** (ado, angular, audit, sr, browser-qa, git, linear, node-ts, pr-review) | Reference (non-runtime) halves — the ops/reference split's rationale docs. Manifest prose "read by `init`" is **legacy**: current init flows use `inspect_pack`/`register_pack` and do not read them. Non-runtime → not a call site. |
 | **Provider fragment `.md` reference halves** (`git/.../delivery.md`, `ado`/`linear` `tracker.md`) | The rationale halves paired with the `.ops.md` bodies; never read at boot (the `.ops.md` half is the runtime read, captured in §4.1). |
 | **`${CLAUDE_PLUGIN_ROOT}` own-`SKILL.md` self-boot** | The plugin runtime handing a component its own skill body — not a bundled non-skill doc read; and skill bodies are the separate charter regardless. (Own-*fragment* self-boot **is** in scope — §4.1(c).) |
+| **Never-read rationale pointers in core skills** (e.g. `verify-spec`'s `references/adversarial-pass.md`) | A runtime file names the doc only to say where rationale lives and that it is never read at runtime; the pointer names no `ref:` to fetch. Non-runtime → not a call site. |
 | **wf-postmortem authoring-only reference halves** (`references/excerpt-fetcher.md`, `references/locator-rationale.md`, `references/locator-agent-rationale.md`, `references/continuation-rationale.md`, `references/version-resolution-rationale.md`, `references/reader-dispatch-consistency.md`) | Paired rationale docs, each stating it is never read at runtime; the runtime files cite them only as pointers. Non-runtime → not a call site. |
 | **Resolver-metadata calls** (`resolve_config`/`resolve_registry`/`resolve_provider`/`resolve_profile`/`resolve_plugin_root`/`inspect_pack`/`register_pack`) | Return paths/metadata/values, never a body (C008, delivered). Not raw reads; unchanged by C011. |
 
@@ -363,7 +399,7 @@ exclusion, proving no content-read call site in the five classes is missing.
 |---|---|---|---|
 | 1 | `_shared/` | shared | §4.2 (6 consumers) |
 | 2 | `_contracts/.*\.ops\.md` / `capability-registry\.ops\.md` / `invocation-runtime` / `pack-onboarding` | contract-ops | §4.3 |
-| 3 | `\]\(references/` and `references/…\.md` reads | references | §4.4 (35 templates); `capabilities/*/references/onboarding.md` and the wf-postmortem authoring-only halves → §6 exclusion |
+| 3 | `references-template` call sites naming a `ref:` (enumerated by `content-read-references-inventory-guard.sh --print`) | references | §4.4 (counts in §5); `capabilities/*/references/onboarding.md`, never-read rationale pointers, and the wf-postmortem authoring-only halves → §6 exclusion |
 | 4 | `profile\.template\.json` | profile | §4.5 (3 init reads); qa-host/test-page and postmortem mentions → §4.5 notes (values via `resolve_profile`) |
 | 5 | `fragments/.*\.md` (inline dispatch) · `${CLAUDE_PLUGIN_ROOT}/capabilities/.*/fragments/` (self-boot) · resolved `delivery.ops.md`/`tracker.ops.md` dispatch reads | fragment | §4.1(a)/(a′)/(b)/(c) |
 
