@@ -102,7 +102,7 @@ check_manifest() {
 # Delivery reads whose result is TYPED with a <read-performed> flag, so a degraded result
 # can never be mistaken for a performed read (capability-registry contract, "Degradation
 # shape"). Each must document the flag in its fragment.
-TYPED_READS=(review-threads-read newest-published-version-read)
+TYPED_READS=(review-threads-read newest-published-version-read branch-head-read)
 # Of those, the ops whose typed degradation is itself scripted evidence: sample-scripts.json
 # must carry both a performed and a degraded return.
 BOTH_POLARITY_READS=(newest-published-version-read)

@@ -354,6 +354,28 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   from the caller, and the local value the published one is compared against is
   the caller's to read. This operation reads only the published side.
 
+## branch-head-read (read)
+
+- **The remote holds the head a merge takes.** A certified-commit drift check
+  compares the head about to merge against the verified binding. The local
+  branch is not that head whenever another session pushed after this worktree
+  last fetched (the local lags), or this one committed without pushing (the
+  local leads). Checking the local head in either case certifies bytes the merge
+  never takes — the stale-head defect this operation closes (WF-839).
+- **`ls-remote` names the head; the fetch only makes it readable.** The commit
+  comes from the remote's own answer, not from the remote-tracking ref, which is
+  only as fresh as the last fetch. The follow-up fetch exists solely so the tree
+  identity of that commit can be resolved locally; it checks nothing out and
+  moves no local branch.
+- **`not-published` is distinct from `read-failed`.** A branch the remote does
+  not carry (`ls-remote` exit 2) is a stated fact about the remote, not a
+  failure to read it; every other failure (no `origin`, unreachable remote,
+  failed fetch, unresolvable tree) is `read-failed`. Both are typed returns,
+  never an environment error, so a caller can refuse on them explicitly rather
+  than fall back to the local head silently.
+- **`no-provider` is core's token, not this file's** — the same boundary as
+  `newest-published-version-read`.
+
 ---
 
 ## Edge cases reproduced
@@ -407,6 +429,11 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   git working tree, no `origin` remote, or the fetch failed) → `<reason>` = `read-failed`;
   step 3 (the declaration absent from the published state, unparseable, an absent
   `<version-field>`, or a blank value) → `<reason>` = `none-published`.
+- **Remote branch head** — `branch-head-read`: step 2 exit 2 → `<reason>` =
+  `not-published`; steps 1–4 on a detached HEAD, a missing or unreachable remote, a
+  failed fetch, or an unresolvable tree → `<reason>` = `read-failed`; otherwise
+  `<read-performed>` = true with the remote's `<commit>` and its `<tree>`, even when
+  the local branch lags or leads it.
   None of these is thrown as an environment error, and none may be returned as a bare
   empty — the C011 failure the typing exists to prevent is a consumer reading an unrun
   check as "the installation is current". `no-provider`, the contract's third token, is

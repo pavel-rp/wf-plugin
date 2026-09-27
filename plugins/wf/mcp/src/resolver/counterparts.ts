@@ -82,9 +82,13 @@ export function locationShapeError(p: string): string | null {
 
 /**
  * Parse the declared map: a markdown table `| Key | Kind | Locations |`, keys
- * optionally backtick-quoted, locations comma-separated. Rows outside a table,
- * the header row, and the separator row are ignored; every other malformed row
- * is skipped with a diagnostic rather than guessed at.
+ * optionally backtick-quoted, locations comma-separated. Only the map table is
+ * read: the table opened by the `Key | Kind | Locations` header row, or — when
+ * no line carries that header — the first table in the file. The table ends at
+ * its first non-`|` line; everything before it and after it (prose, a second
+ * table, pipe-led notes) is ignored, never parsed as rows. Inside the table the
+ * header and separator rows are ignored; every other malformed row is skipped
+ * with a diagnostic rather than guessed at.
  */
 export function parseCounterpartMap(text: string): {
   entries: CounterpartEntry[];
@@ -93,15 +97,26 @@ export function parseCounterpartMap(text: string): {
   const entries: CounterpartEntry[] = [];
   const diagnostics: string[] = [];
   const lines = text.split(/\r?\n/);
+  const splitCells = (line: string): string[] =>
+    line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  const isHeader = (cells: string[]): boolean =>
+    cells.map((c) => c.toLowerCase()).join("|") === "key|kind|locations";
+  const isPipe = (raw: string): boolean => raw.trim().startsWith("|");
 
-  lines.forEach((raw, idx) => {
-    const row = idx + 1;
+  // The map table starts at its header row when one exists, else at the first pipe line.
+  let start = lines.findIndex((raw) => isPipe(raw) && isHeader(splitCells(raw.trim())));
+  if (start < 0) start = lines.findIndex(isPipe);
+  if (start < 0) return { entries, diagnostics };
+  let end = start;
+  while (end < lines.length && isPipe(lines[end])) end += 1;
+
+  lines.slice(start, end).forEach((raw, offset) => {
+    const row = start + offset + 1;
     const line = raw.trim();
-    if (!line.startsWith("|")) return;
-    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    const cells = splitCells(line);
     if (cells.every((c) => /^:?-{3,}:?$/.test(c))) return; // separator row
     // Header row: the whole `Key | Kind | Locations` triple, so a declared literal key "key" survives.
-    if (cells.map((c) => c.toLowerCase()).join("|") === "key|kind|locations") return;
+    if (isHeader(cells)) return;
     if (cells.length !== 3) {
       diagnostics.push(`row ${row}: expected 3 cells (Key | Kind | Locations), found ${cells.length}`);
       return;
