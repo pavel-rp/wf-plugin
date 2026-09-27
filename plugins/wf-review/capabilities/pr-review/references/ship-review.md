@@ -39,6 +39,40 @@ with the contribution unregistered `/wf:ship` shows no review term at all.
    shippers did fix findings but never replied, so the audit trail could not tell a fixed
    finding from an ignored one; the marker makes the recorded resolution unambiguous.
 
+## Capped outcomes: a recorded cause and the review-completeness switch (WF-837)
+
+About half of unattended pull requests merged with no completed review, and every one of them
+recorded the same thing — "no review" — so nobody could say whether the reviewer never received
+the request or received it and never answered (charter C040, H5/H6; research R008, assumption
+A6 untested). Step 2 therefore verifies the request through the delivery provider's
+`review-request-read` before it decides anything, and every capped outcome carries one of two
+causes:
+
+- **`no-post`** — the request registered and nobody posted. Either it is still outstanding when
+  the capped polls lapse (the existing WF-313 timeout **block**, unchanged), or the host
+  withdrew it with nothing posted — which the pending list alone cannot see, and which is why
+  the read also counts review-request events on the pull request's history.
+- **`request-failed`** — no request ever registered, or the read that would show one could not
+  be performed. An unverifiable request is treated as one that did not demonstrably register;
+  "unknown" is deliberately not a cause.
+
+**Switch off (the shipped default) changes no decision.** Every outcome that blocked before still
+blocks and every outcome that passed still passes; the former reviewer-absent pass is now named
+what it is — a capped merge — with its cause. A first draft turned the timeout block into a
+merge to match the fleet's capped-review rule; that would have weakened an existing gate, so it
+was dropped.
+
+**Switch on** (`## Review` → `**Require Completed Review**` = `on` in `_local/config.md`)
+requires at least one completed review before a capped outcome may merge: an external review
+(already handled — Steps 2 and 3 only reach Step 2b when none exists) or complete in-run lens
+coverage, read from the task's `04_verify.md` `**Lenses:**` line under verify-spec's own count
+(an inline lens is expected, never completed). Without either, the item is handed back. This is
+R008 option 4-A+ (ii); it stays off until the lens path that makes in-run coverage routinely
+complete has landed (WF-836), because until then roughly half of all items would hand back.
+
+`ship` core renders the recorded summary verbatim in its `Review:` slot and never interprets it;
+fleet copies it per item. Neither names a reviewer.
+
 ## Why the gate does not fix code itself
 
 `ship` is a pure orchestrator that mutates no source; the gate inherits that. It verifies each

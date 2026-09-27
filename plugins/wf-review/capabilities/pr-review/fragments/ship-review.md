@@ -13,6 +13,11 @@ block it emits `SHIP — Blocked` (with a `Reason:` and a `Next:`) and **stops**
 fall through to Phase 5. On a pass it returns quietly and `ship` proceeds to Phase 5.
 `ship`'s never-merge-red invariant and `/wf:tf`'s detect-first `pr-merge` stay the final guard.
 
+**The recorded summary.** Every outcome — pass or block — carries exactly one `Review:` summary
+line back to `ship`, which renders it verbatim in its final block's `Review:` slot. The value is
+the text after `Review: ` in the step that decided the outcome; a block without a step-specific
+summary carries `blocked — <its reason>`.
+
 **Conservative by construction.** Any state that is not *provably clean* or *provably
 addressed* blocks. "Unknown" is never treated as "clean". A "no review" claim is only ever
 made after an API read-back at HEAD_SHA was actually performed.
@@ -21,8 +26,10 @@ made after an API read-back at HEAD_SHA was actually performed.
 resolved the `delivery` provider (its Phase 1 record); obtain each operation's body via
 `resolve_content` (`workspaceRoot`, `class: fragment`) from that record and follow it in-context — name no
 concrete host tool here. The operations this gate uses: `review-threads-read` (HEAD_SHA-scoped
-finding-thread read), `pr-comments-read` (review-summary presence + reviewed-file signal), and
-`review-thread-reply` (per-thread reply keyed by the thread node id). Verifying a finding
+finding-thread read), `pr-comments-read` (review-summary presence + reviewed-file signal),
+`review-request-read` (whether a review request registered, is outstanding, or was withdrawn —
+the evidence a capped outcome's cause is classified from), and `review-thread-reply` (per-thread
+reply keyed by the thread node id). Verifying a finding
 against the real code uses `Read` / `Bash` (grep) only.
 
 ---
@@ -60,18 +67,50 @@ made against:
   never reported as "no findings". **Block:** reason `review resolved zero files at HEAD_SHA
   (zero-files-reviewed failure) — the review did not happen; not "no findings"`. Stop.
   *(WF-313 req 3.)*
-- **No review present at HEAD_SHA:**
-  - **a reviewer was requested** (a review is assigned/requested on the PR) but none has
-    posted → it has not landed yet. Re-read `review-threads-read` + `pr-comments-read`,
+- **No review present at HEAD_SHA** → verify the request, then classify its cause. Invoke
+  `review-request-read` for the PR **once**. It returns `<read-performed>` and, only when true,
+  `<pending>` (requests still outstanding), `<request-events>` (review-request events on the
+  PR's history — they survive a request the host withdrew), `<reviews>` and `<requested>`.
+  Every branch below records a **cause** from the closed pair `no-post` | `request-failed` —
+  never unknown, never omitted:
+  - **`<read-performed>` = true and `<pending>` > 0** → a request registered and is still
+    outstanding; it has not landed yet. Re-read `review-threads-read` + `pr-comments-read`,
     **capped** at a small number of attempts (2). If a review appears within the cap → resume
     this step's classification. If the cap is hit with still no review at HEAD_SHA → the poll
-    **timed out**; the state is **unknown**, never clean. **Block:** reason `review requested
-    but did not land within the capped polls — state unknown, not clean`. Stop. *(WF-313 req
-    2 — a timeout is unknown, never clean.)*
-  - **no reviewer was ever requested** on this PR → there is genuinely no reviewer in play and
-    the read-back was performed and found none. This is an honest **reviewer-absent pass** (it
-    is not a "no review landed while findings existed" claim — the read-back happened and the
-    thread set is truly empty) → Step 4.
+    **timed out**; the state is **unknown**, never clean, and the cause is `no-post`.
+    **Block:** reason `review requested but did not land within the capped polls (no-post) —
+    state unknown, not clean`. Stop. *(WF-313 req 2 — a timeout is unknown, never clean.)*
+  - **`<read-performed>` = true, `<pending>` = 0, `<requested>` = true** → a request
+    registered (or a reviewer posted on an earlier commit) and nothing is outstanding or posted
+    at HEAD_SHA — typically a request the host withdrew. Cause **`no-post`** → Step 2b.
+  - **`<read-performed>` = true and `<requested>` = false** → no request ever registered on
+    this PR. Cause **`request-failed`** → Step 2b.
+  - **`<read-performed>` = false** (any `<reason>`) → the request could not be verified as
+    registered. Cause **`request-failed`** → Step 2b. Never "unknown": an unverifiable request
+    is, for this gate, a request that did not demonstrably register.
+
+## Step 2b — Capped outcome: record the cause, then apply the review-completeness switch
+
+Reaching here means no completed external review exists and nothing is outstanding to wait
+for — a **capped** outcome with the cause Step 2 recorded. It is never reported as clean.
+
+1. **Read the switch.** Read the `**Require Completed Review**` value from the `## Review`
+   section of `_local/config.md` (a fixed location, independent of any relocated registry path).
+   The switch is **on only when the value is exactly `on`** (case-insensitive, surrounding
+   backticks ignored). Absent section, absent key, `off`, `<none>`, empty, or any other value →
+   **off**. The shipped default is off.
+2. **Switch off** → pass → Step 4 with the summary `Review: capped — <cause>`. This is the
+   decision the gate made before the cause was recorded; only the recorded cause is new.
+3. **Switch on** → a completed review is required. The only other completed review is complete
+   in-run lens coverage: read the `**Lenses:**` header line of the task's `04_verify.md`
+   (`{task-root}/{task-id}/`) — `<lc>/<le> completed, <li> inline`, counted by verify-spec's own
+   rule (a lens run inline counts as expected, never completed).
+   - `<le>` ≥ 1 and `<lc>` = `<le>` → pass → Step 4 with the summary
+     `Review: capped — <cause>; in-run lenses complete <lc>/<le>`.
+   - Anything else — fewer completed than expected, zero expected, no `04_verify.md`, or no
+     `**Lenses:**` line → **hand back, do not merge. Block:** reason `no completed review —
+     capped (<cause>), in-run lenses <value | unreadable> — review completeness required`, with
+     the summary `Review: handed back — capped (<cause>)`. Stop.
 
 ## Step 3 — Every finding thread gets a reply before merge; fixed-in-code vs thread-answered
 
@@ -103,10 +142,11 @@ prevent) *(WF-313 req 4)*. Then:
 
 ## Step 4 — Pass
 
-The review state is provably one of: reviewed-clean, reviewer-absent with a performed
-read-back, or every finding thread cleared with a recorded reply. Return quietly so `ship`
-proceeds to Phase 5. Carry a one-line gate summary into `ship`'s final block (e.g.
-`Review: clean at HEAD_SHA` / `Review: 3 threads — 2 fixed in code, 1 answered`).
+The review state is provably one of: reviewed-clean, a capped outcome with its cause recorded
+and the switch satisfied (Step 2b), or every finding thread cleared with a recorded reply.
+Return quietly so `ship` proceeds to Phase 5. Carry the one-line summary into `ship`'s final
+block (e.g. `Review: clean at HEAD_SHA` / `Review: 3 threads — 2 fixed in code, 1 answered` /
+`Review: capped — no-post`).
 
 ---
 
@@ -114,10 +154,13 @@ proceeds to Phase 5. Carry a one-line gate summary into `ship`'s final block (e.
 
 | Gate outcome | `ship` action |
 |--------------|---------------|
-| unknown (no read-back / poll timeout) | `SHIP — Blocked` — stop before merge |
+| unknown (no read-back / poll timeout — cause `no-post`) | `SHIP — Blocked` — stop before merge |
 | zero-files-reviewed failure | `SHIP — Blocked` — stop before merge |
 | confirmed unaddressed finding(s) | reply on every thread, then `SHIP — Blocked` — stop |
-| reviewed-clean / reviewer-absent (read-back performed) | pass → Phase 5 |
+| reviewed-clean (read-back performed) | pass → Phase 5 |
+| capped (`no-post` / `request-failed`), switch off | pass → Phase 5, `Review: capped — <cause>` |
+| capped, switch on, in-run lenses complete | pass → Phase 5 |
+| capped, switch on, no completed review | hand back: `SHIP — Blocked` — stop, nothing merged |
 | every finding thread cleared + replied | pass → Phase 5 |
 
 Rationale, the incident this gate answers, and the per-requirement mapping:
