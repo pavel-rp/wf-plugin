@@ -1,6 +1,6 @@
 # `02_plan.md` template
 
-The verbatim template `/wf:plan` emits at write time (Phase 2, Step 2b). Substitute the placeholders; keep the metadata block, the `## Progress` checklist, and the `## Execution Plan` step shape (`### - [ ] STEP-NNN:`) exactly — `/wf:implement` ticks those checkboxes by that shape.
+The verbatim template `/wf:plan` emits at write time (Phase 2, Step 2b). Substitute the placeholders; keep the metadata block, the `## Progress` checklist, and the `## Execution Plan` step shape (`### - [ ] STEP-NNN:`) exactly — `/wf:implement` records progress against those `STEP-NNN` ids in its own `02_progress.md` and never writes this file, so the plan stays byte-identical after approval.
 
 ## Contents
 
@@ -105,7 +105,7 @@ The verbatim template `/wf:plan` emits at write time (Phase 2, Step 2b). Substit
 
 ### - [ ] STEP-NNN+1: Ready for review
 
-**Goal:** Hand off the implemented change for review. `/wf:implement` does not commit, push, or open a PR — it ticks this step and records a suggested commit message for whichever step commits next (`/wf:commit`, or a manual commit).
+**Goal:** Hand off the implemented change for review. `/wf:implement` does not commit, push, or open a PR — it marks this step done in `02_progress.md` and records a suggested commit message for whichever step commits next (`/wf:commit`, or a manual commit).
 
 **Suggested commit message:** `<type>(<task-id>): <lowercase title>`
 

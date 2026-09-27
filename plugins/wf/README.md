@@ -158,7 +158,8 @@ _local/
     ├── index.md              # per-task manifest — every wf:* skill updates a row here
     ├── 00_reqs.md            # requirements — fetched via the active tracker capability, or a local stub in bare-core
     ├── 01_spec.md            # LLM-authored spec (interpretation, may drift)
-    ├── 02_plan.md            # checkbox-driven implementation plan
+    ├── 02_plan.md            # checkbox-driven implementation plan (byte-identical after approval)
+    ├── 02_progress.md        # implement's step status, notes and resolution summary
     ├── 03_tasks.md           # /wf:tasks decomposition — small, independently testable units
     ├── 03_migration-map.md   # optional — mapping table output
     ├── 04_verify.md          # /wf:verify-spec audit report — latest run

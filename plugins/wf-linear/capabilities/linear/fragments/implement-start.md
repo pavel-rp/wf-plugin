@@ -1,6 +1,6 @@
 # implement.start — open the implementation record (slot fill)
 
-**Version:** 1.0.0 (WF-408 — the `implement.start` third of the C021 implement-phase mirror)
+**Version:** 1.1.0 (WF-408 — the `implement.start` third of the C021 implement-phase mirror; WF-830 — every write moves to the implement-owned `02_progress.md`, the approved `02_plan.md` is read-only)
 **Model:** claude-opus-5[1m]
 
 Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
@@ -26,7 +26,9 @@ than the end, because its value is precisely that it is visible while the work i
 
 **Reconciliation — read this before changing anything.** This fill creates a **distinct** `Impl:`
 child and records its id under a **distinct** metadata key (`**Tracker impl item:**`) in its **own**
-local artifact (`02_plan.md`), so no two fills ever touch the same field of the same item. It must
+local artifact (`02_progress.md`), so no two fills ever touch the same field of the same item. The
+approved `02_plan.md` is **read-only** here — a gate approval digests its raw bytes, so any write
+would stale it; the umbrella description below is still *sourced* from it, read-only. It must
 **never** patch the task's own description — the `spec` Phase-0 backfill remains the only write to
 it — and it must never post a comment on the umbrella, which is `tf`'s sole write of that kind.
 
@@ -39,13 +41,32 @@ The operations this fill uses: `get`, `create_umbrella`, `create_child`, `update
 
 ---
 
+## Step 0 — Migrate legacy guard lines (once)
+
+A task implemented before `02_progress.md` existed carries this fill's guard lines —
+`**Tracker impl item:**`, `**Impl log:**` and `**Impl finished:**` — in `02_plan.md` instead.
+When `02_progress.md` carries **none** of those three lines and `02_plan.md` carries at least one,
+copy every one that is present verbatim into `02_progress.md`'s metadata block (creating the file
+with its H1 and `**Plan:** 02_plan.md` line if absent). This is a one-time, read-only read of the
+plan (legacy fallback — `wf-legacy-progress-fallback`); the plan is never written.
+After a re-plan, `/wf:implement` sets the old record aside as `02_progress.superseded.md`. When
+`02_progress.md` carries none of the three lines and that file exists, copy only its
+`**Tracker umbrella:**` and `**Tracker impl item:**` lines forward, so the new pass reuses the same
+records; the per-pass `**Impl log:**` and `**Impl finished:**` lines stay behind. When both sources
+exist, the superseded record wins and the plan is not read. Once this step has run, this fill,
+`implement.milestone` and `implement.finish` read every guard line from `02_progress.md` alone, so
+no later step needs a fallback of its own. When `02_progress.md` already carries any of the three,
+or neither `02_plan.md` nor `02_progress.superseded.md` carries a line to copy, do nothing.
+
 ## Step 1 — Idempotency guard (read the lines back first)
 
 Per `capability-registry.ops.md` §"Single-shot-publish idempotency", read back these metadata lines
-from `02_plan.md` — the local artifact this phase executes — **before** writing anything:
+**before** writing anything:
 
-- `**Tracker umbrella:** <id>`
-- `**Tracker impl item:** <id>`
+- `**Tracker impl item:** <id>` — from `02_progress.md`, the implement-owned progress artifact
+  (after Step 0, the only place any implement guard line lives). An absent file means no line.
+- `**Tracker umbrella:** <id>` — from `02_plan.md` (read-only — `plan.publish` records it there before
+  approval), else `03_tasks.md`, else `02_progress.md`, else `01_spec.md`.
 
 A present `**Tracker impl item:**` value means this phase was already started once (a resumed run
 after an interruption): **do not create a second record**. Reuse that id for the rest of the run,
@@ -55,9 +76,9 @@ first unchecked step is normal and must not mint a duplicate.
 A present `**Tracker umbrella:**` value with no impl-item line means the umbrella exists but the
 record does not — reuse that umbrella and continue at Step 3.
 
-When neither line is present in `02_plan.md`, also read back `**Tracker umbrella:** <id>` from
-`03_tasks.md`, else `01_spec.md` — an earlier artifact fill in the same task will have recorded it
-there, and reusing it is what keeps every artifact of one task under **one** umbrella.
+The umbrella fallback order exists because an earlier artifact fill in the same task (or an
+earlier run of this one) will have recorded the line in one of those files, and reusing it is what
+keeps every artifact of one task under **one** umbrella.
 
 ## Step 2 — Resolve or create the umbrella
 
@@ -65,14 +86,17 @@ The **umbrella** is the tracker issue the task id already names — the item eve
 capability publishes hangs beneath. Resolve it in this order and stop at the first hit:
 
 1. The `**Tracker umbrella:** <id>` line read back at Step 1 (from `02_plan.md`, else `03_tasks.md`,
-   else `01_spec.md`). Use it as-is.
+   else `02_progress.md`, else `01_spec.md`). Use it as-is.
 2. A `get({task-id})` succeeds — then `{task-id}` **is** the umbrella; reuse it.
 3. Neither holds — the task has no tracker record (a local `T<NNN>` id). Invoke
-   `create_umbrella(<task title>, <one-paragraph description from 02_plan.md>)` **once** to mint it.
+   `create_umbrella(<task title>, <one-paragraph description from 02_plan.md>)` **once** to mint it
+   (the description is read from the plan; the plan is never written).
 
-Record the resolved or created id as `**Tracker umbrella:** <id>` in `02_plan.md`'s metadata block
-immediately, before Step 3 — so a failure below still leaves the umbrella reusable rather than
-duplicated on the next run.
+When the id was not already recorded in `02_plan.md`, record the resolved or created id as
+`**Tracker umbrella:** <id>` in `02_progress.md`'s metadata block — never in `02_plan.md` —
+immediately, before Step 3, so a failure below still leaves the umbrella reusable rather than
+duplicated on the next run. If `02_progress.md` does not exist yet, create it with its H1
+`# {task-id} — Implementation progress` and a `**Plan:** 02_plan.md` line, then add the guard line.
 
 ## Step 3 — Create the implementation record
 
@@ -86,7 +110,8 @@ Invoke `create_child` **once**:
   brief — `implement.finish` rewrites this description in full at phase end, so this is a placeholder
   a reader can act on, not the final record. Do **not** copy the whole plan in here.
 
-Record the returned id as `**Tracker impl item:** <id>` in `02_plan.md` immediately.
+Record the returned id as `**Tracker impl item:** <id>` in `02_progress.md`'s metadata block
+immediately (creating the file as in Step 2 if it is still absent).
 
 ## Step 4 — Label the record (best effort, never fatal)
 

@@ -1,6 +1,6 @@
 # implement.milestone — append one entry to the running implementation log (slot fill)
 
-**Version:** 1.0.0 (WF-413 — the `implement.milestone` third of the C021 implement-phase mirror, authored to parity with the `linear` fill; review-verified, never run live)
+**Version:** 1.1.0 (WF-413 — the `implement.milestone` third of the C021 implement-phase mirror, authored to parity with the `linear` fill; review-verified, never run live; WF-830 — every write moves to the implement-owned `02_progress.md`, the approved `02_plan.md` is read-only)
 **Model:** claude-opus-5[1m]
 
 Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
@@ -37,7 +37,7 @@ contract is used, described, or implied.**
 
 ## Step 1 — Resolve the target, or return
 
-Read back `**Tracker impl item:** <id>` from `02_plan.md`.
+Read back `**Tracker impl item:** <id>` from `02_progress.md` (an absent file means no line).
 
 **Absent → return immediately, post nothing.** There is no implementation record to log against:
 either no tracker is bound, or `implement.start` did not resolve (it was unfilled, it failed, or the
@@ -48,7 +48,7 @@ create the record here, and never fall back to logging on the umbrella. Creating
 ## Step 2 — Per-checkpoint idempotency guard
 
 `/wf:implement` resumes from the first unchecked step, so a re-run legitimately re-reaches
-checkpoints an earlier session already logged. Read back the `**Impl log:**` line from `02_plan.md`
+checkpoints an earlier session already logged. Read back the `**Impl log:**` line from `02_progress.md`
 — a single line carrying the comma-separated list of checkpoint keys already posted this task, e.g.
 `**Impl log:** approach, step-002, step-003`.
 
@@ -82,7 +82,8 @@ If the checkpoint is a step that **halted unfinished** rather than completing, s
 name the blocker in one line. A blocked step is exactly the kind of thing the log exists to make
 visible, so it is logged, not suppressed.
 
-Append the checkpoint key to `**Impl log:**` in `02_plan.md` immediately after a successful post.
+Append the checkpoint key to `**Impl log:**` in `02_progress.md` immediately after a successful post
+(never in `02_plan.md`, which is read-only after its gate approval).
 
 ## Step 4 — Return
 
@@ -102,8 +103,8 @@ own output. Write the model id nowhere on the tracker, and carry no AI-attributi
 | `post_comment` fails | state one line naming the checkpoint and the error, record no key for it, continue the phase; a later checkpoint still fires normally |
 | Tracker unconfigured or unrecoverable | this fill never resolves at all; `implement` runs its no-op inline default instead |
 
-A failure at any checkpoint never blocks execution and never un-ticks a step: `02_plan.md`'s
-checkboxes remain the run's durable progress record either way.
+A failure at any checkpoint never blocks execution and never un-ticks a step: `02_progress.md`'s
+step status lines remain the run's durable progress record either way.
 
 Rationale, the charter this fill belongs to, why the log is a comment thread rather than one
 edited comment, and the authored-not-tested status of this whole slot set:

@@ -141,9 +141,11 @@ question comment must not be the thing that creates a work item, so it skips ins
 §"Single-shot-publish idempotency" requires reading a published id back before ever re-invoking a
 create for the same artifact/slot. Each fill records its guard in *the local artifact that triggers
 it*: `**Tracker questions comment:**` in `00_reqs.md`; `**Tracker umbrella:**` +
-`**Tracker spec item:**` in `01_spec.md`; `**Tracker plan item:**`, `**Tracker impl item:**`,
-`**Impl log:**` and `**Impl finished:**` in `02_plan.md`; `**Tracker tasks item:**` in
-`03_tasks.md`. The distinct per-artifact keys are what let several fills coexist in one file without
+`**Tracker spec item:**` in `01_spec.md`; `**Tracker plan item:**` in `02_plan.md`;
+`**Tracker impl item:**`, `**Impl log:**`, `**Impl finished:**` (and `**Tracker umbrella:**` when the
+plan carries none) in `02_progress.md`, the implement-owned progress artifact — the implement fills
+never write the approved `02_plan.md`, which must stay byte-identical after its gate approval
+(WF-830); `**Tracker tasks item:**` in `03_tasks.md`. The distinct per-artifact keys are what let several fills coexist in one file without
 ever touching the same field. Each fill records the umbrella id *before* creating its child, so a
 failure partway through leaves the umbrella reusable rather than duplicated on the next run.
 

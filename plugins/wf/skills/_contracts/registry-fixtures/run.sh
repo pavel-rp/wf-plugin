@@ -589,6 +589,31 @@ else
   fail=$((fail + 1))
 fi
 
+# WF-830 — the read-only legacy progress fallback (implement's progress moved out of
+# the approved plan into its own record) carries one shared marker and a removal
+# window keyed to the core version it shipped in. The self-test seeds a marker
+# below the window, at it and past it, and a clean tree at it; the live scan fails
+# once the window closes while any marker remains.
+echo ""
+echo "=== Legacy progress fallback — seeded self-test ==="
+if bash "$DIR/../check-legacy-progress-fallback.sh" --selftest; then
+  printf 'PASS: %s\n' "legacy progress fallback self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "legacy progress fallback self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== Legacy progress fallback — real-tree scan ==="
+if bash "$DIR/../check-legacy-progress-fallback.sh"; then
+  printf 'PASS: %s\n' "legacy progress fallback real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "legacy progress fallback real-tree scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
