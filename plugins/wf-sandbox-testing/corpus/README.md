@@ -101,3 +101,4 @@ assert/tiers.sh smoke --scenario items/review-gate
 | `run.sh` | the corpus self-check: provenance, slot enumeration, flagship, arm record, review-gate |
 | `items/empty-slot-ship-review/` | item 1 — the empty-slot flagship (per declared slot) |
 | `items/review-gate/` | item 2 — the WF-313 five-requirements scenario |
+| `items/planted-plan-edit/` | item 18 — a plan written after approval must halt before any PR (WF-834; check 13 PLAN IDENTITY) |

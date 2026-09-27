@@ -45,6 +45,14 @@
 #                       list, and the blocking set — naming the specific missing field otherwise;
 #                       and the kit that judges them (experiments/verify-replay-baseline) passes
 #                       its own selfcheck.sh, so the kit is validated by this same entrypoint.
+#  13. PLAN IDENTITY  — (WF-834) the approved plan stays byte-identical: no corpus 02_plan.md
+#                       carries implement progress marks (they live in 02_progress.md); every
+#                       02_progress.md's **Plan digest:** equals the sha256 of its sibling plan and
+#                       carries a status line per plan step; every run reporting IMPLEMENT — Complete
+#                       has one; a scratch-planted edit to each such plan breaks the digest (the
+#                       detector is not vacuous); and the planted-plan-edit item's clean control
+#                       opens a PR while its planted edit halts with ZERO pr-create — each verdict
+#                       recomputed from the committed bytes, never read from the canned run.
 #
 # Usage: run.sh   (run every check; wired into CI as its own step)
 set -uo pipefail
@@ -463,7 +471,7 @@ check_armless_meta() {
 # ---------------------------------------------------------------------------
 check_disclosure() {
   local before=$fail arm p r n=0 rel
-  for arm in "$ITEMS"/empty-slot-*/baseline/arm.json "$ITEMS"/barecore-conveyor/arm.json; do
+  for arm in "$ITEMS"/empty-slot-*/baseline/arm.json "$ITEMS"/barecore-conveyor/arm.json "$ITEMS"/planted-plan-edit/arm.json; do
     [ -f "$arm" ] || { err "disclosure: expected arm.json missing at ${arm#$REPO_ROOT/}"; continue; }
     n=$((n+1)); rel="${arm#$ITEMS/}"
     p="$(jq -r '.provenance.path   // empty' "$arm")"
@@ -477,7 +485,7 @@ check_disclosure() {
   done
   # The paired human-readable disclosure section must exist alongside the machine-readable field.
   local item
-  for item in "$ITEMS"/empty-slot-*/item.md "$ITEMS"/barecore-conveyor/item.md; do
+  for item in "$ITEMS"/empty-slot-*/item.md "$ITEMS"/barecore-conveyor/item.md "$ITEMS"/planted-plan-edit/item.md; do
     [ -f "$item" ] || { err "disclosure: item.md missing at ${item#$REPO_ROOT/}"; continue; }
     grep -qi 'Canned-vs-real disclosure' "$item" \
       || err "disclosure: ${item#$ITEMS/} has no 'Canned-vs-real disclosure' section"
@@ -568,6 +576,91 @@ check_verify_replay() {
   [ "$fail" = "$before" ] && ok "verify-replay: all ${#dirs[@]} round-replay item(s) lint clean and the kit self-lints"
 }
 
+# ---------------------------------------------------------------------------
+# 13. PLAN IDENTITY — (WF-834) the approved plan is never written after approval.
+#     /wf:implement records progress in 02_progress.md, bound to the approved plan by the sha256
+#     of its raw bytes; a gate:plan approval binds the same digest. Every verdict here is
+#     recomputed from the committed bytes, so a re-baseline cannot hide a plan-write regression.
+# ---------------------------------------------------------------------------
+PLANTED="$ITEMS/planted-plan-edit"
+PROGRESS_MARKS='^- \[x\] STEP-|^### - \[x\] STEP-|^> Implemented|^> Ready for review|^## Resolution Summary'
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+
+progress_digest() { sed -nE 's/^\*\*Plan digest:\*\*[[:space:]]*([0-9a-f]{64})[[:space:]]*$/\1/p' "$1" | head -1; }
+
+check_plan_identity() {
+  local before=$fail f dir rel want got step marks n_plan=0 n_prog=0 n_impl=0 tx run
+  # (a) No plan snapshot carries implement progress marks — the old plan-tick shape. The planted
+  #     run is the one deliberate exception; (d) proves it halts.
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$f" in "$PLANTED"/seeded-breakage/*) continue;; esac
+    n_plan=$((n_plan+1))
+    marks="$(grep -nE "$PROGRESS_MARKS" "$f" | head -3 | tr '\n' ' ')"
+    [ -z "$marks" ] || err "plan-identity: ${f#$ITEMS/} carries implement progress marks (the old plan-tick shape) — progress belongs in 02_progress.md: $marks"
+  done < <(find "$ITEMS" -path '*/workspace-snapshot/*' -name 02_plan.md | LC_ALL=C sort)
+
+  # (b) Every progress record binds its sibling plan byte-for-byte and covers every plan step;
+  # (e) a scratch-planted edit to that plan must break the digest (the detector is not vacuous).
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$f" in "$PLANTED"/seeded-breakage/*) continue;; esac
+    n_prog=$((n_prog+1)); dir="$(dirname "$f")"; rel="${dir#$ITEMS/}"
+    [ -f "$dir/02_plan.md" ] || { err "plan-identity: $rel has 02_progress.md but no sibling 02_plan.md"; continue; }
+    want="$(progress_digest "$f")"
+    [ -n "$want" ] || { err "plan-identity: $rel/02_progress.md carries no **Plan digest:** line"; continue; }
+    got="$(sha256_of "$dir/02_plan.md")"
+    [ "$got" = "$want" ] || err "plan-identity: $rel/02_plan.md is NOT byte-identical to the plan its progress record bound (sha256 $got != $want)"
+    for step in $(grep -oE '^### - \[[ x]\] STEP-[0-9]{3}' "$dir/02_plan.md" | grep -oE 'STEP-[0-9]{3}'); do
+      grep -qE "^- \[[ x]\] $step:" "$f" || err "plan-identity: $rel/02_progress.md has no status line for plan step $step"
+    done
+    cp "$dir/02_plan.md" "$TMP/planted-plan.md"
+    printf -- '- [x] STEP-001: planted edit\n' >> "$TMP/planted-plan.md"
+    [ "$(sha256_of "$TMP/planted-plan.md")" != "$want" ] \
+      || err "plan-identity: a planted edit to $rel/02_plan.md still matches its **Plan digest:** — the byte-identity detector is vacuous"
+  done < <(find "$ITEMS" -path '*/workspace-snapshot/*' -name 02_progress.md | LC_ALL=C sort)
+
+  # (c) Every run that reports a completed implement carries its progress record.
+  while IFS= read -r tx; do
+    [ -n "$tx" ] || continue
+    grep -q 'IMPLEMENT — Complete' "$tx" || continue
+    n_impl=$((n_impl+1)); run="$(dirname "$tx")"
+    find "$run/workspace-snapshot" -name 02_progress.md 2>/dev/null | grep -q . \
+      || err "plan-identity: ${run#$ITEMS/} reports IMPLEMENT — Complete but its snapshot has no 02_progress.md"
+  done < <(find "$ITEMS" -name transcript.jsonl | LC_ALL=C sort)
+
+  # (d) The planted-plan-edit item: recompute each run's plan digest against its gate:plan approval
+  #     and require the canned outcome to agree — clean opens a PR; planted halts with zero pr-create.
+  local r kind approved plan verdict npr term
+  for r in "$PLANTED/runs-current/run-1:clean" "$PLANTED/seeded-breakage/runs/run-1:planted"; do
+    kind="${r##*:}"; run="${r%:*}"; rel="${run#$ITEMS/}"
+    [ -f "$run/run.json" ] || { err "plan-identity: $rel/run.json missing"; continue; }
+    approved="$(jq -r '[.gate_approvals[]? | select(.gate == "gate:plan") | .sha256][0] // empty' "$run/run.json")"
+    plan="$(find "$run/workspace-snapshot" -name 02_plan.md | head -1)"
+    [ -n "$approved" ] && [ -f "$plan" ] || { err "plan-identity: $rel lacks a gate:plan approval digest or a 02_plan.md"; continue; }
+    if [ "$(sha256_of "$plan")" = "$approved" ]; then verdict=identical; else verdict=edited; fi
+    npr="$(jq -s '[.[] | select(.op == "pr-create")] | length' "$run/workspace-snapshot/_local/fake/op-log.jsonl" 2>/dev/null || echo 0)"
+    term="$(grep -oE 'SHIP — [A-Za-z-]+' "$run/transcript.jsonl" | tail -1)"
+    if [ "$kind" = clean ]; then
+      [ "$verdict" = identical ] || err "plan-identity: clean control $rel — approved plan is not byte-identical to its gate:plan digest"
+      [ "$(progress_digest "$(dirname "$plan")/02_progress.md")" = "$approved" ] \
+        || err "plan-identity: clean control $rel — 02_progress.md's **Plan digest:** is not the approved digest"
+      { [ "${npr:-0}" -ge 1 ] && [ "$term" = "SHIP — Merged" ]; } \
+        || err "plan-identity: clean control $rel did not open and merge a PR (pr-create=$npr, terminal='$term')"
+    else
+      [ "$verdict" = edited ] || err "plan-identity: planted run $rel — the plan still matches its gate:plan digest, so no edit was planted"
+      { [ "${npr:-0}" -eq 0 ] && [ "$term" = "SHIP — Blocked" ] && grep -q 'halted at gate:plan' "$run/transcript.jsonl"; } \
+        || err "plan-identity: planted edit in $rel did NOT halt before any PR (pr-create=$npr, terminal='$term') — a plan written after approval must stop the run at gate:plan"
+    fi
+  done
+
+  [ "$fail" = "$before" ] && ok "plan-identity: $n_plan plan snapshot(s) carry no progress marks; $n_prog progress record(s) bind their plan byte-for-byte and a planted edit breaks each; $n_impl completed-implement run(s) carry 02_progress.md; the planted plan edit halts before any PR while the clean control merges"
+}
+
 check_provenance
 check_slot_enum
 check_flagship
@@ -580,6 +673,7 @@ check_barecore
 check_armless_meta
 check_disclosure
 check_verify_replay
+check_plan_identity
 
 if [ "$fail" -ne 0 ]; then
   echo "wf-sandbox-testing corpus self-checks: FAIL" >&2
