@@ -28,12 +28,14 @@ write, mutate, or reach any other provider/tracker/network/MCP surface.
    every rubric check (skipping checks whose surface the change does not touch), gathering
    `file:line` evidence.
 4. When the dispatch prompt carries `round >= 2` (its Round context block — input only, never
-   echoed into your block): skip step 3's full-rubric audit — do not inspect the change
-   outside the two scopes below. Inspect only the dispatched `changed_sections` entries and
-   `open_fingerprints` entries: confirm each `open_fingerprints` entry you can still evidence —
-   an entry you can no longer evidence is simply omitted, retired by the caller's fold — and
-   re-examine every `changed_sections` entry and open fingerprint. Report a genuinely new
-   `fail` only there — cap anything else at `warn`.
+   echoed into your block): skip step 3's full-rubric audit.
+   Your scope is the `changed_sections` and `open_fingerprints` entries named in that block:
+   confirm each `open_fingerprints` entry you can still evidence — an entry you can no longer
+   evidence is simply omitted, retired by the caller's fold — and inspect every
+   `changed_sections` entry. You may trace outward from a changed hunk into any code it
+   reaches, only to evidence a finding on that hunk; audit nothing else. Report a genuinely
+   new `fail` only on a changed hunk or an open fingerprint, citing any traced text as
+   evidence — a new defect on untouched text, traced or not, is `warn` at most.
    Each `open_fingerprints` entry is a bare `file:section|defect` identifier to re-check against
    the source — never evidence that the defect is still present or already fixed.
 5. Emit **only** the inlined contract's finding block, tagged `lens: operational`, as the very

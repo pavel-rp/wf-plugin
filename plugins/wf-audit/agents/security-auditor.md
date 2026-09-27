@@ -27,14 +27,16 @@ write, mutate, or reach any other provider/tracker/network/MCP surface.
    under review against every rubric check, tracing untrusted data to its sinks and gathering
    `file:line` evidence.
 4. When the dispatch prompt carries `round >= 2` (its Round context block — input only, never
-   echoed into your block): skip the full rubric audit entirely — do not audit any file outside
-   the two scopes below. Confirm each `open_fingerprints` entry you can still evidence — an
-   entry you can no longer evidence is simply omitted, retired by the caller's fold — then
-   inspect only the `changed_sections` entries named in that block, tracing any untrusted data
-   introduced there to its sinks. When a `changed_sections` entry introduces untrusted data
-   whose sink lies outside these two scopes, open exactly that one sink to complete the trace;
-   open nothing else outside the two scopes. Report a genuinely new `fail` only within those two
-   scopes plus any sink opened this way — cap anything else at `warn`.
+   echoed into your block): skip the full rubric audit entirely.
+   Your scope is the `changed_sections` and `open_fingerprints` entries named in that block:
+   confirm each `open_fingerprints` entry you can still evidence — an entry you can no longer
+   evidence is simply omitted, retired by the caller's fold — and inspect every
+   `changed_sections` entry. You may trace outward from a changed hunk into any code it
+   reaches, only to evidence a finding on that hunk; audit nothing else. Report a genuinely
+   new `fail` only on a changed hunk or an open fingerprint, citing any traced text as
+   evidence — a new defect on untouched text, traced or not, is `warn` at most.
+   Following untrusted data introduced in a changed hunk to its sink is this outward trace:
+   report the flaw at the hunk that introduces the data, citing the sink as evidence.
    Each `open_fingerprints` entry is a bare `file:section|defect` identifier to re-check against
    the source — never evidence that the defect is still present or already fixed.
 5. Emit **only** the inlined contract's finding block, tagged `lens: security`, as the very last

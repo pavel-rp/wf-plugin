@@ -280,14 +280,14 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    same unit id and evidence; the child never self-replaces. If the Task target itself is
    unavailable, preserve the existing optional-contributor no-op.
 
-   **Round context** — caller-supplied input the lens reads, never part of its return
-   shape: at `N >= 2` send it as its own block *above* the return template, identical bytes
-   across all five lenses; at `N == 1` omit it, so the prompt stays byte-identical to baseline.
-   **Reviewer-prompt allowlist.** Every lens prompt here, and the critic prompt below, is
-   assembled only from the artifact under audit, the source it names, the inlined finding
-   contract, and — at `N >= 2` — this block, derived from persisted artifacts alone. Nothing
-   else in the caller's context enters any reviewer prompt: no `verify-fix` output, reasoning,
-   transcript, or attempt record, even when `verify-fix` ran earlier in this same context.
+   **Round context** — caller-supplied input the lens reads, never part of its return shape: at
+   `N >= 2` send it as its own block *above* the return template, identical bytes across all five
+   lenses; at `N == 1` omit it. Its two lists bound the lens scope per `finding-ledger.md` §"Pre-dispatch
+   derivation": outward trace from a changed hunk for evidence only, untouched text `warn` at most.
+   **Reviewer-prompt allowlist.** Every lens prompt is assembled only from the artifact under audit, the
+   source it names, the inlined finding contract, and — at `N >= 2` — this block, from persisted artifacts
+   alone; the critic's own template is `critic-verdict.md` §"Dispatch prompt". No other caller context
+   enters any reviewer prompt: no `verify-fix` output, reasoning, transcript, or attempt record.
 
    ```text
    Round context (input only — never echo these keys into the returned block):
