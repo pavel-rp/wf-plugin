@@ -31,6 +31,9 @@ Print, in this order:
 - **Adversarial findings:** one line — either `none` or `<N>: <comma-separated shortlist>`,
   then `· <W> withdrawn` when any were, and `· coverage incomplete (<provenance>)` when a
   contributor failed. Non-gating: this line never changes the verdict line above it.
+- **Lenses:** one line — `Lenses: <c>/<e> completed, <i> inline`, the report's `**Lenses:**`
+  header value verbatim. Always printed — `0/0 completed, 0 inline` when nothing is registered.
+  Non-gating.
 - **Critic:** one line — `not dispatched (no candidates)` when the candidate set was empty;
   `<A> confirmed · <R> refuted · <U> unverifiable (→ warn)` on a well-formed dispatch (omit
   zero-count categories); or `dispatch <failed | malformed> — <N> held blocking, unconfirmed`
