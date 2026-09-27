@@ -593,7 +593,7 @@ sha256_of() {
 progress_digest() { sed -nE 's/^\*\*Plan digest:\*\*[[:space:]]*([0-9a-f]{64})[[:space:]]*$/\1/p' "$1" | head -1; }
 
 check_plan_identity() {
-  local before=$fail f dir rel want got step marks n_plan=0 n_prog=0 n_impl=0 tx run
+  local before=$fail f dir rel want got step steps marks n_plan=0 n_prog=0 n_impl=0 tx run
   # (a) No plan snapshot carries implement progress marks — the old plan-tick shape. The planted
   #     run is the one deliberate exception; (d) proves it halts.
   while IFS= read -r f; do
@@ -615,7 +615,9 @@ check_plan_identity() {
     [ -n "$want" ] || { err "plan-identity: $rel/02_progress.md carries no **Plan digest:** line"; continue; }
     got="$(sha256_of "$dir/02_plan.md")"
     [ "$got" = "$want" ] || err "plan-identity: $rel/02_plan.md is NOT byte-identical to the plan its progress record bound (sha256 $got != $want)"
-    for step in $(grep -oE '^### - \[[ x]\] STEP-[0-9]{3}' "$dir/02_plan.md" | grep -oE 'STEP-[0-9]{3}'); do
+    steps="$(grep -oE '^(### )?(- \[[ x]\] )?STEP-[0-9]{3}' "$dir/02_plan.md" | grep -oE 'STEP-[0-9]{3}' | LC_ALL=C sort -u)"
+    [ -n "$steps" ] || err "plan-identity: $rel/02_plan.md declares no STEP-NNN step — the per-step coverage check would pass vacuously"
+    for step in $steps; do
       grep -qE "^- \[[ x]\] $step:" "$f" || err "plan-identity: $rel/02_progress.md has no status line for plan step $step"
     done
     cp "$dir/02_plan.md" "$TMP/planted-plan.md"
