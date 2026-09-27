@@ -20,8 +20,8 @@
 #   3. SEQUENCE INVARIANTS — ids never reused or renumbered, a monotonic high-water line,
 #      every fallback entry keyed, drawn keys new, suppressed keys already present, no entry
 #      or Coverage row ever dropped.
-#   4. LEGACY NORMALIZATION — for every before/after pair (absent, stale and invalid recorded
-#      high-water), a reference model of the contract's legacy rule reproduces the normalized ids
+#   4. LEGACY NORMALIZATION — for every before/after pair (absent, stale, invalid and `none`
+#      recorded high-water), a reference model of the contract's legacy rule reproduces the normalized ids
 #      and high-water exactly, derives the high-water log line the Continuation entry must carry,
 #      and is a no-op on its own output.
 #   5. GROUPING — a reference model of Part A step 5 yields one group per task id, id-less
@@ -268,7 +268,7 @@ for b in "$CORPUS"/legacy/before.md "$CORPUS"/legacy/*-before.md; do
     printf '%s\n' "$entry" | grep -qF -- "$exp_log" || err "legacy $pair: Continuation does not log: $exp_log"
   fi
 done
-[ "$npairs" -ge 3 ] || err "legacy corpus has $npairs pairs, expected at least 3 (absent, stale, invalid)"
+[ "$npairs" -ge 4 ] || err "legacy corpus has $npairs pairs, expected at least 4 (absent, stale, invalid, none)"
 # already-valid ids are never renumbered
 grep -qF -- '- **H2** retry counter resets' "$CORPUS/legacy/after.md" || err "legacy: valid H2 was renumbered"
 for tok in 'assigned H3 (no id)' 'assigned H5 (duplicate of H2)' 'assigned H6 (invalid id "H07")' \
@@ -279,6 +279,8 @@ grep -qF -- 'recorded high-water H2 raised to H5' "$CORPUS/legacy/stale-after.md
   || err "legacy: stale pair does not log the raised high-water"
 grep -qF -- 'invalid recorded high-water "H0x" ignored' "$CORPUS/legacy/invalid-after.md" \
   || err "legacy: invalid pair does not log the ignored high-water"
+grep -qF -- 'recorded high-water none raised to H2' "$CORPUS/legacy/none-after.md" \
+  || err "legacy: none pair does not treat a recorded none as valid and raise it"
 [ "$fail" -eq "$before" ] && ok "legacy normalization ($npairs pairs)"
 
 # --- 5. Grouping ------------------------------------------------------------------------
