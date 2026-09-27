@@ -30954,13 +30954,20 @@ function parseCounterpartMap(text) {
   const entries = [];
   const diagnostics = [];
   const lines = text.split(/\r?\n/);
-  lines.forEach((raw, idx) => {
-    const row = idx + 1;
+  const splitCells = (line) => line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  const isHeader = (cells) => cells.map((c) => c.toLowerCase()).join("|") === "key|kind|locations";
+  const isPipe = (raw) => raw.trim().startsWith("|");
+  let start = lines.findIndex((raw) => isPipe(raw) && isHeader(splitCells(raw.trim())));
+  if (start < 0) start = lines.findIndex(isPipe);
+  if (start < 0) return { entries, diagnostics };
+  let end = start;
+  while (end < lines.length && isPipe(lines[end])) end += 1;
+  lines.slice(start, end).forEach((raw, offset) => {
+    const row = start + offset + 1;
     const line = raw.trim();
-    if (!line.startsWith("|")) return;
-    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    const cells = splitCells(line);
     if (cells.every((c) => /^:?-{3,}:?$/.test(c))) return;
-    if (cells.map((c) => c.toLowerCase()).join("|") === "key|kind|locations") return;
+    if (isHeader(cells)) return;
     if (cells.length !== 3) {
       diagnostics.push(`row ${row}: expected 3 cells (Key | Kind | Locations), found ${cells.length}`);
       return;

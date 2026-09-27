@@ -174,6 +174,43 @@ test("map hygiene: a declared literal key 'key' is kept; a control character in 
   assert.ok(diagnostics.some((d) => d.includes("control character")));
 });
 
+test("map boundary: content after the map table is never parsed as rows", () => {
+  const text = [
+    map(["| `retry limit` | mirror | docs/a.md, docs/b.md |", "| `**Stamp:**` | writer-parser | out/w.md, in/p.md |"]),
+    "",
+    "Notes on the map above.",
+    "",
+    "| Owner | Area |",
+    "|---|---|",
+    "| alice | docs |",
+    "| `late key` | mirror | c.md, d.md |",
+  ].join("\n");
+  const { entries, diagnostics } = parseCounterpartMap(text);
+  assert.deepEqual(entries.map((e) => e.key), ["retry limit", "**Stamp:**"]);
+  assert.deepEqual(diagnostics, []);
+});
+
+test("map boundary: a table before the map header is ignored; the header-anchored table is read", () => {
+  const text = [
+    "| Legend | Meaning |",
+    "|---|---|",
+    "| mirror | same text |",
+    "",
+    map(["| `retry limit` | mirror | docs/a.md, docs/b.md |"]),
+    "trailing prose | with a pipe",
+  ].join("\n");
+  const { entries, diagnostics } = parseCounterpartMap(text);
+  assert.deepEqual(entries.map((e) => [e.key, e.row]), [["retry limit", 9]]);
+  assert.deepEqual(diagnostics, []);
+});
+
+test("map boundary: with no header row the first table is the map", () => {
+  const text = ["intro", "| `retry limit` | mirror | a.md, b.md |", "", "| `other key` | mirror | c.md, d.md |"].join("\n");
+  const { entries, diagnostics } = parseCounterpartMap(text);
+  assert.deepEqual(entries.map((e) => e.key), ["retry limit"]);
+  assert.deepEqual(diagnostics, []);
+});
+
 test("diff parsing: a removed line beginning with dashes is content, not a header", () => {
   const diff = fileDiff("docs/a.md", [{ start: 3, removed: ["-- retry limit note"], added: ["kept"] }]);
   const changes = parseUnifiedDiff(diff);
