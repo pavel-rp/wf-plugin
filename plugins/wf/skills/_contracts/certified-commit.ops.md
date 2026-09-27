@@ -5,14 +5,13 @@
 
 The runtime doc every **guarded push path** follows before a pushed head is taken past verification.
 Obtained via `resolve_content({ workspaceRoot, ... })` (`class: contract`, `ref: certified-commit.ops.md`),
-never a raw `Read`. Rationale and evidence: `certified-commit.contract.md` (paired, never read at runtime).
-It complements artifact-digest gate freshness and run evidence; it replaces neither and adds no gate token.
+never a raw `Read`. It complements artifact-digest gate freshness and run evidence; it replaces neither
+and adds no gate token.
 
-## Contents
+**Reference:** rationale and evidence live in the paired `certified-commit` reference doc — never read at boot.
 
-[Certification record](#certification-record) · [Effective binding](#effective-binding) ·
-[Drift ledger](#drift-ledger) · [Change kinds](#change-kinds) · [The drift check](#the-drift-check) ·
-[Drift-mode audit](#drift-mode-audit) · [Scenarios](#scenarios)
+**Contents:** certification record · effective binding · drift ledger · change kinds · the drift check ·
+drift-mode audit · scenarios.
 
 ## Certification record
 
