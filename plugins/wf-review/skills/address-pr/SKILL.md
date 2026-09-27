@@ -238,8 +238,8 @@ make — and act on its single outcome:
 
 - **`inert`**, **`bound`**, or **`carried`** → done. On `carried` the check has appended its
   `carry-forward` row to `04_drift.md` with `Path` `address-pr`, naming both commits and the kind.
-- **`reverify`** → invoke `/wf:verify-spec {task-id}` through the **Skill** tool **exactly once**
-  for this drift event — it runs in drift mode, scoped to the binding..head diff, turns fresh
+- **`reverify`** → invoke `/wf:verify-spec {task-id}` through the **Skill** tool
+  **exactly once** for this drift event — it runs in drift mode, scoped to the binding..head diff, turns fresh
   findings on code unchanged since the certified commit into drift residuals, and writes its own
   report and ledger row — then re-run the check once without re-entering its re-verify step.
   `bound` → done; anything else → the `refuse` bullet.

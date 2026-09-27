@@ -562,8 +562,13 @@ fi
 # WF-819 — /wf:ship stays wired to it on the CI-remediation path: the drift check
 # runs on every Phase 4.2 push and before every /wf:tf, one re-verify per drift
 # event, a refuse blocks the merge, and each CI-remediation scenario is pinned.
-# The self-test seeds nine defective ops docs and seven defective ship bodies that
-# must each be rejected.
+# WF-820 — /wf-review:address-pr stays wired to it on the review-fix path (a
+# drift check after every push, reached through the content surface, one
+# re-verify per event, a refuse reported unmergeable, each address-pr scenario
+# pinned), and /wf:tf runs it unconditionally before every pr-merge.
+# The self-test seeds nine defective ops docs, seven defective ship bodies, nine
+# defective address-pr bodies and five defective tf bodies that must each be
+# rejected.
 echo ""
 echo "=== Certified-commit guard — seeded self-test ==="
 if bash "$DIR/../certified-commit-guard.sh" --selftest; then
