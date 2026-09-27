@@ -44,7 +44,9 @@ context; invoke the delivery provider's read operations `activity-read`, `pr-det
 `checks-read` the same way, plus `newest-published-version-read` once at Prerequisites for the
 currency check; query the local install inventory read-only via `discover_packs` on the currency
 check's provider-less branch only; read an item's run-evidence receipts read-only via
-`read_run_evidence({ workspaceRoot, taskId })`; resolve the `fleet.closeout-review` slot via
+`read_run_evidence({ workspaceRoot, taskId })`; name the resolver's `prepare_workspace` and
+`run_workspace_setup` operations in each shipper's dispatch prompt, for the shipper to call against its
+own worktree before the ceremony (never against the orchestrator's own workspace); resolve the `fleet.closeout-review` slot via
 `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: fleet`, `point: closeout-review`)
 and, on a `composed` outcome, follow the served body as prose in this skill's own context — which at
 that point only authorizes exactly the operations that body names: the delivery reads

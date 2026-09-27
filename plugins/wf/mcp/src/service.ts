@@ -200,6 +200,20 @@ import {
   type RunEvidenceUnmatchedReason,
 } from "./resolver/run-evidence.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
+import { resolveGitIdentity } from "./git-workspace.js";
+import {
+  applyPreparation,
+  planPreparation,
+  type InstallStateOutcome,
+  type PrepareWorkspaceResponse,
+} from "./resolver/prepare-workspace.js";
+import {
+  planWorkspaceSetup,
+  renderSetupState,
+  SETUP_STATE_RELPATH,
+  type SetupCommandResult,
+  type WorkspaceSetupResponse,
+} from "./resolver/workspace-setup.js";
 import {
   COUNTERPART_MAP_FILENAME,
   computeCounterparts,
@@ -348,6 +362,13 @@ export interface ResolverServicePorts {
    *  double stays valid; when absent the listing reports `unavailable` rather
    *  than an empty success. The service validates `baseRef` before calling. */
   workspaceDiff?(baseRef: string): string | null;
+  /** Run the project-declared dependency-setup command (WF-831) in the workspace
+   *  root, bounded by `timeoutMs`. The service passes only the value read from the
+   *  project's own core config — never a capability-supplied string. OPTIONAL, so
+   *  every existing in-memory port double stays valid; when absent a declared
+   *  command is reported `blocked: failed` with the stated reason rather than
+   *  silently skipped. */
+  runSetupCommand?(command: string, timeoutMs: number): SetupCommandResult;
   /** Write a secret with owner-only permissions. Separate from `writeFile` so the
    *  restrictive mode belongs to the one caller that needs it and never changes
    *  the permissions of ordinary project content.
@@ -5780,6 +5801,223 @@ export class ResolverService {
     };
   }
 
+  // --- fresh-worktree preparation (WF-831) -------------------------------------
+  //
+  // A linked worktree starts with no gitignored setup state. `prepareWorkspace`
+  // copies the allowlisted setup-state classes from a SOURCE worktree of the same
+  // family into THIS root's `_local/` and regenerates this root's machine binding
+  // ledger from its own observation; `runWorkspaceSetup` runs the one
+  // dependency-setup command the project's own config declares. Neither ever
+  // writes the committed `.wf/` tree, and neither reads a capability source for
+  // what to run.
+
+  prepareWorkspace(sourceRoot: string): PrepareWorkspaceResponse {
+    const requestedChild = normalizeSlashes(this.ports.workspaceRoot).replace(/\/+$/, "");
+    const blocked = (
+      reason: "foreign-root" | "source-uninitialized" | "divergent" | "unsafe-path",
+      path: string | null,
+      detail: string,
+      source: string = sourceRoot,
+      child: string = requestedChild,
+    ): PrepareWorkspaceResponse => ({
+      status: "blocked",
+      workspaceRoot: child,
+      sourceRoot: source,
+      reason,
+      path,
+      detail,
+      copied: [],
+      unchanged: [],
+      installState: null,
+      diagnostics: [],
+    });
+
+    let child: { worktreeRoot: string; commonDir: string };
+    let source: { worktreeRoot: string; commonDir: string };
+    try {
+      child = resolveGitIdentity(requestedChild);
+    } catch (err) {
+      return blocked("foreign-root", null, `this workspace has no worktree family: ${messageOf(err)}`);
+    }
+    try {
+      source = resolveGitIdentity(sourceRoot, "sourceRoot");
+    } catch (err) {
+      return blocked("foreign-root", null, `the source is not a worktree: ${messageOf(err)}`, sourceRoot, child.worktreeRoot);
+    }
+    if (source.commonDir !== child.commonDir) {
+      return blocked(
+        "foreign-root",
+        null,
+        "the source is not a worktree of this repository's family.",
+        source.worktreeRoot,
+        child.worktreeRoot,
+      );
+    }
+    if (source.worktreeRoot === child.worktreeRoot) {
+      return blocked(
+        "foreign-root",
+        null,
+        "the source is this worktree itself; preparation copies from a different worktree of the family.",
+        source.worktreeRoot,
+        child.worktreeRoot,
+      );
+    }
+
+    const plan = planPreparation({
+      childRoot: child.worktreeRoot,
+      sourceRoot: source.worktreeRoot,
+      registryRel: this.ports.registryRelPath(),
+    });
+    if (!plan.ok) {
+      return blocked(plan.reason, plan.path, plan.detail, source.worktreeRoot, child.worktreeRoot);
+    }
+
+    const copied = applyPreparation(child.worktreeRoot, plan.copies);
+    if (copied.length > 0) {
+      this.invalidate([
+        { code: "suspected-stale", message: "setup state prepared from a source worktree." },
+      ]);
+    }
+    const install = this.regenerateMachineBinding();
+    const diagnostics = install.diagnostic === null ? [] : [install.diagnostic];
+    return {
+      status: copied.length === 0 && install.state !== "regenerated" ? "already-prepared" : "prepared",
+      workspaceRoot: child.worktreeRoot,
+      sourceRoot: source.worktreeRoot,
+      copied,
+      unchanged: plan.unchanged,
+      installState: install.state,
+      diagnostics,
+    };
+  }
+
+  /**
+   * Seed THIS root's machine binding ledger from this root's own observation of
+   * the installed packs, when it has none. Only the binding half is written, to
+   * the machine-local ledger path; the portable half and the committed `.wf/`
+   * ledger are never touched. An existing ledger is left as it is (`present`),
+   * and an unobservable inventory is reported (`unavailable`) rather than guessed.
+   */
+  private regenerateMachineBinding(): { state: InstallStateOutcome; diagnostic: string | null } {
+    const home = resolveLedgerHome();
+    if (!home.ok || home.bindingPath === home.portablePath) {
+      return { state: "unavailable", diagnostic: "the machine binding ledger home is not separable from the portable ledger." };
+    }
+    const bindingAbs = joinSlash(this.ports.workspaceRoot, home.bindingPath);
+    if (this.ports.readFile(bindingAbs) !== null) return { state: "present", diagnostic: null };
+
+    let inspected: Map<string, InspectPackResponse>;
+    try {
+      inspected = this.discoverPacksWithInspection().inspected;
+    } catch (err) {
+      return { state: "unavailable", diagnostic: `installed packs could not be observed: ${messageOf(err)}` };
+    }
+    const updates = [...inspected.entries()]
+      .filter(([, pack]) => pack.machineBinding !== null)
+      .map(([pluginId, pack]) => ({ pluginId, binding: pack.machineBinding! }));
+    if (updates.length === 0) {
+      return { state: "unavailable", diagnostic: "no installed pack binding could be observed for this worktree." };
+    }
+    const rendered = renderLedgerMutation(null, updates, `the machine binding ledger \`${home.bindingPath}\``);
+    if (!rendered.ok) return { state: "unavailable", diagnostic: rendered.detail };
+    this.ports.writeFile(bindingAbs, rendered.content);
+    return { state: "regenerated", diagnostic: null };
+  }
+
+  runWorkspaceSetup(): WorkspaceSetupResponse {
+    const config = this.resolveConfig().coreConfig;
+    const plan = planWorkspaceSetup(
+      {
+        ...config,
+        dependencySetupCommand: config.dependencySetupCommand ?? null,
+        dependencySetupTimeout: config.dependencySetupTimeout ?? null,
+      },
+      this.ports.readFile(joinSlash(this.ports.workspaceRoot, SETUP_STATE_RELPATH)),
+    );
+    const base = {
+      command: null as string | null,
+      timeoutSeconds: 0,
+      exitCode: null as number | null,
+      durationMs: null as number | null,
+      outputTail: "",
+      diagnostics: [] as string[],
+    };
+    switch (plan.kind) {
+      case "unprepared":
+        return {
+          ...base,
+          status: "blocked",
+          reason: "unprepared",
+          detail: "this worktree has no resolved project config; prepare it before running setup.",
+        };
+      case "not-declared":
+        return {
+          ...base,
+          timeoutSeconds: plan.timeoutSeconds,
+          diagnostics: plan.diagnostics,
+          status: "not-declared",
+          reason: null,
+          detail: "the project declares no dependency-setup command; nothing ran.",
+        };
+      case "already-done":
+        return {
+          ...base,
+          command: plan.command,
+          timeoutSeconds: plan.timeoutSeconds,
+          diagnostics: plan.diagnostics,
+          status: "already-done",
+          reason: null,
+          detail: "this command already succeeded in this worktree; it was not re-run.",
+        };
+      case "run":
+        break;
+    }
+
+    const running = {
+      ...base,
+      command: plan.command,
+      timeoutSeconds: plan.timeoutSeconds,
+      diagnostics: plan.diagnostics,
+    };
+    if (!this.ports.runSetupCommand) {
+      return {
+        ...running,
+        status: "blocked",
+        reason: "failed",
+        detail: "this runtime cannot run a setup command.",
+      };
+    }
+    const result = this.ports.runSetupCommand(plan.command, plan.timeoutSeconds * 1000);
+    const observed = {
+      ...running,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+      outputTail: result.outputTail,
+    };
+    if (result.timedOut) {
+      return {
+        ...observed,
+        status: "blocked",
+        reason: "timed-out",
+        detail: `the setup command did not finish within ${plan.timeoutSeconds} seconds.`,
+      };
+    }
+    if (result.error !== null || result.exitCode !== 0) {
+      const how =
+        result.error !== null
+          ? `could not be started: ${result.error}`
+          : result.exitCode === null
+            ? `was ended by signal ${result.signal ?? "unknown"}`
+            : `exited with status ${result.exitCode}`;
+      return { ...observed, status: "blocked", reason: "failed", detail: `the setup command ${how}.` };
+    }
+    this.ports.writeFile(
+      joinSlash(this.ports.workspaceRoot, SETUP_STATE_RELPATH),
+      renderSetupState(plan.digest, new Date().toISOString()),
+    );
+    return { ...observed, status: "succeeded", reason: null, detail: "the setup command succeeded." };
+  }
+
   // --- counterpart listing (WF-758) ------------------------------------------
   //
   // Deterministic and read-only: the declared map beside the registry file plus
@@ -5851,6 +6089,10 @@ export class ResolverService {
     if (/^(\/|[A-Za-z]:)/.test(norm)) return norm;
     return `${this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
   }
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /** `list_counterparts` result (WF-758). `listed` is the only status that carries listings. */

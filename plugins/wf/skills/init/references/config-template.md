@@ -38,6 +38,15 @@ Must exit 0 when the project typechecks (including framework-level checks: templ
 
 The stated context bound for a single `/wf:ship` run, in approximate accumulated tokens per shipper. `/wf:ship` checks it at each inter-phase boundary (after a phase's output is committed and pushed); when the run's estimated accumulated context would cross the ceiling, ship flushes and **hands off to a fresh `/wf:ship <id>`** that resumes detect-first — so a long ship stays bounded and still reaches a merged PR with no lost state. **Lower it to force an earlier hand-off** (useful for exercising the crossing); raise it to let a run grow further before handing off. An absent or `<none>` value falls back to the shipped default (`150000`), so a repo initialized before this key existed degrades gracefully. Consumed only by `/wf:ship`.
 
+## Worktree Setup
+
+| Key | Value |
+|-----|-------|
+| **Dependency Setup Command** | `<none>` |
+| **Dependency Setup Timeout** | `600` |
+
+The **one** command that installs this project's dependencies in a freshly prepared worktree — run by the resolver's `run_workspace_setup` in the worktree root, through the platform shell, exactly as written here. `/wf:fleet` has every shipper run it after `prepare_workspace` and before the ceremony, and a failure or a timeout stops that item with a named reason before any phase runs. Only this project config declares it: no capability can supply or inject one. Leave it `<none>` when the project needs no install step — nothing runs then. **Dependency Setup Timeout** is the bound in whole seconds (default `600`, ceiling `3600`). A repo initialized before these keys existed simply has no `## Worktree Setup` section and runs nothing.
+
 ## Version Check
 
 | Key | Value |

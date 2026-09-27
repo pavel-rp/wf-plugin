@@ -22,7 +22,8 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { tailOf } from "./resolver/workspace-setup.js";
 import { randomBytes } from "node:crypto";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
@@ -401,6 +402,36 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
       } catch {
         return null;
       }
+    },
+
+    /** The project-declared dependency-setup command (WF-831). The command is the
+     *  project's own config value, run through the platform shell exactly as the
+     *  project wrote it, in the workspace root, under a hard timeout. Output is
+     *  captured and only its tail is returned; stdin is closed so a command that
+     *  prompts fails rather than hangs. */
+    runSetupCommand: (command, timeoutMs) => {
+      const started = Date.now();
+      const result = spawnSync(command, {
+        cwd: workspaceRoot,
+        shell: true,
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      const durationMs = Date.now() - started;
+      const error = result.error as NodeJS.ErrnoException | undefined;
+      const timedOut = error?.code === "ETIMEDOUT";
+      const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+      return {
+        exitCode: result.status,
+        signal: result.signal,
+        timedOut,
+        outputTail: tailOf(output),
+        error: error !== undefined && !timedOut ? error.message : null,
+        durationMs,
+      };
     },
 
     /** The machine-local home for bindings that must live OUTSIDE the audited

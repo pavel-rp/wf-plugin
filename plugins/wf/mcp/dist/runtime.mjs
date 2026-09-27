@@ -22852,6 +22852,20 @@ var readRunEvidenceInput = fromJsonSchema2(withWorkspaceRoot({
   required: ["taskId"],
   additionalProperties: false
 }));
+var prepareWorkspaceInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    sourceRoot: {
+      type: "string",
+      minLength: 1,
+      maxLength: 4096,
+      pattern: safeTerminalStringPattern,
+      description: "Absolute path of the worktree of the same family to copy setup state FROM (read-only). Never the workspace being prepared."
+    }
+  },
+  required: ["sourceRoot"],
+  additionalProperties: false
+}));
 var listCounterpartsInput = fromJsonSchema2(withWorkspaceRoot({
   type: "object",
   properties: {
@@ -23758,6 +23772,24 @@ function registerResolverTools(server, selectService) {
     async (args) => selected(args, (service) => service.readRunEvidence(args.taskId))
   );
   server.registerTool(
+    "prepare_workspace",
+    {
+      title: "prepare workspace",
+      description: "Prepare a fresh worktree before any task work: copy the allowlisted setup state from `sourceRoot` \u2014 a DIFFERENT worktree of the same repository family, read-only \u2014 into this workspace's `_local/`, then regenerate this workspace's machine binding ledger from its own observation of the installed packs. Exactly five file classes transfer: the registry/config file, the composed constitution, capability profiles (`profiles/*.profile.json`), per-skill settings overrides (`profiles/*.settings.json`) and personal slot overrides (`slots/*.md`). Nothing else is ever listed, so task folders, receipts, approvals, run evidence, scoreboards, scratch, snapshots, locks and the source's own binding ledger never transfer, and the committed `.wf/` tree is never written. Returns `prepared` (files written, or the binding ledger regenerated), `already-prepared` (every allowlisted file already byte-identical and a ledger present \u2014 nothing written), or `blocked` with one closed reason, writing nothing: `foreign-root` (the source is not in this family, or is this worktree), `source-uninitialized` (the source has no registry or declares no task root), `divergent` (this workspace already holds a different copy of `path`, left untouched), `unsafe-path` (a symlink, non-regular file, or a registry location outside `_local/`). Never returns a file body.",
+      inputSchema: prepareWorkspaceInput
+    },
+    async (args) => selected(args, (service) => service.prepareWorkspace(args.sourceRoot))
+  );
+  server.registerTool(
+    "run_workspace_setup",
+    {
+      title: "run workspace setup",
+      description: "Run the ONE dependency-setup command the project declares in its own config (`Dependency Setup Command`), in this workspace's root, bounded by `Dependency Setup Timeout` seconds (default 600, ceiling 3600). No capability source is ever read for the command, so a capability-declared setup command never runs. Returns `not-declared` (the key is empty \u2014 nothing ran), `succeeded`, `already-done` (this same command already succeeded here \u2014 not re-run), or `blocked` with one reason: `unprepared` (no resolved project config \u2014 prepare first), `failed` (non-zero exit, a signal, or the command could not start \u2014 `detail` names which), `timed-out`. Every outcome echoes the declared `command` verbatim, plus `exitCode`, `durationMs` and a bounded output tail.",
+      inputSchema: workspaceOnlyInput
+    },
+    async (args) => selected(args, (service) => service.runWorkspaceSetup())
+  );
+  server.registerTool(
     "list_counterparts",
     {
       title: "list counterparts",
@@ -23785,9 +23817,69 @@ import {
   writeFileSync as writeFileSync2,
   writeSync
 } from "node:fs";
-import { execFileSync as execFileSync3 } from "node:child_process";
+import { execFileSync as execFileSync3, spawnSync } from "node:child_process";
+
+// src/resolver/workspace-setup.ts
+import { createHash as createHash2 } from "node:crypto";
+var SETUP_STATE_RELPATH = "_local/resolver/setup-state.json";
+var DEFAULT_SETUP_TIMEOUT_SECONDS = 600;
+var MAX_SETUP_TIMEOUT_SECONDS = 3600;
+var SETUP_OUTPUT_TAIL_CHARS = 2e3;
+function parseSetupTimeout(raw) {
+  if (raw === null) return { seconds: DEFAULT_SETUP_TIMEOUT_SECONDS, diagnostic: null };
+  const trimmed = raw.trim();
+  if (!/^[0-9]+$/.test(trimmed) || Number(trimmed) <= 0) {
+    return {
+      seconds: DEFAULT_SETUP_TIMEOUT_SECONDS,
+      diagnostic: `Dependency Setup Timeout \`${raw}\` is not a positive whole number of seconds; the default ${DEFAULT_SETUP_TIMEOUT_SECONDS} applies.`
+    };
+  }
+  const seconds = Number(trimmed);
+  if (seconds > MAX_SETUP_TIMEOUT_SECONDS) {
+    return {
+      seconds: MAX_SETUP_TIMEOUT_SECONDS,
+      diagnostic: `Dependency Setup Timeout ${seconds} exceeds the ${MAX_SETUP_TIMEOUT_SECONDS}-second ceiling; the ceiling applies.`
+    };
+  }
+  return { seconds, diagnostic: null };
+}
+function setupCommandDigest(command) {
+  return createHash2("sha256").update(command, "utf8").digest("hex");
+}
+function readSetupStateDigest(text) {
+  if (text === null) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return typeof parsed.commandDigest === "string" && /^[a-f0-9]{64}$/.test(parsed.commandDigest) ? parsed.commandDigest : null;
+  } catch {
+    return null;
+  }
+}
+function renderSetupState(digest, completedAt) {
+  return `${JSON.stringify({ commandDigest: digest, completedAt }, null, 2)}
+`;
+}
+function planWorkspaceSetup(config2, stateText) {
+  if (config2.taskRoot === null) return { kind: "unprepared" };
+  const timeout = parseSetupTimeout(config2.dependencySetupTimeout);
+  const diagnostics = timeout.diagnostic === null ? [] : [timeout.diagnostic];
+  const command = config2.dependencySetupCommand;
+  if (command === null) {
+    return { kind: "not-declared", timeoutSeconds: timeout.seconds, diagnostics };
+  }
+  const digest = setupCommandDigest(command);
+  if (readSetupStateDigest(stateText) === digest) {
+    return { kind: "already-done", command, timeoutSeconds: timeout.seconds, diagnostics };
+  }
+  return { kind: "run", command, digest, timeoutSeconds: timeout.seconds, diagnostics };
+}
+function tailOf(output) {
+  return output.length <= SETUP_OUTPUT_TAIL_CHARS ? output : output.slice(output.length - SETUP_OUTPUT_TAIL_CHARS);
+}
+
+// src/ports.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24479,7 +24571,9 @@ function parseCoreConfig(markdown) {
     seedBacklogPath: normalizeValue(kv.get("backlog path")),
     standupStatuses: normalizeValue(kv.get("standup statuses")),
     contextCeiling: normalizeValue(kv.get("context ceiling")),
-    versionDeclaration: normalizeValue(kv.get("version declaration"))
+    versionDeclaration: normalizeValue(kv.get("version declaration")),
+    dependencySetupCommand: normalizeValue(kv.get("dependency setup command")),
+    dependencySetupTimeout: normalizeValue(kv.get("dependency setup timeout"))
   };
 }
 
@@ -25810,7 +25904,7 @@ import {
 } from "node:fs";
 import { isAbsolute as isAbsolute3, join as join2, relative, resolve as resolve2, sep } from "node:path";
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 
 // src/resolver/snapshot-store.ts
 import {
@@ -26004,7 +26098,7 @@ function fingerprintContainedCapabilityFile(root, selectedPath, maxBytes) {
   return result.status === "ok" ? {
     status: "ok",
     path: result.path,
-    sha256: createHash2("sha256").update(result.content).digest("hex"),
+    sha256: createHash3("sha256").update(result.content).digest("hex"),
     bytes: result.content.length
   } : { status: result.status, path: result.path, sha256: null, bytes: null };
 }
@@ -26309,6 +26403,35 @@ function createDefaultPorts(workspaceRoot) {
         return null;
       }
     },
+    /** The project-declared dependency-setup command (WF-831). The command is the
+     *  project's own config value, run through the platform shell exactly as the
+     *  project wrote it, in the workspace root, under a hard timeout. Output is
+     *  captured and only its tail is returned; stdin is closed so a command that
+     *  prompts fails rather than hangs. */
+    runSetupCommand: (command, timeoutMs) => {
+      const started = Date.now();
+      const result = spawnSync(command, {
+        cwd: workspaceRoot,
+        shell: true,
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        maxBuffer: 64 * 1024 * 1024
+      });
+      const durationMs = Date.now() - started;
+      const error2 = result.error;
+      const timedOut = error2?.code === "ETIMEDOUT";
+      const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+      return {
+        exitCode: result.status,
+        signal: result.signal,
+        timedOut,
+        outputTail: tailOf(output),
+        error: error2 !== void 0 && !timedOut ? error2.message : null,
+        durationMs
+      };
+    },
     /** The machine-local home for bindings that must live OUTSIDE the audited
      *  workspace. `os.homedir()` throws on some exotic environments and can
      *  legitimately be unset, so a failure is reported as `null` rather than
@@ -26359,7 +26482,7 @@ function message(err) {
   return err instanceof Error ? err.message : String(err);
 }
 function sha256Bytes2(bytes) {
-  return createHash3("sha256").update(bytes).digest("hex");
+  return createHash4("sha256").update(bytes).digest("hex");
 }
 function createRecoveryPorts(workspaceRoot) {
   const lockPath = joinSlash(workspaceRoot, LIFECYCLE_LOCK_PATH);
@@ -30615,6 +30738,178 @@ function mintRunEvidenceIssuerKey() {
   return randomBytes3(32).toString("hex");
 }
 
+// src/resolver/prepare-workspace.ts
+import {
+  lstatSync as lstatSync3,
+  mkdirSync as mkdirSync3,
+  readFileSync as readFileSync4,
+  readdirSync as readdirSync3,
+  renameSync as renameSync3,
+  rmSync as rmSync3,
+  writeFileSync as writeFileSync3
+} from "node:fs";
+var SETUP_STATE_DIR = "_local";
+var CORE_CONFIG_REL = "_local/config.md";
+var CONSTITUTION_REL = "_local/constitution.md";
+var PROFILES_DIR_REL = "_local/profiles";
+var SLOTS_DIR_REL = "_local/slots";
+var PROFILE_SUFFIXES = [".profile.json", ".settings.json"];
+var SLOT_SUFFIX = ".md";
+function join4(root, rel) {
+  return `${root.replace(/\/+$/, "")}/${rel}`;
+}
+function kindOf(abs) {
+  try {
+    const stat = lstatSync3(abs);
+    if (stat.isSymbolicLink()) return "symlink";
+    if (stat.isFile()) return "file";
+    if (stat.isDirectory()) return "dir";
+    return "other";
+  } catch {
+    return "absent";
+  }
+}
+function lexicallyContained(rel) {
+  if (rel.length === 0 || rel.includes("\0") || rel.includes("\\")) return false;
+  if (rel.startsWith("/") || /^[A-Za-z]:/.test(rel)) return false;
+  const segments = rel.split("/");
+  if (segments[0] !== SETUP_STATE_DIR || segments.length < 2) return false;
+  return !segments.some((segment) => segment === "" || segment === "." || segment === "..");
+}
+function ancestorsSafe(root, rel) {
+  const segments = rel.split("/");
+  for (let i = 1; i < segments.length; i += 1) {
+    const ancestor = segments.slice(0, i).join("/");
+    const kind = kindOf(join4(root, ancestor));
+    if (kind === "symlink" || kind === "file" || kind === "other") return ancestor;
+  }
+  return null;
+}
+function listClass(sourceRoot, dirRel, suffixes) {
+  let names;
+  try {
+    names = readdirSync3(join4(sourceRoot, dirRel));
+  } catch {
+    return [];
+  }
+  return names.filter((name) => suffixes.some((suffix) => name.endsWith(suffix) && name.length > suffix.length)).sort().map((name) => `${dirRel}/${name}`);
+}
+function planPreparation(input) {
+  const { childRoot, sourceRoot, registryRel } = input;
+  if (!lexicallyContained(registryRel)) {
+    return {
+      ok: false,
+      reason: "unsafe-path",
+      path: registryRel,
+      detail: `the registry location \`${registryRel}\` is not a plain path under \`${SETUP_STATE_DIR}/\`; preparation writes nowhere else.`
+    };
+  }
+  const registryKind = kindOf(join4(sourceRoot, registryRel));
+  if (registryKind === "symlink") {
+    return {
+      ok: false,
+      reason: "unsafe-path",
+      path: registryRel,
+      detail: `the source registry \`${registryRel}\` is a symbolic link; only regular files are copied.`
+    };
+  }
+  if (registryKind !== "file") {
+    return {
+      ok: false,
+      reason: "source-uninitialized",
+      path: registryRel,
+      detail: `the source worktree has no registry at \`${registryRel}\`.`
+    };
+  }
+  const hasDefaultConfig = kindOf(join4(sourceRoot, CORE_CONFIG_REL)) === "file";
+  const configRel = hasDefaultConfig ? CORE_CONFIG_REL : registryRel;
+  const configText = readFileSync4(join4(sourceRoot, configRel), "utf8");
+  if (parseCoreConfig(configText).taskRoot === null) {
+    return {
+      ok: false,
+      reason: "source-uninitialized",
+      path: configRel,
+      detail: `the source config \`${configRel}\` declares no task root.`
+    };
+  }
+  const candidates = [
+    registryRel,
+    ...hasDefaultConfig ? [CORE_CONFIG_REL] : [],
+    ...kindOf(join4(sourceRoot, CONSTITUTION_REL)) === "absent" ? [] : [CONSTITUTION_REL],
+    ...listClass(sourceRoot, PROFILES_DIR_REL, PROFILE_SUFFIXES),
+    ...listClass(sourceRoot, SLOTS_DIR_REL, [SLOT_SUFFIX])
+  ].filter((rel, index, all) => all.indexOf(rel) === index);
+  const copies = [];
+  const unchanged = [];
+  for (const rel of candidates) {
+    for (const [root, side] of [
+      [sourceRoot, "source"],
+      [childRoot, "child"]
+    ]) {
+      const unsafeAncestor = ancestorsSafe(root, rel);
+      if (unsafeAncestor !== null) {
+        return {
+          ok: false,
+          reason: "unsafe-path",
+          path: unsafeAncestor,
+          detail: `the ${side} directory \`${unsafeAncestor}\` is not a real directory; preparation follows no link.`
+        };
+      }
+    }
+    const sourceKind = kindOf(join4(sourceRoot, rel));
+    if (sourceKind !== "file") {
+      return {
+        ok: false,
+        reason: "unsafe-path",
+        path: rel,
+        detail: `the source entry \`${rel}\` is not a regular file (${sourceKind}); only regular files are copied.`
+      };
+    }
+    const bytes = readFileSync4(join4(sourceRoot, rel));
+    const childKind = kindOf(join4(childRoot, rel));
+    if (childKind === "absent") {
+      copies.push({ rel, bytes });
+      continue;
+    }
+    if (childKind !== "file") {
+      return {
+        ok: false,
+        reason: "unsafe-path",
+        path: rel,
+        detail: `the child entry \`${rel}\` exists but is not a regular file (${childKind}).`
+      };
+    }
+    if (readFileSync4(join4(childRoot, rel)).equals(bytes)) {
+      unchanged.push(rel);
+      continue;
+    }
+    return {
+      ok: false,
+      reason: "divergent",
+      path: rel,
+      detail: `the child already holds a different \`${rel}\`; it is left untouched rather than overwritten.`
+    };
+  }
+  return { ok: true, copies, unchanged };
+}
+function applyPreparation(childRoot, copies) {
+  const written = [];
+  for (const { rel, bytes } of copies) {
+    const target = join4(childRoot, rel);
+    mkdirSync3(target.slice(0, target.lastIndexOf("/")), { recursive: true });
+    const temp = `${target}.wf-prepare-${process.pid}.tmp`;
+    try {
+      writeFileSync3(temp, bytes, { flag: "wx" });
+      renameSync3(temp, target);
+    } catch (err) {
+      rmSync3(temp, { force: true });
+      throw err;
+    }
+    written.push(rel);
+  }
+  return written;
+}
+
 // src/resolver/counterparts.ts
 var COUNTERPART_MAP_FILENAME = "counterparts.md";
 var COUNTERPART_KINDS = ["mirror", "writer-parser", "reference"];
@@ -34459,6 +34754,201 @@ var ResolverService = class _ResolverService {
       diagnostic: null
     };
   }
+  // --- fresh-worktree preparation (WF-831) -------------------------------------
+  //
+  // A linked worktree starts with no gitignored setup state. `prepareWorkspace`
+  // copies the allowlisted setup-state classes from a SOURCE worktree of the same
+  // family into THIS root's `_local/` and regenerates this root's machine binding
+  // ledger from its own observation; `runWorkspaceSetup` runs the one
+  // dependency-setup command the project's own config declares. Neither ever
+  // writes the committed `.wf/` tree, and neither reads a capability source for
+  // what to run.
+  prepareWorkspace(sourceRoot) {
+    const requestedChild = normalizeSlashes(this.ports.workspaceRoot).replace(/\/+$/, "");
+    const blocked = (reason, path, detail, source2 = sourceRoot, child2 = requestedChild) => ({
+      status: "blocked",
+      workspaceRoot: child2,
+      sourceRoot: source2,
+      reason,
+      path,
+      detail,
+      copied: [],
+      unchanged: [],
+      installState: null,
+      diagnostics: []
+    });
+    let child;
+    let source;
+    try {
+      child = resolveGitIdentity(requestedChild);
+    } catch (err) {
+      return blocked("foreign-root", null, `this workspace has no worktree family: ${messageOf(err)}`);
+    }
+    try {
+      source = resolveGitIdentity(sourceRoot, "sourceRoot");
+    } catch (err) {
+      return blocked("foreign-root", null, `the source is not a worktree: ${messageOf(err)}`, sourceRoot, child.worktreeRoot);
+    }
+    if (source.commonDir !== child.commonDir) {
+      return blocked(
+        "foreign-root",
+        null,
+        "the source is not a worktree of this repository's family.",
+        source.worktreeRoot,
+        child.worktreeRoot
+      );
+    }
+    if (source.worktreeRoot === child.worktreeRoot) {
+      return blocked(
+        "foreign-root",
+        null,
+        "the source is this worktree itself; preparation copies from a different worktree of the family.",
+        source.worktreeRoot,
+        child.worktreeRoot
+      );
+    }
+    const plan = planPreparation({
+      childRoot: child.worktreeRoot,
+      sourceRoot: source.worktreeRoot,
+      registryRel: this.ports.registryRelPath()
+    });
+    if (!plan.ok) {
+      return blocked(plan.reason, plan.path, plan.detail, source.worktreeRoot, child.worktreeRoot);
+    }
+    const copied = applyPreparation(child.worktreeRoot, plan.copies);
+    if (copied.length > 0) {
+      this.invalidate([
+        { code: "suspected-stale", message: "setup state prepared from a source worktree." }
+      ]);
+    }
+    const install = this.regenerateMachineBinding();
+    const diagnostics = install.diagnostic === null ? [] : [install.diagnostic];
+    return {
+      status: copied.length === 0 && install.state !== "regenerated" ? "already-prepared" : "prepared",
+      workspaceRoot: child.worktreeRoot,
+      sourceRoot: source.worktreeRoot,
+      copied,
+      unchanged: plan.unchanged,
+      installState: install.state,
+      diagnostics
+    };
+  }
+  /**
+   * Seed THIS root's machine binding ledger from this root's own observation of
+   * the installed packs, when it has none. Only the binding half is written, to
+   * the machine-local ledger path; the portable half and the committed `.wf/`
+   * ledger are never touched. An existing ledger is left as it is (`present`),
+   * and an unobservable inventory is reported (`unavailable`) rather than guessed.
+   */
+  regenerateMachineBinding() {
+    const home = resolveLedgerHome();
+    if (!home.ok || home.bindingPath === home.portablePath) {
+      return { state: "unavailable", diagnostic: "the machine binding ledger home is not separable from the portable ledger." };
+    }
+    const bindingAbs = joinSlash(this.ports.workspaceRoot, home.bindingPath);
+    if (this.ports.readFile(bindingAbs) !== null) return { state: "present", diagnostic: null };
+    let inspected;
+    try {
+      inspected = this.discoverPacksWithInspection().inspected;
+    } catch (err) {
+      return { state: "unavailable", diagnostic: `installed packs could not be observed: ${messageOf(err)}` };
+    }
+    const updates = [...inspected.entries()].filter(([, pack]) => pack.machineBinding !== null).map(([pluginId, pack]) => ({ pluginId, binding: pack.machineBinding }));
+    if (updates.length === 0) {
+      return { state: "unavailable", diagnostic: "no installed pack binding could be observed for this worktree." };
+    }
+    const rendered = renderLedgerMutation(null, updates, `the machine binding ledger \`${home.bindingPath}\``);
+    if (!rendered.ok) return { state: "unavailable", diagnostic: rendered.detail };
+    this.ports.writeFile(bindingAbs, rendered.content);
+    return { state: "regenerated", diagnostic: null };
+  }
+  runWorkspaceSetup() {
+    const config2 = this.resolveConfig().coreConfig;
+    const plan = planWorkspaceSetup(
+      {
+        ...config2,
+        dependencySetupCommand: config2.dependencySetupCommand ?? null,
+        dependencySetupTimeout: config2.dependencySetupTimeout ?? null
+      },
+      this.ports.readFile(joinSlash(this.ports.workspaceRoot, SETUP_STATE_RELPATH))
+    );
+    const base = {
+      command: null,
+      timeoutSeconds: 0,
+      exitCode: null,
+      durationMs: null,
+      outputTail: "",
+      diagnostics: []
+    };
+    switch (plan.kind) {
+      case "unprepared":
+        return {
+          ...base,
+          status: "blocked",
+          reason: "unprepared",
+          detail: "this worktree has no resolved project config; prepare it before running setup."
+        };
+      case "not-declared":
+        return {
+          ...base,
+          timeoutSeconds: plan.timeoutSeconds,
+          diagnostics: plan.diagnostics,
+          status: "not-declared",
+          reason: null,
+          detail: "the project declares no dependency-setup command; nothing ran."
+        };
+      case "already-done":
+        return {
+          ...base,
+          command: plan.command,
+          timeoutSeconds: plan.timeoutSeconds,
+          diagnostics: plan.diagnostics,
+          status: "already-done",
+          reason: null,
+          detail: "this command already succeeded in this worktree; it was not re-run."
+        };
+      case "run":
+        break;
+    }
+    const running = {
+      ...base,
+      command: plan.command,
+      timeoutSeconds: plan.timeoutSeconds,
+      diagnostics: plan.diagnostics
+    };
+    if (!this.ports.runSetupCommand) {
+      return {
+        ...running,
+        status: "blocked",
+        reason: "failed",
+        detail: "this runtime cannot run a setup command."
+      };
+    }
+    const result = this.ports.runSetupCommand(plan.command, plan.timeoutSeconds * 1e3);
+    const observed = {
+      ...running,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+      outputTail: result.outputTail
+    };
+    if (result.timedOut) {
+      return {
+        ...observed,
+        status: "blocked",
+        reason: "timed-out",
+        detail: `the setup command did not finish within ${plan.timeoutSeconds} seconds.`
+      };
+    }
+    if (result.error !== null || result.exitCode !== 0) {
+      const how = result.error !== null ? `could not be started: ${result.error}` : result.exitCode === null ? `was ended by signal ${result.signal ?? "unknown"}` : `exited with status ${result.exitCode}`;
+      return { ...observed, status: "blocked", reason: "failed", detail: `the setup command ${how}.` };
+    }
+    this.ports.writeFile(
+      joinSlash(this.ports.workspaceRoot, SETUP_STATE_RELPATH),
+      renderSetupState(plan.digest, (/* @__PURE__ */ new Date()).toISOString())
+    );
+    return { ...observed, status: "succeeded", reason: null, detail: "the setup command succeeded." };
+  }
   // --- counterpart listing (WF-758) ------------------------------------------
   //
   // Deterministic and read-only: the declared map beside the registry file plus
@@ -34519,6 +35009,9 @@ var ResolverService = class _ResolverService {
     return `${this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
   }
 };
+function messageOf(err) {
+  return err instanceof Error ? err.message : String(err);
+}
 function isSafeBaseRef(ref) {
   return ref.length > 0 && ref.length <= 256 && /^[A-Za-z0-9_][A-Za-z0-9._/@{}^~-]*$/.test(ref) && !ref.includes("..");
 }

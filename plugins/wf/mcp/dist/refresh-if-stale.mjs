@@ -494,7 +494,9 @@ function parseCoreConfig(markdown) {
     seedBacklogPath: normalizeValue(kv.get("backlog path")),
     standupStatuses: normalizeValue(kv.get("standup statuses")),
     contextCeiling: normalizeValue(kv.get("context ceiling")),
-    versionDeclaration: normalizeValue(kv.get("version declaration"))
+    versionDeclaration: normalizeValue(kv.get("version declaration")),
+    dependencySetupCommand: normalizeValue(kv.get("dependency setup command")),
+    dependencySetupTimeout: normalizeValue(kv.get("dependency setup timeout"))
   };
 }
 
