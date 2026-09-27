@@ -54,8 +54,9 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 | 15 | verify-replay — the WF-552 five-round FAIL loop | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf552` — five recorded `/wf:verify-spec` rounds (all FAIL; rounds 4–5 gated by capability findings alone) replayed through today's aggregation / blocking / stop rule | **WF-552** — `_local/_archive/WF-552/04_verify.history.md`, the rotated audit history of "Freeze charter scope after round 1" (2026-09-04, 5 rounds); mined by **WF-564** — "Replay the archived verify histories as a regression corpus with a recorded baseline", the **C033** verify-loop charter's baseline SUB. |
 | 16 | verify-replay — the WF-553 four-round PARTIAL loop | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf553` — four recorded `/wf:verify-spec` rounds (all PARTIAL with every generic requirement passing; round 1 header-only at the source, flagged `body_truncated`) | **WF-553** — `_local/_archive/WF-553/04_verify.history.md`, the rotated audit history of the charter size-budget task (2026-09-04, 4 rounds); mined by **WF-564**, the **C033** baseline SUB. |
 | 17 | verify-replay — the WF-554 seven-round PARTIAL loop with a verify-fix pass | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf554` — seven recorded `/wf:verify-spec` rounds (all PARTIAL at 16/17) with one `/wf:verify-fix` pass between rounds 5 and 6, the last two rounds auditing an uncommitted edit | **WF-554** — `_local/_archive/WF-554/04_verify.history.md` + `05_verify-fix.history.md`, the rotated histories of "Offer one explicit user gate when the revision cap is hit with blocking findings left" (2026-09-04/05, 7 rounds + 1 fix pass); mined by **WF-564**, the **C033** baseline SUB. |
+| 18 | planted plan edit — an approved plan written after approval halts before any PR | absolute assertion (digest recomputed from committed bytes, no variance ceiling) | SMOKE | `planted-plan-edit` — a `/wf:ship` clean control (plan byte-identical to its `gate:plan` digest; PR opened and merged) and a planted run whose approved `02_plan.md` was written after approval (halts at `gate:plan`, zero `pr-create`) | **WF-834** — "Re-baseline the eval-corpus plan snapshots to the progress-artifact shape" (charter **C040**, umbrella **WF-829**), the negative control its re-baseline owes; the invariant is **WF-830** ("Keep the approved plan byte-identical by moving implement progress to its own artifact"). |
 
-All seventeen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
+All eighteen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
 shape, file set), which is the smoke-tier preference (charter OUT-5 / risk table — SMOKE
 prefers structural/deterministic assertions over semantic judgment, so a future PR gate
 stays trustworthy). None requires a semantic-judgment or transcript-prose assertion (locked
@@ -100,12 +101,22 @@ non-empty requirement-verdict list (or an explicit `body_truncated` flag), a fin
 provenance link, naming the specific missing field otherwise, and the kit's own `selfcheck.sh` runs
 under the same check.
 
+### Item 18 and the WF-834 re-baseline
+
+Since WF-830, `/wf:implement` records step status, notes and its Resolution Summary in
+`02_progress.md`, bound to the approved `02_plan.md` by a `**Plan digest:**` (sha256 of its raw
+bytes); the plan itself is never written after approval. WF-834 re-cut every post-implement
+snapshot in items 11–14 (baseline, current and seeded sets alike, so the file-set families stay
+comparable) to that shape. Because a re-baseline is exactly the change that can hide a regression,
+item 18 plants one — an approved plan written after approval — and check 13 (PLAN IDENTITY) requires
+it to halt before any PR exists, recomputing every digest from the committed bytes.
+
 ## Per-arm canned-vs-real disclosure ledger
 
 Charter OUT-3 requires each arm to state which path produced it, so a reviewer knows exactly what
 each arm proves. `run.sh`'s `check_disclosure` audits this mechanically: every `arm.json` carries
 `provenance: { path, reason }` with `path` ∈ {`canned`, `real`}, and every item carries the paired
-prose section. **All nine arms are `canned`** — zero real containerized arms exist in this
+prose section. **All ten arms are `canned`** — zero real containerized arms exist in this
 environment, and none is claimed.
 
 | Arm | Item | Path | Why not a live run |
@@ -119,6 +130,7 @@ environment, and none is claimed.
 | `empty-slot-implement-milestone/baseline` | 12 | **canned** | as above |
 | `empty-slot-implement-finish/baseline` | 13 | **canned** | as above |
 | `barecore-conveyor` | 14 | **canned** | Docker + token absent, **and** the installed plugin cache is `wf` 0.87.0 while the seven slots live in 0.93.0 — skills execute from the installed cache, so a live conveyor would have exercised a **pre-slot** build in which the `<!-- wf:slot … -->` markers do not exist, observing no slot resolution at all while appearing authoritative |
+| `planted-plan-edit` | 18 | **canned** | Docker + token absent; the digest verdict is not canned — check 13 recomputes it from the committed plan bytes on every run |
 
 When Docker, a token, and a current-build install are available, `runner/run-skill.sh` regenerates
 any of these sets and the assertions re-run **unchanged** — only the provenance of the run bytes
@@ -269,6 +281,7 @@ instead: `resolve_content({class: "slot", …})` returning `{status: "unfilled"}
 | `items/verify-replay-wf552/` | item 15 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..05.json` (verbatim transcripts in the repo-level `corpus-archive/verify-replay-wf552/`) — the WF-552 five-round FAIL loop, structured + verbatim |
 | `items/verify-replay-wf553/` | item 16 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..04.json` (transcripts in `corpus-archive/verify-replay-wf553/`) — the WF-553 four-round PARTIAL loop (round 1 `body_truncated` at the source) |
 | `items/verify-replay-wf554/` | item 17 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..07.json` + `rounds/verify-fix-after-round-05.json` (transcripts in `corpus-archive/verify-replay-wf554/`) — the WF-554 seven-round PARTIAL loop with its verify-fix pass |
+| `items/planted-plan-edit/` | item 18 (WF-834): `item.md` + `arm.json` + `runs-current/run-1` (clean `/wf:ship` control, plan byte-identical, PR merged) + `seeded-breakage/runs/run-1` (approved plan written after approval; halts at `gate:plan` with zero `pr-create`) — judged by check 13 (PLAN IDENTITY), which also asserts byte-identity on every progress-bearing snapshot |
 | `../experiments/verify-replay-baseline/` | the replay kit items 15–17 are judged by: manifest, fixture capability, extractor, baseline deriver, live replay driver, `replay-check.mjs`, `selfcheck.sh`, and `results/baseline.json` |
 | `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
 | `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, the coverage-ledger audit, and the round-replay lint (items 15–17 + the kit self-lint) (CI entrypoint) |

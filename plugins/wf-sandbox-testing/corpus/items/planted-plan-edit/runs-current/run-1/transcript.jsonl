@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"ppe-cur-1","tools":["Read","Bash","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Shipping FAKE-9: gate:plan approved against 02_plan.md; implement recorded every step in 02_progress.md and left the approved plan untouched. Phase 3 gate re-assertion: gate:plan artifact-backed and fresh — opening the pull request."}]},"session_id":"ppe-cur-1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SHIP — Merged\n\nTask:     FAKE-9\nBuilt:    ready for review\nPR:       https://fake.local/pr/9\nChecks:   green\nMerge:    merged (https://fake.local/pr/9)\nGates:    2 approved, 0 unapprovable (mode unattended)\nNext:     none — terminus"}]},"session_id":"ppe-cur-1"}
+{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Merged","usage":{"input_tokens":5120,"output_tokens":410},"total_cost_usd":0.0351}
