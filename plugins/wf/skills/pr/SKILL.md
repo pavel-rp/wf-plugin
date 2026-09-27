@@ -1,7 +1,7 @@
 ---
 name: pr
 description: Opens a pull request for the current task branch — first commits and pushes any pending work (via the wf:commit subagent, push on), then composes a PR body from the task's wf artifacts (reqs, spec, plan resolution, verify, QA), links the work item through the active tracker capability, when one is registered, and creates the PR through the active delivery provider. Use when a task is implemented and ready for review. Pass --no-commit to open a PR against exactly what's already pushed, --draft for a draft PR.
-allowed-tools: [Read, Task, Bash]
+allowed-tools: [Read, Write, Edit, Task, Bash, Skill]
 ---
 
 # /wf:pr — Push, then open a PR from the task's wf artifacts
@@ -16,7 +16,7 @@ Opens a PR for the current task through the project's active delivery provider. 
 
 Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
 
-Confirm the project is initialized by querying the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })`. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. This host reads no core config value here beyond the initialized check — the two subagents re-resolve the id and `{task-root}` themselves.
+Confirm the project is initialized by querying the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })`. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. This host reads no core config value beyond the initialized check and `coreConfig.taskRoot` (the Phase 2.2 drift check reads the task folder) — the two subagents re-resolve the id and `{task-root}` themselves.
 
 ---
 
@@ -43,6 +43,7 @@ Confirm the project is initialized by querying the bundled `wf-resolver` MCP ser
 - Read-only resolution for ID/branch inference (`workspace-root-resolve` via `resolve_config({ workspaceRoot, ... })` `workspaceRoot`, `current-branch-query` via `resolve_provider({ workspaceRoot, surface: "delivery" })`).
 - Resolve providers once for the run (Phase 1.5): call `resolve_provider({ workspaceRoot, surface: "delivery" })` and `resolve_provider({ workspaceRoot, surface: "tracker" })` on the `wf-resolver` service — metadata records only; the diff and PR body stay inside the subagents.
 - Invoke the **Task** tool with `subagent_type` `wf:commit` and `wf:pr`.
+- Run the Phase 2.2 drift check (`certified-commit.ops.md`, via `resolve_content`, `class: contract`): read the task folder's `04_verify.md` and `04_drift.md`, append a `carry-forward` row to `04_drift.md` — the only file this host writes, and only inside the task folder — and invoke `/wf:verify-spec` through the **Skill** tool at most once per run, only on a `reverify` outcome.
 - Resolve the declared `pr.body-check` slot (Phase 2.5) once via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: pr`, `point: body-check`) and, only on a `composed` outcome, forward the served body to the `wf:pr` agent unchanged.
 
 **Forbidden:**
@@ -50,6 +51,7 @@ Confirm the project is initialized by querying the bundled `wf-resolver` MCP ser
 - Modify any source file — this skill only orchestrates; the subagents invoke the delivery provider.
 - Run any destructive delivery operation.
 - Author commits or PR bodies inline — that is the subagents' job, and keeps the diff and artifacts out of this context.
+- Create a pull request after a `refuse` drift-check outcome, or run a second re-verify for the same drift event.
 
 ---
 
@@ -87,7 +89,17 @@ Gate on its `COMMIT —` block:
 
 Surface a single one-line summary of the commit result (e.g. "Committed 4 files, pushed." or "Nothing new to commit; branch up to date."). Do **not** reprint the full `COMMIT` block — the `PR` block is this skill's final output.
 
-If `--no-commit` was passed, skip straight to Phase 2.5.
+If `--no-commit` was passed, skip straight to Phase 2.2.
+
+## Phase 2.2 — Drift check (the certified commit)
+
+The pushed head is final here, and no pull request exists yet. Follow the drift check in `certified-commit.ops.md` (`resolve_content({ workspaceRoot, ... })`, `class: contract`, `ref: certified-commit.ops.md`) §"The drift check" against the task folder `{task-root}/{task-id}/` (take `{task-root}` from `resolve_config`; when `{task-id}` is unset, resolve it from the current branch the same way the subagents do) and the branch's pushed head. Act on its single outcome:
+
+- **`inert`**, **`bound`**, or **`carried`** → continue to Phase 2.5. On `carried` the check has appended its `04_drift.md` row with `Path` `pr`; surface one line naming the kind and both commits.
+- **`reverify`** → invoke `/wf:verify-spec {task-id}` through the **Skill** tool **exactly once** — it runs in drift mode and writes its own report and ledger row — then re-run the check once without re-entering its re-verify step. `bound` → continue to Phase 2.5; anything else → the `refuse` bullet below.
+- **`refuse`** → stop before Phase 2.5 and emit `PR — Error` with reason `Head <B> drifted from the certified commit <A> — <reason>` (`uncertified`: re-run `/wf:verify-spec` to certify the head; `reverified-fail`: the one re-verify for this drift did not PASS — see `04_verify.md`; `unreadable`: the named record could not be read). No pull request is created.
+
+A pull request is never created while the pushed head differs from the effective binding with neither a `carry-forward` row nor a PASS re-verify covering it.
 
 ## Phase 2.5 — Resolve the body check (the `pr.body-check` slot)
 
@@ -131,6 +143,7 @@ Emit the subagent's `PR —` block verbatim as this skill's final output.
 - **Not on a task branch + `--no-commit`:** the subagent stops (`PR — Error`) — it won't create a branch in no-commit mode. Drop `--no-commit` (so `wf:commit` runs its branch gate) or run `/wf:branch` first.
 - **No resolvable workspace root** — `PR — Error`; with a delivery provider active, `workspace-root-resolve` found no working tree to resolve.
 - **Push failed in Phase 2:** stop before PR creation — the branch isn't on the remote.
+- **Head drifted from the certified commit:** Phase 2.2 carries a `base-sync`/`version-bump` drift forward with a ledger row, runs one scoped `/wf:verify-spec` for any other drift, and refuses (`PR — Error`) on an uncertified head or a re-verify that did not PASS. No `04_verify.md` at all (e.g. a fast-path task) is `inert` and changes nothing.
 - **A forwarded body check flags the composed body:** the subagent returns `PR — Error` naming what the check flagged, and no pull request is created. Fix the body's source or the change, then re-run `/wf:pr`. With `pr.body-check` unfilled nothing is checked and creation proceeds as before.
 - **PR already open for this branch:** the subagent returns `PR — exists` with the existing URL rather than creating a duplicate.
 - **Delivery provider not authenticated:** the subagent returns `PR — Error` with the provider's own authentication-remedy hint.

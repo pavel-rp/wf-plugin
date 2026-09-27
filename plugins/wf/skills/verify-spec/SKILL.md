@@ -113,8 +113,8 @@ Always read, in order:
    - the full diff content against `main`
 
    This is the set of code actually under audit. Don't verify against uncommitted noise from
-   unrelated files; call those out separately. Record the branch, HEAD SHA, base SHA, and
-   dirty-tree flag in the report header, so a re-run can tell when the branch has moved.
+   unrelated files; call those out separately. Record the branch, HEAD SHA, base SHA, dirty-tree
+   flag, and audited tree identity in the report header, so a re-run can tell when the branch has moved.
 
 ---
 
@@ -374,6 +374,8 @@ nothing was aggregated.
 
 Apply `finding-ledger.md`'s §"Match / insert / retire" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`) once more — `N` and this run's own aggregated findings against the ledger-so-far from §"Fire the `verify` phase" — then render `## Ledger` per `verify-template.md`'s shape (fetched at `## Output` below) — round `N` renders only as `## Ledger`'s `**Round:**` line. Before rendering, give every ledger row and every non-`PASS`/non-`N/A` requirement item its one disposition per `finding-disposition.md` (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-disposition.md`) — a projection of status plus the stop predicate; it changes no bucket, blocking set, or `**Verdict:**`.
 
+**Certification and drift mode.** Every report's header carries the `**Certified:**` line, and a run whose effective binding is bound but whose tree differs from the tree this audit reads runs in **drift mode** — carried requirement items, `drift: residual` findings (never entering the critic, the blocking set, or `**Verdict:**`), the `**Drift re-verify:**` line, and one `04_drift.md` row appended after the report is written — all per `certified-commit.ops.md` (`resolve_content({ workspaceRoot, ... })`, `class: contract`, `ref: certified-commit.ops.md`) §"Certification record", §"Effective binding", and §"Drift-mode audit". Derive the binding and the drift diff before extracting the requirement list, so carried items are never re-audited.
+
 ---
 
 ## Output
@@ -426,20 +428,17 @@ sibling path it went to; skip it when that path lies outside the workspace, the 
 the index step takes. The resolver derives the run identity, workspace, timestamp, sequence and
 digest itself — this skill asserts none of them and never writes the destination directly.
 **Non-blocking, always:** a `refused` outcome or unavailable resolver is reported in one line
-and changes nothing else — the verdict is unaffected and the block below emitted unchanged.
-
-End with the final-output block (see below).
+and changes nothing else — the verdict is unaffected and the block below emitted unchanged. End with the final-output block (see below).
 
 ---
 
 ## What this skill will NOT do
 
-- Will NOT modify any source file outside `_local/` — the only write is `04_verify.md`; fixes to source are asked for separately.
+- Will NOT modify any source file outside `_local/` — the only writes are `04_verify.md` and, in drift mode, one `04_drift.md` row; fixes to source are asked for separately.
 - Will NOT mark something PASS without concrete evidence — "looks correct" is not a verdict.
 - Will NOT use a derived artifact (an LLM-authored plan) as the source of truth.
 - Will NOT invent requirements not present in the spec — a capability's invariants surface as `verify` `finding`s, not fabricated requirement-list rows.
-- Will NOT name, require, or assume any capability, including when reconciling the two adversarial
-  sources or classifying the blocking set.
+- Will NOT name, require, or assume any capability, including when reconciling the two adversarial sources or classifying the blocking set.
 
 ---
 
