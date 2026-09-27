@@ -335,24 +335,7 @@ in its existing order. With no marked finding, nothing moves — the lean defaul
 **No-op:** an empty `capabilities[]`, or no fragment matching `verify`/`finding`, means the
 phase produces **nothing** — no capability/stack/domain term, no STOP. A malformed
 `dispatch` is that contributor's own no-op, reported as incomplete coverage below. Gating
-is decided by §"The blocking set" alone, never by mere existence.
-
-**Lens count.** Count this round's `verify`/`finding` rows once, after dispatch, as
-`<c>/<e> completed, <i> inline` — the one value every `Lenses` render site carries:
-- **`<e>` expected** — every row collected at step 2 that the contributor gate left enabled. A
-  row the gate skipped was deliberately disabled and is not expected; a row with a malformed
-  `dispatch`, or whose Task target is unavailable, is expected.
-- **`<c>` completed** — expected rows that delivered a well-formed block through their declared
-  dispatch: an `inline:` row whose body was followed in-context, or a `subagent:` row whose own
-  isolated Task returned. A clean block with an empty `findings:` list is completed.
-- **`<i>` inline** — `subagent:` rows whose rubric the verifying agent executed in its own context
-  instead of an isolated Task (for example, because it could not dispatch one). They count in
-  `<e>` and **never** in `<c>`: a rubric the auditing agent applies to its own work is not an
-  independent lens run. Each is also reported as incomplete coverage, provenance `run inline, not
-  independent`.
-
-An empty `capabilities[]`, or no `verify`/`finding` row, renders `0/0 completed, 0 inline` — never
-omitted. The count is reporting only: it never enters the blocking set or changes `**Verdict:**`.
+is decided by §"The blocking set" alone, never by mere existence. **Lens count:** after dispatch, count this round's `verify`/`finding` rows once as `<c>/<e> completed, <i> inline` per `verify-template.md` §"Lens count" (fetched at `## Output` below) — `<e>` = rows the contributor gate left enabled; `<c>` = those delivering a well-formed block through their declared dispatch; `<i>` = `subagent:` rows whose rubric this agent ran in its own context, in `<e>` but **never** in `<c>`, and reported as incomplete coverage. No row renders `0/0 completed, 0 inline`. Reporting only: never the blocking set, never `**Verdict:**`.
 
 ### Confirm candidate blocking findings (the critic pass)
 
@@ -479,8 +462,7 @@ and changes nothing else — the verdict is unaffected and the block below emitt
   surfaces.
 - **A contributor fails or returns nothing**: no STOP, the generic audit still stands. It
   contributed nothing *and is not clean*: state it with its provenance and
-  mark the adversarial coverage **incomplete**. It stays in the lens count's `<e>` and out of
-  its `<c>` (§"Fire the `verify` phase"). Reporting only — no verdict change.
+  mark the adversarial coverage **incomplete** (in the lens count's `<e>`, not its `<c>`). Reporting only — no verdict change.
 - **Re-run after fixes**: `04_verify.md` is overwritten, the prior report rotated into
   `04_verify.history.md` — an unbounded trail; prune manually.
 - **`04_verify.history.md` absent, empty, or pre-fingerprint only**: never an error — the
@@ -506,9 +488,7 @@ Next: <branched on the verdict — see below>
 ```
 
 `N`/`M` count only the blocking-set members rendered under `## Capability findings` — the same
-counts the chat summary's capability-findings line prints. `Lenses:` is the lens count from
-§"Fire the `verify` phase", identical to the report's `**Lenses:**` header line — always
-present, `0/0 completed, 0 inline` when nothing is registered. The `Next:` line is **always present**, branched on the verdict:
+counts the chat summary's capability-findings line prints. `Lenses:` echoes the report's `**Lenses:**` header — always present. The `Next:` line is **always present**, branched on the verdict:
 
 - **PASS** → `/wf:qa-gen {task-id}` (proceed to QA).
 - **FAIL/PARTIAL with at least one mechanically fixable finding** → `/wf:verify-fix {task-id}`

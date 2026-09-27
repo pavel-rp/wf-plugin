@@ -7,6 +7,7 @@ The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.
 ## Contents
 
 - [Full output shape](#full-output-shape-04_verifymd) — the full fenced block
+- [Lens count](#lens-count) — how the `**Lenses:**` header value is counted
 
 ## Full output shape (`04_verify.md`)
 
@@ -223,8 +224,8 @@ is a clean delivery, not a failure):
   executed in the verifying agent's own context, not an isolated dispatch. Counted in the
   `**Lenses:**` inline figure, never as completed. Non-gating.
 
-Every Coverage entry is also reflected in the header's `**Lenses:**` count (`SKILL.md`
-§"Fire the `verify` phase" — Lens count), which renders even when this sub-list is omitted.
+Every Coverage entry is also reflected in the header's `**Lenses:**` count (§"Lens count"
+below), which renders even when this sub-list is omitted.
 
 ## Counterparts
 
@@ -259,3 +260,25 @@ Informational only — does NOT affect the verdict.
 - Short, ordered list. "Fix X at file:line", "Run `tsc --noEmit`", "Resolve open
   question Y".
 ```
+
+## Lens count
+
+The `**Lenses:**` header value — `<c>/<e> completed, <i> inline` — counts this round's
+`verify`/`finding` contributor rows once, after dispatch (`SKILL.md` §"Fire the `verify` phase").
+The same value is echoed verbatim by the chat summary's `Lenses:` line, the `VERIFY —` block's
+`Lenses:` line, and downstream by the run blocks that report it.
+
+- **`<e>` expected** — every row collected for this phase that the contributor gate left
+  enabled. A row the gate skipped was deliberately disabled and is not expected; a row with a
+  malformed `dispatch`, or whose Task target is unavailable, is expected.
+- **`<c>` completed** — expected rows that delivered a well-formed block through their declared
+  dispatch: an `inline:` row whose body was followed in-context, or a `subagent:` row whose own
+  isolated Task returned. A clean block with an empty `findings:` list is completed.
+- **`<i>` inline** — `subagent:` rows whose rubric the verifying agent executed in its own context
+  instead of an isolated Task (for example, because it could not dispatch one). They count in
+  `<e>` and **never** in `<c>`: a rubric the auditing agent applies to its own work is not an
+  independent lens run. Each is also recorded under Coverage as `run inline, not independent`.
+
+An empty registry, or no `verify`/`finding` row, renders `0/0 completed, 0 inline` — the line is
+never omitted. The count is reporting only: it never enters the blocking set, the critic, the
+ledger, or `**Verdict:**`.
