@@ -62,9 +62,9 @@ Compose the body from the template below. **Include a section only when its sour
 
 | Section                          | Source                                                                                            |
 | --------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Summary** (2–4 sentences: what + why) | `02_progress.md` Resolution Summary + `01_spec.md` intent (absent `02_progress.md`: read-only legacy fallback — `wf-legacy-progress-fallback` — to the `02_plan.md` Resolution Summary); `lite.md` for fast-path tasks |
+| **Summary** (2–4 sentences: what + why) | `02_progress.md` Resolution Summary + `01_spec.md` intent (when `02_progress.md` is absent or carries no `## Resolution Summary`: read-only legacy fallback — `wf-legacy-progress-fallback` — to the `02_plan.md` Resolution Summary); `lite.md` for fast-path tasks |
 | Work-item link (present only when a tracker is registered and `get`/`attach_link` succeed) | the active tracker's own work-item link form, embedded into the "Resolves…" line per its `attach_link` fragment (a side-effecting embed, no returned value); the row and that sentence are both omitted entirely when no tracker is registered, or when a registered tracker's `get`/`attach_link` call fails mid-run |
-| **Changes** (deduped bullets)    | `02_plan.md` step titles + `02_progress.md` step notes + the commit subjects introduced on this branch |
+| **Changes** (deduped bullets)    | `02_plan.md` step titles + `02_progress.md` step notes (when `02_progress.md` is absent or carries no `STEP-NNN` status line: read-only legacy fallback — `wf-legacy-progress-fallback` — to the `> Implemented:` notes under the plan's ticked steps) + the commit subjects introduced on this branch |
 | **Acceptance criteria** (checklist) | `01_spec.md` success criteria — tick only those `04_verify.md` / `07_qa-report.md` confirm     |
 | **Verification**                 | `04_verify.md` / `05_verify-fix.md` result; omit the section if neither exists                    |
 | **QA**                           | `07_qa-report.md` pass rate + `08_qa-fix.md` fixes; or "QA not run" if absent                     |
