@@ -316,6 +316,32 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-795: references-class inventory stays in step with the tree -----------
+# docs/content-read-call-site-inventory.md §4.4 and its §5 references row drifted
+# for lack of any check. The guard derives every `references-template` call site
+# under plugins/** and requires §4.4 to equal that set, every listed template to
+# exist, and §5's counts to match. The self-test plants four drifts and must
+# reject each; the live scan must pass on the real tree.
+echo ""
+echo "=== References inventory guard — seeded self-test (content-read-references-inventory-guard.sh --selftest) ==="
+if bash "$DIR/../content-read-references-inventory-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "references inventory guard self-test (four planted drifts rejected, sound fixture accepted)"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "references inventory guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== References inventory guard — real-tree scan (content-read-references-inventory-guard.sh) ==="
+if bash "$DIR/../content-read-references-inventory-guard.sh"; then
+  printf 'PASS: %s\n' "references inventory guard real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "references inventory guard real-tree scan"
+  fail=$((fail + 1))
+fi
+
 # --- WF-399: fixed core-dispatch routing adoption -----------------------------
 echo ""
 echo "=== Core dispatch routing guard — seeded self-test ==="
