@@ -22852,6 +22852,21 @@ var readRunEvidenceInput = fromJsonSchema2(withWorkspaceRoot({
   required: ["taskId"],
   additionalProperties: false
 }));
+var readFamilyRunEvidenceInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    memberRoot: {
+      type: "string",
+      minLength: 1,
+      maxLength: 4096,
+      pattern: safeTerminalStringPattern,
+      description: "Absolute path of the worktree whose receipts to read \u2014 a worktree of this workspace's own repository family (read-only). A root outside the family reads nothing and returns `foreign-root`."
+    },
+    taskId: runEvidenceTaskIdProperty
+  },
+  required: ["memberRoot", "taskId"],
+  additionalProperties: false
+}));
 var prepareWorkspaceInput = fromJsonSchema2(withWorkspaceRoot({
   type: "object",
   properties: {
@@ -23770,6 +23785,15 @@ function registerResolverTools(server, selectService) {
       inputSchema: readRunEvidenceInput
     },
     async (args) => selected(args, (service) => service.readRunEvidence(args.taskId))
+  );
+  server.registerTool(
+    "read_family_run_evidence",
+    {
+      title: "read family run evidence",
+      description: "Read and match one task's run evidence as filed by ANOTHER worktree of this workspace's repository family \u2014 the read a fan-out orchestrator uses for receipts its isolated shippers filed. `memberRoot` is admitted only when its canonical Git common directory equals this workspace's; otherwise the result is `foreign-root` and nothing is read. For an admitted member the response is exactly `read_run_evidence`'s shape, with the run identity, ledger, machine-local issuer binding, task expectation and artifact re-observation all derived from the MEMBER's canonical worktree root (echoed as `memberRoot`) \u2014 so every record must still verify against that worktree's own out-of-workspace issuer binding: a tampered record is `seal-mismatch`, a hand-written one `seal-absent`, a copied ledger `run-mismatch`, and none is ever rounded up to a receipt. Read-only: never mints an issuer and never writes.",
+      inputSchema: readFamilyRunEvidenceInput
+    },
+    async (args) => selected(args, (service) => service.readFamilyRunEvidence(args.memberRoot, args.taskId))
   );
   server.registerTool(
     "prepare_workspace",
@@ -34406,10 +34430,10 @@ var ResolverService = class _ResolverService {
    * it (an in-memory double), the binding degrades to a workspace-relative path
    * that still works but no longer has that property.
    */
-  runEvidenceIssuerPath() {
-    const rel = runEvidenceIssuerRelPath(this.ports.workspaceRoot);
+  runEvidenceIssuerPath(root = this.ports.workspaceRoot) {
+    const rel = runEvidenceIssuerRelPath(root);
     const home = this.ports.machineLocalHome ? this.ports.machineLocalHome() : null;
-    if (home === null || home.length === 0) return this.absolutize(`_local/${rel}`);
+    if (home === null || home.length === 0) return _ResolverService.absolutizeUnder(root, `_local/${rel}`);
     return `${home.replace(/\\/g, "/").replace(/\/$/, "")}/${rel}`;
   }
   /**
@@ -34426,8 +34450,9 @@ var ResolverService = class _ResolverService {
    * an untrusted binding refuses, which is the same version-before-shape posture
    * the ledger reader takes.
    */
-  runEvidenceIssuerKey(mint) {
-    const abs = this.runEvidenceIssuerPath();
+  runEvidenceIssuerKey(mint, root = this.ports.workspaceRoot) {
+    if (root !== this.ports.workspaceRoot) mint = false;
+    const abs = this.runEvidenceIssuerPath(root);
     const raw = this.runEvidenceRead(abs);
     const existing = parseRunEvidenceIssuer(raw);
     if (existing !== null) return { key: existing.key, diagnostic: null };
@@ -34478,14 +34503,14 @@ var ResolverService = class _ResolverService {
    * back to the text read: still correct for text artifacts, still exposed to
    * that gap, and stated here rather than hidden.
    */
-  observeArtifact(namedPath) {
+  observeArtifact(namedPath, root = this.ports.workspaceRoot) {
     const rel = _ResolverService.containedRelPath(namedPath);
     if (rel === null) return { ok: false, reason: "outside" };
-    const abs = this.absolutize(rel);
+    const abs = _ResolverService.absolutizeUnder(root, rel);
     if (this.ports.canonicalizeRoot) {
       const canonicalTarget = this.ports.canonicalizeRoot(abs);
       if (canonicalTarget === null) return { ok: false, reason: "missing" };
-      const canonicalRoot = this.ports.canonicalizeRoot(this.ports.workspaceRoot) ?? this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+      const canonicalRoot = this.ports.canonicalizeRoot(root) ?? root.replace(/\\/g, "/").replace(/\/$/, "");
       if (canonicalTarget !== canonicalRoot && !canonicalTarget.startsWith(`${canonicalRoot}/`)) {
         return { ok: false, reason: "outside" };
       }
@@ -34514,11 +34539,11 @@ var ResolverService = class _ResolverService {
    * ledger are judged against one instant, but two calls are two instants and
    * must be free to disagree.
    */
-  runEvidenceArtifactState(artifact, cache) {
+  runEvidenceArtifactState(artifact, cache, root = this.ports.workspaceRoot) {
     if (artifact === null) return "n/a";
     let observed = cache.get(artifact.path);
     if (observed === void 0) {
-      const result = this.observeArtifact(artifact.path);
+      const result = this.observeArtifact(artifact.path, root);
       observed = result.ok ? result.sha256 : null;
       cache.set(artifact.path, observed);
     }
@@ -34676,7 +34701,64 @@ var ResolverService = class _ResolverService {
    * unmatched record up to a receipt.
    */
   readRunEvidence(taskId) {
-    const runId = this.runEvidenceRunId(taskId);
+    return this.readRunEvidenceAt(this.ports.workspaceRoot, taskId);
+  }
+  /**
+   * Read and match one task's run evidence as filed by ANOTHER worktree of this
+   * workspace's family (WF-832) — the read a fan-out orchestrator needs, because
+   * each shipper files its receipts from its own isolated worktree, under that
+   * worktree's own run identity and issuer binding.
+   *
+   * MEMBERSHIP IS PROVED, NEVER ASSUMED FROM LOCATION. `memberRoot` is caller
+   * input, so it is admitted only when its canonical Git common directory equals
+   * this workspace's — the exact family test `prepareWorkspace` applies. Anything
+   * else (another repository, a plain directory, a path that does not exist) is
+   * `foreign-root` and reads nothing: no ledger, no issuer binding.
+   *
+   * PROOF STILL COMES FROM THE SEAL. Admission only selects WHICH identity the
+   * records are judged against; every record must still verify against the
+   * member's own out-of-workspace issuer binding, answer the member's run id, and
+   * name the asked-for task. A record written into the member's ledger by anything
+   * other than its issuer stays `unmatched` exactly as it would on an own-root read.
+   *
+   * READ-ONLY. It never mints an issuer and never writes a byte.
+   */
+  readFamilyRunEvidence(memberRoot, taskId) {
+    const foreign = (diagnostic) => ({
+      status: "foreign-root",
+      runId: null,
+      destination: null,
+      memberRoot: null,
+      formatVersion: null,
+      observedVersion: null,
+      matched: [],
+      unmatched: [],
+      unreadableRecords: 0,
+      provenPhases: [],
+      receiptBearingPhases: [...RECEIPT_BEARING_PHASES],
+      observedRunMode: this.runEvidenceRunMode(),
+      diagnostic
+    });
+    let own2;
+    let member;
+    try {
+      own2 = resolveGitIdentity(this.ports.workspaceRoot);
+    } catch (err) {
+      return foreign(`this workspace has no worktree family: ${messageOf(err)}`);
+    }
+    try {
+      member = resolveGitIdentity(memberRoot, "memberRoot");
+    } catch (err) {
+      return foreign(`the member root is not a worktree: ${messageOf(err)}`);
+    }
+    if (member.commonDir !== own2.commonDir) {
+      return foreign("the member root is not a worktree of this workspace's family.");
+    }
+    return { ...this.readRunEvidenceAt(member.worktreeRoot, taskId), memberRoot: member.worktreeRoot };
+  }
+  /** The one read/match implementation, judged against `root`'s identity. */
+  readRunEvidenceAt(root, taskId) {
+    const runId = runEvidenceRunId(root, taskId);
     const destination = runEvidenceDestination(runId);
     const receiptBearingPhases = [...RECEIPT_BEARING_PHASES];
     const base = {
@@ -34689,7 +34771,9 @@ var ResolverService = class _ResolverService {
       receiptBearingPhases,
       observedRunMode: this.runEvidenceRunMode()
     };
-    const parsed = parseRunEvidenceLedger(this.runEvidenceRead(this.absolutize(destination)));
+    const parsed = parseRunEvidenceLedger(
+      this.runEvidenceRead(_ResolverService.absolutizeUnder(root, destination))
+    );
     if (parsed.status === "absent") {
       return {
         ...base,
@@ -34717,7 +34801,7 @@ var ResolverService = class _ResolverService {
         diagnostic: parsed.diagnostic
       };
     }
-    const matches = matchRunEvidence(parsed.ledger, this.runEvidenceIssuerKey(false).key, {
+    const matches = matchRunEvidence(parsed.ledger, this.runEvidenceIssuerKey(false, root).key, {
       runId,
       taskId
     });
@@ -34741,7 +34825,11 @@ var ResolverService = class _ResolverService {
         // anywhere: the resolver re-reads the named artifact and re-digests it
         // now, and compares against the digest sealed at issue. A caller that
         // could supply this could declare its own stale approval fresh.
-        artifactState: this.runEvidenceArtifactState(match.record.artifact, artifactObservations)
+        artifactState: this.runEvidenceArtifactState(
+          match.record.artifact,
+          artifactObservations,
+          root
+        )
       })),
       unmatched: matches.filter((match) => !match.matched).map((match) => ({
         kind: match.record.kind,
@@ -35004,9 +35092,13 @@ var ResolverService = class _ResolverService {
   }
   /** Resolve a caller-supplied path against the workspace root when relative. */
   absolutize(p) {
+    return _ResolverService.absolutizeUnder(this.ports.workspaceRoot, p);
+  }
+  /** Resolve a path against an explicit root when relative. */
+  static absolutizeUnder(root, p) {
     const norm = p.replace(/\\/g, "/");
     if (/^(\/|[A-Za-z]:)/.test(norm)) return norm;
-    return `${this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
+    return `${root.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
   }
 };
 function messageOf(err) {

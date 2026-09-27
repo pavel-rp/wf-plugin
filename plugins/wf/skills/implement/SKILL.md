@@ -44,7 +44,7 @@ A registered `implement.start`/`implement.milestone`/`implement.finish` slot fil
 
 **Superseded record.** `/wf:plan` rewrites `02_plan.md` without touching this file, so a record can outlive the plan it tracked. Before Phase 1, compute the sha256 of `02_plan.md`'s raw bytes. When `02_progress.md` carries a `**Plan digest:**` that differs, the record belongs to an earlier plan: rename it to `02_progress.superseded.md` (replacing any earlier one) and proceed as if `02_progress.md` were absent. A registered slot fill carries its own guard lines forward from `02_progress.superseded.md` as its contract states; this skill copies none. A record with no `**Plan digest:**` line holds only guard lines written before any step ran, and is kept.
 
-**Resume.** Start at the first step not marked done in `02_progress.md`. When `02_progress.md` is absent, or carries no `STEP-NNN` status line (only a slot fill's guard lines), and `02_plan.md` carries ticked checkboxes — a task implemented before this record existed — read those ticks as the done set, read-only (legacy fallback — `wf-legacy-progress-fallback`), and on the first step write seed the full `STEP-NNN` list from them into `02_progress.md` (creating it, or adding the list beneath its existing guard lines), then record all further progress there. When both exist, `02_progress.md` wins only when it carries at least one `STEP-NNN` status line — a record holding only a slot fill's guard lines (written at Phase 1.5, before any step runs) does not displace the plan's legacy ticks.
+**Resume.** Start at the first step not marked done in `02_progress.md`. When `02_progress.md` is absent, or carries no `STEP-NNN` status line (only a slot fill's guard lines), no step is done: start at STEP-001. The plan's own checkboxes are never read as progress.
 
 ---
 
@@ -437,4 +437,3 @@ In both modes, if the session is interrupted, `02_progress.md` records exactly w
 - **No `02_plan.md`:** Stop and suggest `/wf:plan`.
 - **All steps already recorded done:** Report complete and stop.
 - **Re-planned task (`**Plan digest:**` mismatch):** the old record is set aside as `02_progress.superseded.md` per §"Superseded record" and implementation starts over against the new plan; never resume a new plan from an old plan's ticks.
-- **Legacy task (plan ticked, no `02_progress.md`):** resume from the plan's ticks read-only per §"Resume"; never write the plan to continue it.

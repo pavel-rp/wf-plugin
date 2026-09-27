@@ -1,6 +1,6 @@
 # implement.start — open the implementation record (slot fill)
 
-**Version:** 1.1.0 (WF-408 — the `implement.start` third of the C021 implement-phase mirror; WF-830 — every write moves to the implement-owned `02_progress.md`, the approved `02_plan.md` is read-only)
+**Version:** 1.2.0 (WF-408 — the `implement.start` third of the C021 implement-phase mirror; WF-830 — every write moves to the implement-owned `02_progress.md`, the approved `02_plan.md` is read-only; WF-832 — the legacy plan-copy half of Step 0 is retired with the closed removal window)
 **Model:** claude-opus-5[1m]
 
 Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
@@ -41,22 +41,18 @@ The operations this fill uses: `get`, `create_umbrella`, `create_child`, `update
 
 ---
 
-## Step 0 — Migrate legacy guard lines (once)
+## Step 0 — Carry guard lines across a re-plan (once)
 
-A task implemented before `02_progress.md` existed carries this fill's guard lines —
-`**Tracker impl item:**`, `**Impl log:**` and `**Impl finished:**` — in `02_plan.md` instead.
-When `02_progress.md` carries **none** of those three lines and `02_plan.md` carries at least one,
-copy every one that is present verbatim into `02_progress.md`'s metadata block (creating the file
-with its H1 and `**Plan:** 02_plan.md` line if absent). This is a one-time, read-only read of the
-plan (legacy fallback — `wf-legacy-progress-fallback`); the plan is never written.
 After a re-plan, `/wf:implement` sets the old record aside as `02_progress.superseded.md`. When
-`02_progress.md` carries none of the three lines and that file exists, copy only its
-`**Tracker umbrella:**` and `**Tracker impl item:**` lines forward, so the new pass reuses the same
-records; the per-pass `**Impl log:**` and `**Impl finished:**` lines stay behind. When both sources
-exist, the superseded record wins and the plan is not read. Once this step has run, this fill,
+`02_progress.md` carries **none** of this fill's guard lines — `**Tracker impl item:**`,
+`**Impl log:**` and `**Impl finished:**` — and that file exists, copy only its
+`**Tracker umbrella:**` and `**Tracker impl item:**` lines forward into `02_progress.md`'s metadata
+block (creating the file with its H1 and `**Plan:** 02_plan.md` line if absent), so the new pass
+reuses the same records; the per-pass `**Impl log:**` and `**Impl finished:**` lines stay behind.
+`02_plan.md` is never read for guard lines and never written. Once this step has run, this fill,
 `implement.milestone` and `implement.finish` read every guard line from `02_progress.md` alone, so
 no later step needs a fallback of its own. When `02_progress.md` already carries any of the three,
-or neither `02_plan.md` nor `02_progress.superseded.md` carries a line to copy, do nothing.
+or `02_progress.superseded.md` is absent or carries no line to copy, do nothing.
 
 ## Step 1 — Idempotency guard (read the lines back first)
 
