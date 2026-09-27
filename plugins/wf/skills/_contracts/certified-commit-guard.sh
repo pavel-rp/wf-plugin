@@ -17,7 +17,8 @@
 #   O6  fail closed on an unreadable record;
 #   O7  drift residuals and carried requirement items are defined;
 #   O8  the doc stays within the 150-line runtime ops budget;
-#   O9  no host, vendor, or version-control tool noun appears.
+#   O9  no host, vendor, or version-control tool noun appears;
+#   O10 the scenario table keeps a row for every acceptance case.
 #
 # and on the consumers:
 #
@@ -85,6 +86,18 @@ evaluate_ops() {
   require "$file" "$label" O7 'drift residuals are defined' 'drift residual' || bad=1
   require "$file" "$label" O7b 'carried requirement items are defined' '\(carried from' || bad=1
 
+  # O10 — the scenario table keeps a row for every acceptance case: carry-forward,
+  # a re-verify that rebinds, residual-only findings, a second drift after rebind,
+  # and refusal of an uncertified head.
+  local rows pat
+  rows=$(grep -E '^\| ' "$file")
+  for pat in 'carried' 're-verify PASS' 'residuals' 'push to C' '\(.uncertified.\)'; do
+    if ! printf '%s\n' "$rows" | grep -qE "$pat"; then
+      printf '%s: [O10] the scenario table has no row matching /%s/\n' "$label" "$pat"
+      bad=1
+    fi
+  done
+
   n=$(wc -l <"$file")
   if [ "$n" -gt 150 ]; then
     printf '%s: [O8] %d lines exceeds the 150-line runtime ops budget; move rationale to the paired contract doc\n' "$label" "$n"
@@ -126,6 +139,14 @@ Fail closed: an unreadable record is `refuse` (`unreadable`).
 **One re-verify per drift event.** The total never exceeds the number of drift events.
 
 A drift residual renders as an accepted warning; an untouched item is (carried from <A>).
+
+| Given | Check returns | Ledger after |
+|---|---|---|
+| push to B only moved the base | `carried` | carry-forward row |
+| push to B edits code | `reverify` then `bound` | re-verify PASS row |
+| findings only on unchanged code | `bound` | residuals accepted |
+| certified at B; second push to C edits code | `reverify` | re-verify row |
+| latest verdict FAIL | `refuse` (`uncertified`) | unchanged |
 SOUND
   }
 
@@ -138,12 +159,13 @@ SOUND
   sound_doc | sed 's/(`uncertified`)/(no reason)/' >"$tmp/no-reason.md"
   sound_doc >"$tmp/tool-noun.md"
   printf 'Compute the tree with git write-tree.\n' >>"$tmp/tool-noun.md"
+  sound_doc | grep -v 'second push to C' >"$tmp/no-rebind-scenario.md"
   sound_doc >"$tmp/over-budget.md"
   i=0
   while [ "$i" -lt 150 ]; do printf 'padding\n' >>"$tmp/over-budget.md"; i=$((i + 1)); done
 
   selftest_fail=0
-  for case in no-refuse unbounded-reverify no-per-event fail-open no-kind no-reason tool-noun over-budget; do
+  for case in no-refuse unbounded-reverify no-per-event fail-open no-kind no-reason tool-noun no-rebind-scenario over-budget; do
     evaluate_ops "$tmp/$case.md" "selftest/$case" >/dev/null 2>&1
     rc=$?
     if [ "$rc" -ne 1 ]; then
@@ -162,7 +184,7 @@ SOUND
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "certified-commit-guard: self-test passed — eight seeded defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, an over-budget doc), and the sound doc accepted."
+  echo "certified-commit-guard: self-test passed — nine seeded defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), and the sound doc accepted."
   exit 0
 fi
 
