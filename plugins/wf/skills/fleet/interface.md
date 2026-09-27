@@ -84,7 +84,15 @@ task-artifact set read-only from the worktree path its own scoreboard row record
 into this run's declared task-artifact persistence destination inside the resolved task root, and
 record each persisted artifact through the per-task index writer, once per artifact; drive each
 item's build chain and finalize step through the sibling `wf:*` commands named in `SKILL.md`, via
-the **Skill** tool; and dispatch shipper subagents via the Agent tool.
+the **Skill** tool; and dispatch shipper subagents via the Agent tool, each ceremony carrying
+`--review-boundary <SOURCE-ROOT>/_local/fleet/lenses/<id>`. **At the review boundary only**, for an
+item whose shipper reported a review-boundary hand-back — a closed list: read that item's
+`04_lens-request.md` read-only from the task folder under the worktree its own row records; dispatch
+each requested row as this orchestrator's own foreground child via the Agent tool (the row's agent
+token and prompt verbatim, routed first, no worktree isolation); write each returned block and then
+`manifest.md` into `_local/fleet/lenses/<id>/<tree>/`; and send that same shipper one continuation
+message to re-invoke its ceremony. A row that fails is recorded failed and never re-run or applied by
+the orchestrator itself.
 
 **Forbidden:** write or edit any file **outside `_local/`** — the orchestrator authors no source and
 no artifact, and every source write belongs to the shipper subagents; run any raw version-control or

@@ -44,24 +44,19 @@ Parse the first token. Recognized forms:
    never a raw `Read` of the plugin-cache path — §"Id inference from the current branch";
    inferred from the branch via `current-branch-query` (see "Direct provider resolution"
    below) and resolved against `{task-root}`, naming `/wf:verify-spec` in its stop messages.
-2. Confirm the resolved task folder's requirements artifact (`00_reqs.md`) exists. If
-   not, stop and ask the user to either pass the id explicitly or point at a
-   requirements path.
+2. Confirm the resolved task folder's requirements artifact (`00_reqs.md`) exists. If not, stop and ask the user to either pass the id explicitly or point at a requirements path.
 
 ### `<id>` (opaque — whatever shape the active tracker capability produces, or the local `T<NNN>` scheme)
 
-Use verbatim as `{task-id}` — no normalization. Resolve to the task folder
-`{task-root}/{task-id}/`. If the folder or its `00_reqs.md` is missing, stop and tell
-the user; do not fall back to the derived `01_spec.md` as the source of truth.
+Use verbatim as `{task-id}` — no normalization. Resolve to the task folder `{task-root}/{task-id}/`. If the folder or its `00_reqs.md` is missing, stop and tell the user; do not fall back to the derived `01_spec.md` as the source of truth.
 
 ### `<path-to-00_reqs.md>`
 
-Treat as an explicit override. Useful when verifying against a pasted requirements file
-that lives outside `{task-root}/`. When this form is used, write the report as a sibling
-of that file.
+Treat as an explicit override. Useful when verifying against a pasted requirements file that lives outside `{task-root}/`. When this form is used, write the report as a sibling of that file. If the requirements artifact is missing, stop and tell the user. They either need to author it (`/wf:spec`) or pass a path explicitly.
 
-If the requirements artifact is missing, stop and tell the user. They either need to
-author it (`/wf:spec`) or pass a path explicitly.
+### `--review-boundary <dir>` (optional, after the id)
+
+The **caller** owns lens dispatch for this run: at the review boundary (§"Fire the `verify` phase" step 3) the enabled `subagent:` rows are neither dispatched here nor run inline — their recorded blocks are consumed from `<dir>`, or the run hands back with a lens request (`review-boundary.md`). `<dir>` must be absolute, else `VERIFY — Error`. Passed by an orchestrator that dispatches the rows as its own children; absent, behaviour is unchanged.
 
 ---
 
@@ -279,6 +274,7 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    the generic finding contract below and exclusively owns any `postAttempt`, retaining the
    same unit id and evidence; the child never self-replaces. If the Task target itself is
    unavailable, preserve the existing optional-contributor no-op.
+   **The review boundary.** With `--review-boundary <dir>` and at least one enabled `subagent:` row (not in drift mode), replace the per-row routing and Task above with `review-boundary.md` (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: review-boundary.md`), keyed on the content identity `<T>` of the audited tree: **`<dir>/<T>/manifest.md` present** → consume each row's recorded block as that row's return (completed), or count the row expected-not-completed with its stated reason — never re-dispatched, never run inline — and continue unchanged; **absent** → write `04_lens-request.md`, write no report, and end `VERIFY — Handed-off`. `inline:` rows are unaffected.
 
    **Round context** — caller-supplied input the lens reads, never part of its return shape: at
    `N >= 2` send it as its own block *above* the return template, identical bytes across all five
@@ -335,7 +331,7 @@ in its existing order. With no marked finding, nothing moves — the lean defaul
 **No-op:** an empty `capabilities[]`, or no fragment matching `verify`/`finding`, means the
 phase produces **nothing** — no capability/stack/domain term, no STOP. A malformed
 `dispatch` is that contributor's own no-op, reported as incomplete coverage below. Gating
-is decided by §"The blocking set" alone, never by mere existence. **Lens count:** after dispatch, count this round's `verify`/`finding` rows once as `<c>/<e> completed, <i> inline` per `verify-template.md` §"Lens count" (fetched at `## Output` below) — `<e>` = rows the contributor gate left enabled; `<c>` = those delivering a well-formed block through their declared dispatch; `<i>` = `subagent:` rows whose rubric this agent ran in its own context, in `<e>` but **never** in `<c>`, and reported as incomplete coverage. No row renders `0/0 completed, 0 inline`. Reporting only: never the blocking set, never `**Verdict:**`.
+is decided by §"The blocking set" alone, never by mere existence. **Lens count:** after dispatch, count this round's `verify`/`finding` rows once as `<c>/<e> completed, <i> inline` per `verify-template.md` §"Lens count" (fetched at `## Output` below) — `<e>` = rows the contributor gate left enabled; `<c>` = those delivering a well-formed block through their declared dispatch; `<i>` = `subagent:` rows whose rubric this agent ran in its own context, in `<e>` but **never** in `<c>`, and reported as incomplete coverage. Whenever `<c> < <e>` append ` — incomplete: <role>[, <role>…]`, naming every expected row that did not complete by its derived role. No row renders `0/0 completed, 0 inline`. Reporting only: never the blocking set, never `**Verdict:**`.
 
 ### Confirm candidate blocking findings (the critic pass)
 
@@ -434,7 +430,7 @@ and changes nothing else — the verdict is unaffected and the block below emitt
 
 ## What this skill will NOT do
 
-- Will NOT modify any source file outside `_local/` — the only writes are `04_verify.md` and, in drift mode, one `04_drift.md` row; fixes to source are asked for separately.
+- Will NOT modify any source file outside `_local/` — the only writes are `04_verify.md`, in drift mode one `04_drift.md` row, and at the review boundary `04_lens-request.md`; fixes to source are asked for separately. The `--review-boundary` exchange folder is read, never written.
 - Will NOT mark something PASS without concrete evidence — "looks correct" is not a verdict.
 - Will NOT use a derived artifact (an LLM-authored plan) as the source of truth.
 - Will NOT invent requirements not present in the spec — a capability's invariants surface as `verify` `finding`s, not fabricated requirement-list rows.
@@ -471,6 +467,7 @@ and changes nothing else — the verdict is unaffected and the block below emitt
 - **No candidate blocking findings**: the critic pass dispatches nothing this round.
 - **Critic dispatch fails or returns malformed output**: fail closed, distinct from a
   per-finding `UNVERIFIABLE` (`critic-verdict.md` §"Malformed or failed dispatch").
+- **Review boundary**: no recorded blocks for the audited tree → hand back (`VERIFY — Handed-off`, `04_lens-request.md`; no report, rotation, receipt, or index row — not an error); a recorded row failed or missing → expected, not completed, named in the `**Lenses:**` suffix and under Coverage, never re-dispatched or run inline.
 
 ---
 
@@ -483,11 +480,11 @@ VERIFY — <PASS | FAIL | PARTIAL>
 
 {task-id}: <passed>/<total> requirements, capability findings <none | N across M capabilities>
 Report: <task-folder>/04_verify.md
-Lenses: <c>/<e> completed, <i> inline
+Lenses: <c>/<e> completed, <i> inline[ — incomplete: <role>, …]
 Next: <branched on the verdict — see below>
 ```
 
-`N`/`M` count only the blocking-set members rendered under `## Capability findings` — the same
+A review-boundary hand-back ends instead with the `VERIFY — Handed-off` block whose shape `review-boundary.md` §"Hand back — the lens request" fixes. `N`/`M` count only the blocking-set members rendered under `## Capability findings` — the same
 counts the chat summary's capability-findings line prints. `Lenses:` echoes the report's `**Lenses:**` header — always present. The `Next:` line is **always present**, branched on the verdict:
 
 - **PASS** → `/wf:qa-gen {task-id}` (proceed to QA).
