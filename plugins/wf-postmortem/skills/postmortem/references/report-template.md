@@ -266,7 +266,8 @@ release (`continuation.md` Part D states why).>
 
 **<YYYY-MM-DD HH:MM> follow-up:**
 - Legacy state normalized: <one line per Report-state contract normalization this run — an id
-  assigned, a high-water derived, or a keyless fallback entry kept — or "none">
+  assigned, a high-water derived, raised, or its invalid recorded value ignored, or a keyless
+  fallback entry kept — or "none">
 - Newly read this run: <one path per session, including any explicit `--session` retry (listed here
   even when it names a session the prior report already marked `read` — its fresh entry replaced the
   prior one), or "none">
@@ -347,7 +348,8 @@ is reconstructed from memory of an earlier run.
       occurrence of each valid id keeps it. An entry with no id, an invalid one, or one repeating an
       earlier occurrence's id is **unassigned**.
    2. The high-water is the maximum of the recorded `**Highest minted id:**` (when present and
-      valid) and every id kept in step 1 — `0` when there is none.
+      valid — `none` is valid and counts as `0`) and every id kept in step 1 — `0` when there is
+      none. A valid recorded value at or above every kept id is kept as it is and logs nothing.
    3. Assign the unassigned entries fresh ids, one past the high-water upward, in the step-1 walk
       order; raise the high-water to the last one assigned.
    4. Keep a `fallback evidence` entry that carries no draw key, verbatim and still labelled, but
@@ -356,7 +358,11 @@ is reconstructed from memory of an earlier run.
       `Legacy state normalized:` — `<mechanism, one line> — assigned H<n> (no id | invalid id
       "<value>" | duplicate of H<m>)`; `highest minted id derived from visible ids (H<n>) — an id
       retired before this report recorded its high-water cannot be recovered` when the line was
-      absent; `fallback entry without draw key kept: <locator>` per keyless entry. A duplicate id is
+      absent; `recorded high-water <H<m> | none> raised to H<n>` when a valid recorded value was
+      below a kept id; `invalid recorded high-water "<value>" ignored — highest minted id derived
+      from visible ids (H<n>) — an id retired before this report recorded its high-water cannot be
+      recovered` when the recorded value was not valid; `H<n>` in these three high-water forms is the step-2 high-water;
+      `fallback entry without draw key kept: <locator>` per keyless entry. A duplicate id is
       the one ambiguity this cannot resolve silently, so it is always logged, never merged. Nothing
       normalized → `none`.
 
