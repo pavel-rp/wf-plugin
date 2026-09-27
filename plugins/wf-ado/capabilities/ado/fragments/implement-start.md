@@ -48,7 +48,11 @@ A task implemented before `02_progress.md` existed carries this fill's guard lin
 When `02_progress.md` carries **none** of those three lines and `02_plan.md` carries at least one,
 copy every one that is present verbatim into `02_progress.md`'s metadata block (creating the file
 with its H1 and `**Plan:** 02_plan.md` line if absent). This is a one-time, read-only read of the
-plan (legacy fallback — `wf-legacy-progress-fallback`); the plan is never written. Once it has run,
+plan (legacy fallback — `wf-legacy-progress-fallback`); the plan is never written.
+After a re-plan, `/wf:implement` sets the old record aside as `02_progress.superseded.md`. When
+`02_progress.md` carries none of the three lines and that file exists, copy only its
+`**Tracker umbrella:**` and `**Tracker impl item:**` lines forward instead, so the new pass reuses
+the same records. The per-pass `**Impl log:**` and `**Impl finished:**` lines stay behind. Once it has run,
 this fill, `implement.milestone` and `implement.finish` read every guard line from `02_progress.md`
 alone, so no later step needs a plan fallback of its own. When `02_progress.md` already carries any
 of the three, or the plan carries none, do nothing.
