@@ -20,8 +20,10 @@
 #   3. SEQUENCE INVARIANTS — ids never reused or renumbered, a monotonic high-water line,
 #      every fallback entry keyed, drawn keys new, suppressed keys already present, no entry
 #      or Coverage row ever dropped.
-#   4. LEGACY NORMALIZATION — a reference model of the contract's legacy rule reproduces the
-#      normalized report exactly, and is a no-op on its output.
+#   4. LEGACY NORMALIZATION — for every before/after pair (absent, stale, invalid and `none`
+#      recorded high-water), a reference model of the contract's legacy rule reproduces the normalized ids
+#      and high-water exactly, derives the high-water log line the Continuation entry must carry,
+#      and is a no-op on its own output.
 #   5. GROUPING — a reference model of Part A step 5 yields one group per task id, id-less
 #      candidates as singletons, and no group for a covered id.
 #   6. VERSION RESOLUTION — version-resolution.md's Contents anchors resolve and it stays within
@@ -195,13 +197,18 @@ nk=$(keys_of "$CORPUS/sequence/04-follow-up.md" | grep -c '_local/fleet/scoreboa
 
 # --- 4. Legacy normalization ------------------------------------------------------------
 before=$fail
-# Reference model of the contract's legacy rule. Prints mechanism<TAB>id, then HW<TAB><n>.
+# Reference model of the contract's legacy rule. Prints mechanism<TAB>id, then HW<TAB><n>, then
+# LOG<TAB><the high-water log line step 5 requires, or "-" when the high-water logs nothing>.
 normalize() {
   awk '
     function valid(x) { return x ~ /^H[1-9][0-9]*$/ }
     /^### Hypotheses/ { inh=1; next }
     /^## / && inh { inh=0 }
-    /^\*\*Highest minted id:\*\*/ { v=$0; sub(/^\*\*Highest minted id:\*\* */,"",v); if (valid(v)) rec=substr(v,2)+0; next }
+    /^\*\*Highest minted id:\*\*/ {
+      v=$0; sub(/^\*\*Highest minted id:\*\* */,"",v); seen=1; raw=v
+      if (valid(v)) { rec=substr(v,2)+0; ok=1 } else if (v=="none") { rec=0; ok=1 }
+      next
+    }
     /^## Contributing Factors/ { incf=1; next }
     /^## / { incf=0 }
     incf && !inh && /^- / && / — `/ {
@@ -218,29 +225,63 @@ normalize() {
     END {
       hw=rec+0
       for (i=1;i<=n;i++) if (valid(cand[i]) && !(cand[i] in kept)) { kept[cand[i]]=1; out[i]=cand[i]; k=substr(cand[i],2)+0; if (k>hw) hw=k }
+      hw2=hw   # the step-2 high-water, before step 3 assigns anything
+      derived="highest minted id derived from visible ids (H" hw2 ")"
+      if (!seen) hwlog=derived
+      else if (!ok) hwlog="invalid recorded high-water \"" raw "\" ignored — " derived
+      else if (hw2>rec) hwlog="recorded high-water " raw " raised to H" hw2
+      else hwlog="-"
       for (i=1;i<=n;i++) if (out[i]=="") { hw++; out[i]="H" hw }
       for (i=1;i<=n;i++) print mech[i] "\t" out[i]
       print "HW\t" hw
+      print "LOG\t" hwlog
     }
   ' "$1"
 }
-exp=$(normalize "$CORPUS/legacy/before.md")
-got=$(ids_of "$CORPUS/legacy/after.md" | awk -F'\t' '{print $2 "\t" $1}')
-exp_ids=$(printf '%s\n' "$exp" | grep -v '^HW	' | sort)
-[ "$exp_ids" = "$(printf '%s\n' "$got" | sort)" ] \
-  || err "legacy: normalized ids differ from the reference model"$'\n'"expected:"$'\n'"$exp_ids"$'\n'"got:"$'\n'"$(printf '%s\n' "$got" | sort)"
-exp_hw=$(printf '%s\n' "$exp" | awk -F'\t' '$1=="HW"{print $2}')
-[ "$(hw_num "$(hw_of "$CORPUS/legacy/after.md")")" = "$exp_hw" ] || err "legacy: high-water is not H$exp_hw"
+# Every pair: before.md/after.md, plus each <case>-before.md/<case>-after.md.
+npairs=0
+for b in "$CORPUS"/legacy/before.md "$CORPUS"/legacy/*-before.md; do
+  [ -f "$b" ] || continue
+  a="${b%before.md}after.md"; pair=$(basename "$b")
+  [ -f "$a" ] || { err "legacy: $pair has no matching $(basename "$a")"; continue; }
+  npairs=$((npairs + 1))
+  exp=$(normalize "$b")
+  got=$(ids_of "$a" | awk -F'\t' '{print $2 "\t" $1}')
+  exp_ids=$(printf '%s\n' "$exp" | grep -v '^HW	' | grep -v '^LOG	' | sort)
+  [ "$exp_ids" = "$(printf '%s\n' "$got" | sort)" ] \
+    || err "legacy $pair: normalized ids differ from the reference model"$'\n'"expected:"$'\n'"$exp_ids"$'\n'"got:"$'\n'"$(printf '%s\n' "$got" | sort)"
+  exp_hw=$(printf '%s\n' "$exp" | awk -F'\t' '$1=="HW"{print $2}')
+  [ "$(hw_num "$(hw_of "$a")")" = "$exp_hw" ] || err "legacy $pair: high-water is not H$exp_hw"
+  # idempotent: normalizing the normalized report changes no id or high-water, and logs nothing
+  again=$(normalize "$a")
+  [ "$(printf '%s\n' "$again" | grep -v '^LOG	')" = "$(printf '%s\n' "$exp" | grep -v '^LOG	')" ] \
+    || err "legacy $pair: normalization is not a no-op on its own output"
+  [ "$(printf '%s\n' "$again" | awk -F'\t' '$1=="LOG"{print $2}')" = "-" ] \
+    || err "legacy $pair: the normalized report still triggers a high-water log line"
+  # the high-water change is logged in exactly the form step 5 names, and only that form
+  exp_log=$(printf '%s\n' "$exp" | awk -F'\t' '$1=="LOG"{print $2}')
+  entry=$(grep -F -- '- Legacy state normalized:' "$a")
+  if [ "$exp_log" = "-" ]; then
+    printf '%s\n' "$entry" | grep -qE 'derived from visible ids|raised to H|invalid recorded high-water' \
+      && err "legacy $pair: logs a high-water change the model says is silent"
+  else
+    printf '%s\n' "$entry" | grep -qF -- "$exp_log" || err "legacy $pair: Continuation does not log: $exp_log"
+  fi
+done
+[ "$npairs" -ge 4 ] || err "legacy corpus has $npairs pairs, expected at least 4 (absent, stale, invalid, none)"
 # already-valid ids are never renumbered
 grep -qF -- '- **H2** retry counter resets' "$CORPUS/legacy/after.md" || err "legacy: valid H2 was renumbered"
-# idempotent: normalizing the normalized report changes nothing
-again=$(normalize "$CORPUS/legacy/after.md")
-[ "$again" = "$exp" ] || err "legacy: normalization is not a no-op on its own output"
 for tok in 'assigned H3 (no id)' 'assigned H5 (duplicate of H2)' 'assigned H6 (invalid id "H07")' \
            'highest minted id derived from visible ids (H2)' 'fallback entry without draw key kept:'; do
   grep -qF -- "$tok" "$CORPUS/legacy/after.md" || err "legacy: Continuation does not log: $tok"
 done
-[ "$fail" -eq "$before" ] && ok "legacy normalization"
+grep -qF -- 'recorded high-water H2 raised to H5' "$CORPUS/legacy/stale-after.md" \
+  || err "legacy: stale pair does not log the raised high-water"
+grep -qF -- 'invalid recorded high-water "H0x" ignored' "$CORPUS/legacy/invalid-after.md" \
+  || err "legacy: invalid pair does not log the ignored high-water"
+grep -qF -- 'recorded high-water none raised to H2' "$CORPUS/legacy/none-after.md" \
+  || err "legacy: none pair does not treat a recorded none as valid and raise it"
+[ "$fail" -eq "$before" ] && ok "legacy normalization ($npairs pairs)"
 
 # --- 5. Grouping ------------------------------------------------------------------------
 before=$fail
