@@ -9,12 +9,14 @@
 #   - the frozen core contracts (WF-208): `<name>.ops.md` paired with
 #     `<name>.contract.md`, 150-line ops budget.
 #   - the wf-git delivery provider fragment (WF-211): delivery.ops.md paired
-#     with delivery.md, 300-line ops budget — deliberately more generous than
+#     with delivery.md, 320-line ops budget — deliberately more generous than
 #     the contracts' 150 to leave headroom for the delivery operations added to
 #     this same growing file: WF-157 and WF-176 (Wave-4), then the two
 #     review-thread operations WF-324 binds (`review-threads-read`,
 #     `review-thread-reply`), which raised the ceiling from 250 to 280, then the
-#     remote-head read WF-839 binds (`branch-head-read`), which raised it to 300.
+#     remote-head read WF-839 binds (`branch-head-read`), which raised it to 300,
+#     then the merged-ref read WF-838 binds (`merged-ref-read`), which raised it
+#     to 320.
 #   - the two tracker provider fragments (WF-213): the wf-ado and wf-linear
 #     tracker.ops.md files, each paired with its tracker.md, 250-line ops budget
 #     — the same generous ceiling as delivery, leaving headroom for the Wave-4
@@ -284,7 +286,7 @@ print_targets() {
 echo "check-ops-docs: repository root resolved to $ROOT"
 echo "check-ops-docs: resolved target set —"
 print_targets "core contracts (<=150)"  "$CONTRACTS_DIR"
-print_targets "wf-git delivery (<=300)" "$WFGIT_DIR"
+print_targets "wf-git delivery (<=320)" "$WFGIT_DIR"
 print_targets "wf-ado tracker (<=250)"  "$WFADO_DIR"
 print_targets "wf-linear tracker (<=250)" "$WFLINEAR_DIR"
 echo ""
@@ -308,7 +310,7 @@ else
   err "core contracts folder not found (expected at plugins/wf/skills/_contracts)."
 fi
 if [ -n "$WFGIT_DIR" ]; then
-  check_ops_docs "$WFGIT_DIR" 300 ".md"
+  check_ops_docs "$WFGIT_DIR" 320 ".md"
 else
   err "wf-git delivery fragments folder not found (expected at plugins/wf-git/capabilities/git/fragments)."
 fi
