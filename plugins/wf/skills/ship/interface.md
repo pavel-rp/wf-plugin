@@ -39,7 +39,7 @@ provider-less branch only; resolve the `ship.review` slot via
 drives through the **Skill** tool (`/wf:branch`, `/wf:run` and each gated
 `/wf:*` it names, `/wf:commit`, `/wf:pr`, `/wf:tf`); run the certified-commit
 drift check (`certified-commit.ops.md`) on every head Phase 4.2 pushes and once
-before Phase 5 when Phase 4.2 pushed — appending a `carry-forward` row to the
+before every Phase 5 `/wf:tf` — appending a `carry-forward` row to the
 task folder's `04_drift.md` and invoking `/wf:verify-spec` through the **Skill**
 tool at most once per drift event, only on a `reverify` outcome; dispatch the
 `wf:context-distiller` agent (`MODE: ci`) via the **Task** tool inside Phase 4.2

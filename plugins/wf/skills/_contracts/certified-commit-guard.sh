@@ -130,8 +130,13 @@ evaluate_ship() {
   require "$file" "$label" W5d 'ship blocks on a refuse outcome' '\*\*.refuse.\*\* → \*\*`SHIP — Blocked`\*\*' || bad=1
   require "$file" "$label" W5e 'ship runs one re-verify per drift event' '\*\*exactly once\*\* for this drift event' || bad=1
   require "$file" "$label" W5f 'ship may invoke the Skill tool for the re-verify' '^allowed-tools: \[.*Skill.*\]' || bad=1
+  # Scenario rows — one per CI-remediation acceptance case:
+  require "$file" "$label" W5g 'scenario: a carry-forward push is recorded under the ship path' 'row to `04_drift\.md` with `Path` `ship`' || bad=1
+  require "$file" "$label" W5h 'scenario: a second push after a rebind is its own B..C event' 'scoped from whatever the previous event rebound to' || bad=1
+  require "$file" "$label" W5i 'scenario: a failed drift re-verify stops, no second round' 'never a trigger for another verify⇄fix round' || bad=1
+  require "$file" "$label" W5j 'scenario: a re-invoked run cannot merge a head an earlier run refused' 'still cannot merge a head an earlier run refused' || bad=1
   [ "$bad" -eq 0 ] || return 1
-  printf '%s: OK — drift check on every remediation push and before the merge, one re-verify per event, refuse blocks\n' "$label"
+  printf '%s: OK — drift check on every remediation push and before every merge, one re-verify per event, refuse blocks, all four ship scenarios pinned\n' "$label"
   return 0
 }
 
@@ -204,10 +209,12 @@ SOUND
 allowed-tools: [Read, Skill, Edit, Write]
 
    **Drift check (the certified commit).** Follow `ref: certified-commit.ops.md` on every pushed head.
+   - `carried` → the check appended its `carry-forward` row to `04_drift.md` with `Path` `ship`.
    - **`reverify`** → invoke the audit **exactly once** for this drift event.
-   - **`refuse`** → **`SHIP — Blocked`** before any merge.
+   - **`refuse`** → **`SHIP — Blocked`** before any merge; never a trigger for another verify⇄fix round.
+   Each push is its own event, scoped from whatever the previous event rebound to.
 
-**Drift check before the merge.** Re-run the check on the head about to merge.
+**Drift check before the merge.** Re-run the check on every run, so a re-invoked run still cannot merge a head an earlier run refused.
 SHIP
   }
 
@@ -217,8 +224,10 @@ SHIP
   sound_ship | grep -v '`refuse`' >"$tmp/ship-refuse-proceeds.md"
   sound_ship | sed 's/\*\*exactly once\*\* for this drift event/as often as needed/' >"$tmp/ship-unbounded-reverify.md"
   sound_ship | sed 's/Skill, //' >"$tmp/ship-no-skill.md"
+  sound_ship | sed 's/, so a re-invoked run still cannot merge a head an earlier run refused//' >"$tmp/ship-resume-bypass.md"
+  sound_ship | grep -v 'scoped from whatever' >"$tmp/ship-no-rebind-scenario.md"
 
-  for case in ship-no-push-check ship-no-premerge-check ship-refuse-proceeds ship-unbounded-reverify ship-no-skill; do
+  for case in ship-no-push-check ship-no-premerge-check ship-refuse-proceeds ship-unbounded-reverify ship-no-skill ship-resume-bypass ship-no-rebind-scenario; do
     evaluate_ship "$tmp/$case.md" "selftest/$case" >/dev/null 2>&1
     rc=$?
     if [ "$rc" -ne 1 ]; then
@@ -237,7 +246,7 @@ SHIP
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "certified-commit-guard: self-test passed — nine seeded ops-doc defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), five seeded ship-wiring defects rejected (no push check, no pre-merge check, refuse proceeds, unbounded re-verify, no Skill tool), and both sound docs accepted."
+  echo "certified-commit-guard: self-test passed — nine seeded ops-doc defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), seven seeded ship-wiring defects rejected (no push check, no pre-merge check, refuse proceeds, unbounded re-verify, no Skill tool, a resume that bypasses a refusal, a dropped rebind scenario), and both sound docs accepted."
   exit 0
 fi
 

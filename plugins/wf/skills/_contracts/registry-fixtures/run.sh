@@ -560,9 +560,9 @@ fi
 # refuse reasons, its closed change-kind set and its one-re-verify-per-drift-event
 # bound and its acceptance scenarios, and verify-spec and /wf:pr stay wired to it.
 # WF-819 — /wf:ship stays wired to it on the CI-remediation path: the drift check
-# runs on every Phase 4.2 push and before /wf:tf, one re-verify per drift event,
-# and a refuse blocks the merge.
-# The self-test seeds nine defective ops docs and five defective ship bodies that
+# runs on every Phase 4.2 push and before every /wf:tf, one re-verify per drift
+# event, a refuse blocks the merge, and each CI-remediation scenario is pinned.
+# The self-test seeds nine defective ops docs and seven defective ship bodies that
 # must each be rejected.
 echo ""
 echo "=== Certified-commit guard — seeded self-test ==="
