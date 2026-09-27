@@ -195,7 +195,7 @@ Do **not**, in either mode, execute a phase inline in your own context (Safety R
 
 - **No artifacts yet (fresh task):** next phase is `triage` (or `spec` with `--no-triage`). Requires an explicit ID.
 - **Out-of-order / hand-made artifacts:** trust the filesystem — detect the furthest-complete phase regardless of how it got there.
-- **`02_progress.md` partial (or, legacy, `02_plan.md` partially checked):** implement is *in progress*, not done — next command is `/wf:implement <id>` (it resumes from the first step not yet recorded done on its own).
+- **`02_progress.md` partial:** implement is *in progress*, not done — next command is `/wf:implement <id>` (it resumes from the first step not yet recorded done on its own).
 - **`04_verify.md` is `PASS` but source changed since:** staleness guard warns; offer `--from verify`.
 - **verify⇄fix or qa⇄followup exceeds 2 cycles:** halt with `RUN — blocked`, summarize the stuck findings, hand to the user.
 - **verify⇄fix stops early (no progress before the cap):** the blocking fingerprint set was stable or grew between two rounds — §"The verify⇄fix stop gate" fires before the cap is spent, not only at it.
