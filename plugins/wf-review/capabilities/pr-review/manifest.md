@@ -1,6 +1,6 @@
 # pr-review capability manifest
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** pr-review (a native feature capability; **registration is required** — see references)
 **Kind:** feature (ships three user-invoked skills; contributes two `slot` fills)
@@ -16,8 +16,8 @@ shared sweep procedure, so with `pr-review` unregistered that call does not reso
 stops. It owns **no** provider surface: the capability — its three skills plus its two `slot` fills —
 **consumes** the active **delivery** provider, routing every host interaction through its
 PR-interaction operations (`pr-detect`, `pr-comments-read`, `pr-comment-post`, `checks-read`,
-`review-thread-resolve`, `review-threads-read`, `review-thread-reply` — the last dispatched only by
-the `ship.review` fill, and forbidden to `sweep-pr`), and files through the active **tracker** provider's
+`review-thread-resolve`, `review-threads-read`, `review-thread-reply`, `review-request-read` — the
+last two dispatched only by the `ship.review` fill, and forbidden to `sweep-pr`), and files through the active **tracker** provider's
 `create_child` when one is registered. It declares **no** `requires:` — it degrades gracefully when
 no delivery provider is registered.
 
@@ -25,7 +25,9 @@ Beyond those three skills it contributes **two `slot` fills**, each `replace`:
 
 - The `ship.review` **pre-merge review gate** (WF-331), targeting `/wf:ship`'s declared `ship.review`
   composition point. It names only abstract `delivery` operations (`review-threads-read`,
-  `pr-comments-read`, `review-thread-reply`) — no concrete host tool.
+  `pr-comments-read`, `review-request-read`, `review-thread-reply`) — no concrete host tool. It
+  records every capped outcome's cause and applies the off-by-default review-completeness switch
+  (WF-837).
 - The `fleet.closeout-review` **post-merge review sweep** (WF-522), targeting `/wf:fleet`'s declared
   `fleet.closeout-review` composition point at Closeout. It catches the sibling gap the pre-merge
   gate cannot: a verdict that lands *after* the capped polls and the merge. Its body is the **same**
@@ -33,7 +35,8 @@ Beyond those three skills it contributes **two `slot` fills**, each `replace`:
   drift apart.
 
 Both compose via the **registry**, so each fires only once this capability is registered; with it
-unregistered, `/wf:ship` and `/wf:fleet` show no review term at all (CLAUDE.md §2).
+unregistered, `/wf:ship` and `/wf:fleet` run no review step (CLAUDE.md §2) — their `Review:`/`review:`
+slots read core's own `none — no review step ran` fallback.
 
 **Registration in the `## Capabilities` registry is required** — run `/wf-review:init` once after
 `/wf:init`. Both `slot` fills — and `/wf-review:sweep-pr` itself — resolve only through a registered row; `/wf-review:init` is a

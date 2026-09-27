@@ -99,7 +99,7 @@ check_cross_owner_parity() {
 
 # Reads whose result is TYPED with a <read-performed> flag, so a degraded result can never be
 # mistaken for a performed read (capability-registry contract, "Degradation shape").
-TYPED_READS=(review-threads-read newest-published-version-read branch-head-read merged-ref-read)
+TYPED_READS=(review-threads-read newest-published-version-read branch-head-read merged-ref-read review-request-read)
 
 # Print one operation's own section body — from its `## <op>` heading to the next `## `.
 # Scoping every typed-result assertion to this body is what stops the check passing because
@@ -168,6 +168,22 @@ check_typed_results() {
   done
   printf '%s\n' "$section" | grep -qF -- 'no-provider' \
     || err "typed-result: the merged-ref-read section does not record that 'no-provider' is core's own token"
+  # review-request-read (WF-837): the performed return carries every count the pre-merge review
+  # step classifies a capped outcome by — including the timeline read-back, without which a request
+  # the host registered and then withdrew would read as never requested.
+  section=$(op_section "$OPS" review-request-read)
+  printf '%s\n' "$section" | grep -qF -- '= true' \
+    || err "typed-result: the review-request-read section documents no performed return (<read-performed> = true)"
+  for token in '<requested>' '<pending>' '<request-events>' '<reviews>' 'reviewRequests' 'timeline' 'review_requested'; do
+    printf '%s\n' "$section" | grep -qF -- "$token" \
+      || err "typed-result: the review-request-read section never names '$token' (the request state it must read back)"
+  done
+  printf '%s\n' "$section" | grep -qF -- '`read-failed`' \
+    || err "typed-result: the review-request-read section documents no 'read-failed' reason token"
+  printf '%s\n' "$section" | grep -qF -- 'no-provider' \
+    || err "typed-result: the review-request-read section does not record that 'no-provider' is core's own token"
+  printf '%s\n' "$section" | grep -qiF -- 'nothing is requested' \
+    || err "typed-result: the review-request-read section does not state that it requests nothing"
   [ "$fail" = "$before" ] && ok "typed-result: each typed read's own section documents read-performed and every reachable reason token"
 }
 

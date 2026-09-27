@@ -40,6 +40,11 @@
       { "read-performed": true, "merge-commit": "fa4e000000000000000000000000000000000003", "tree": "fa4e000000000000000000000000000000000004", "root": "_local/scratch/wf-sweep-merged-ref" },
       { "read-performed": false, "reason": "read-failed" },
       { "read-performed": false, "reason": "not-merged" }
+    ],
+    "review-request-read": [
+      { "read-performed": true, "requested": true, "pending": 1, "request-events": 1, "reviews": 0 },
+      { "read-performed": true, "requested": false, "pending": 0, "request-events": 0, "reviews": 0 },
+      { "read-performed": false, "reason": "read-failed" }
     ]
   },
   "tracker": {

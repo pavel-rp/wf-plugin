@@ -29,8 +29,8 @@ second, and the second divergence is the one that launders reviewer noise into t
 
 So the procedure is written **once**, as this capability's fragment, and both call sites follow it.
 The fleet side reaches it through the `fleet.closeout-review` slot (`replace`) — composition through
-the registry, so core `fleet` names no review term and runs entirely inert when this capability is
-not registered. The standalone side reaches it by resolving the same fragment directly. Neither
+the registry, so core `fleet` names no reviewer and runs no review step when this capability is
+not registered (its per-item `review:` token reads the shipper's `none — no review step ran`). The standalone side reaches it by resolving the same fragment directly. Neither
 holds a copy.
 
 This mirrors the architecture WF-331 established for `ship.review`, deliberately: a reader who knows

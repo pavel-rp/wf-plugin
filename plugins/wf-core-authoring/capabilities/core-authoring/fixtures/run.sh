@@ -61,6 +61,7 @@ check-skill-body-length.sh
 check-ops-docs.sh
 skill-slot-marker-lint.sh
 check-lifecycle-write-scope.sh
+check-review-cause-slots.sh
 "
 
 # --- SELFTEST-ONLY CHECKS (WF-370) -------------------------------------------

@@ -55,6 +55,26 @@ else
 fi
 
 echo ""
+echo "=== ship.review capped cause + review-completeness switch — seeded self-test (WF-837) ==="
+if bash "$DIR/ship-review-cause.sh" --selftest; then
+  printf 'PASS: %s\n' "ship.review cause guard self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "ship.review cause guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== ship.review capped cause + review-completeness switch — live fill and decision table ==="
+if bash "$DIR/ship-review-cause.sh"; then
+  printf 'PASS: %s\n' "ship.review cause guard live"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "ship.review cause guard live"
+  fail=$((fail + 1))
+fi
+
+echo ""
 echo "=== Gate-map drift fixture ==="
 if bash "$DIR/gate-map-drift.sh"; then
   printf 'PASS: %s\n' "gate-map drift fixture"

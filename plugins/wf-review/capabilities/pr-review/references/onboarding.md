@@ -88,9 +88,28 @@ To route `address-pr`/`review-pr` through a live host, also register a **deliver
 downstream (e.g. install the wf-git pack and run `/wf-git:init`); that registration is independent
 of `pr-review`'s own.
 
+## Configuration — the review-completeness switch
+
+pr-review owns one optional `_local/config.md` section. It is **off by default**, and a project
+that never adds it runs off:
+
+```markdown
+## Review
+
+| Key | Value |
+|-----|-------|
+| **Require Completed Review** | `off` |
+```
+
+Only the exact value `on` turns it on; absent, `off`, `<none>`, empty, or anything else is off.
+When on, the `ship.review` gate hands back an unattended item whose capped outcome has no
+completed review — neither an external review nor complete in-run lens coverage — instead of
+letting it merge. Leave it off until the lens path that completes in-run coverage on unattended
+items has landed (WF-836). Rationale: [`ship-review.md`](ship-review.md).
+
 ## Profile seed template
 
-pr-review ships no `profile-template:` — it has no project-tunable value. Per the contract's seeding
+pr-review ships no `profile-template:` — its one project-tunable value is the config section above. Per the contract's seeding
 convention, a capability that declares no `profile-template:` seeds nothing (the no-op path).
 
 ## Version history
@@ -108,3 +127,6 @@ convention, a capability that declares no `profile-template:` seeds nothing (the
   `/wf:fleet`'s Closeout, alongside a third user-invoked skill `/wf-review:sweep-pr`. Both call
   sites follow one shared procedure. Registration becomes a hard runtime dependency for that
   skill — not merely a prerequisite for a fill to resolve, as it was for the two skills above.
+- **WF-837** — the `ship.review` gate verifies each review request through the delivery
+  provider's `review-request-read`, records every capped outcome's cause (`no-post` |
+  `request-failed`), and gains the off-by-default review-completeness switch above.
