@@ -337,6 +337,23 @@ phase produces **nothing** — no capability/stack/domain term, no STOP. A malfo
 `dispatch` is that contributor's own no-op, reported as incomplete coverage below. Gating
 is decided by §"The blocking set" alone, never by mere existence.
 
+**Lens count.** Count this round's `verify`/`finding` rows once, after dispatch, as
+`<c>/<e> completed, <i> inline` — the one value every `Lenses` render site carries:
+- **`<e>` expected** — every row collected at step 2 that the contributor gate left enabled. A
+  row the gate skipped was deliberately disabled and is not expected; a row with a malformed
+  `dispatch`, or whose Task target is unavailable, is expected.
+- **`<c>` completed** — expected rows that delivered a well-formed block through their declared
+  dispatch: an `inline:` row whose body was followed in-context, or a `subagent:` row whose own
+  isolated Task returned. A clean block with an empty `findings:` list is completed.
+- **`<i>` inline** — `subagent:` rows whose rubric the verifying agent executed in its own context
+  instead of an isolated Task (for example, because it could not dispatch one). They count in
+  `<e>` and **never** in `<c>`: a rubric the auditing agent applies to its own work is not an
+  independent lens run. Each is also reported as incomplete coverage, provenance `run inline, not
+  independent`.
+
+An empty `capabilities[]`, or no `verify`/`finding` row, renders `0/0 completed, 0 inline` — never
+omitted. The count is reporting only: it never enters the blocking set or changes `**Verdict:**`.
+
 ### Confirm candidate blocking findings (the critic pass)
 
 A **candidate** is an aggregated `fail`-severity finding anchored per §"The blocking set" below; requirement verdicts never enter the critic — they block unconditionally already. **Empty candidate set** → no dispatch, continue to §"The blocking set". **Otherwise**, immediately before dispatch, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "critic"`, `unitIds: ["verify:critic"]`,
@@ -462,7 +479,8 @@ and changes nothing else — the verdict is unaffected and the block below emitt
   surfaces.
 - **A contributor fails or returns nothing**: no STOP, the generic audit still stands. It
   contributed nothing *and is not clean*: state it with its provenance and
-  mark the adversarial coverage **incomplete**. Reporting only — no verdict change.
+  mark the adversarial coverage **incomplete**. It stays in the lens count's `<e>` and out of
+  its `<c>` (§"Fire the `verify` phase"). Reporting only — no verdict change.
 - **Re-run after fixes**: `04_verify.md` is overwritten, the prior report rotated into
   `04_verify.history.md` — an unbounded trail; prune manually.
 - **`04_verify.history.md` absent, empty, or pre-fingerprint only**: never an error — the
@@ -483,11 +501,14 @@ VERIFY — <PASS | FAIL | PARTIAL>
 
 {task-id}: <passed>/<total> requirements, capability findings <none | N across M capabilities>
 Report: <task-folder>/04_verify.md
+Lenses: <c>/<e> completed, <i> inline
 Next: <branched on the verdict — see below>
 ```
 
 `N`/`M` count only the blocking-set members rendered under `## Capability findings` — the same
-counts the chat summary's capability-findings line prints. The `Next:` line is **always present**, branched on the verdict:
+counts the chat summary's capability-findings line prints. `Lenses:` is the lens count from
+§"Fire the `verify` phase", identical to the report's `**Lenses:**` header line — always
+present, `0/0 completed, 0 inline` when nothing is registered. The `Next:` line is **always present**, branched on the verdict:
 
 - **PASS** → `/wf:qa-gen {task-id}` (proceed to QA).
 - **FAIL/PARTIAL with at least one mechanically fixable finding** → `/wf:verify-fix {task-id}`

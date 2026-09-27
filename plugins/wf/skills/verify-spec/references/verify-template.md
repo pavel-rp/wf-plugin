@@ -21,6 +21,7 @@ The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.
 **Verdict:** <PASS | FAIL | PARTIAL>  (<passed>/<total> requirements)
 **Certified:** commit `<HEAD SHA>`, tree `<audited tree identity>`  |  none — verdict <FAIL | PARTIAL>
 **Drift re-verify:** `<certified commit>`..`<HEAD SHA>` (<change kind>)   ← drift mode only; omit the line otherwise
+**Lenses:** <c>/<e> completed, <i> inline   ← always; `0/0 completed, 0 inline` when no `verify`/`finding` row exists
 **Audited by:** <model identifier>
 **Audited at:** <ISO 8601 timestamp>
 
@@ -218,6 +219,12 @@ is a clean delivery, not a failure):
 
 - **Incomplete** — `<source capability>` contributed nothing and is not clean:
   <what failed>. The findings above are not a complete adversarial pass. Non-gating.
+- **Incomplete** — `<source capability>`/`<lens>` run inline, not independent: its rubric was
+  executed in the verifying agent's own context, not an isolated dispatch. Counted in the
+  `**Lenses:**` inline figure, never as completed. Non-gating.
+
+Every Coverage entry is also reflected in the header's `**Lenses:**` count (`SKILL.md`
+§"Fire the `verify` phase" — Lens count), which renders even when this sub-list is omitted.
 
 ## Counterparts
 
