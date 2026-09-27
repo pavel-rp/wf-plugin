@@ -1,7 +1,7 @@
 ---
 name: tf
 description: Finalizes a completed task through the active providers — merges the task's pull request through the delivery provider, posts a resolution comment and closes the work item through the tracker provider, then sweeps any residual scratch, archives the task folder, and updates the per-task index locally. Names only abstract provider operations. Degrades to local-only when a provider is unconfigured or fails mid-run — the local archive and index always complete, and the local artifacts are the source of truth. Use as the terminus step once a task's pull request is approved. Reads _local/config.md first; run /wf:init if it is absent.
-allowed-tools: [Read, Write, Edit, Glob, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Bash, Skill]
 ---
 
 # /wf:tf — Finalize a completed task through the providers
@@ -49,6 +49,7 @@ Invoked with no id, tf infers the task from the current branch (the same first-3
 - Write/create `09_finalize.md` **only** inside the task folder, and **move** the task folder to `{task-root}/_archive/` — both are local operations inside `{task-root}` (the whole `_local/` tree is gitignored), never a version-control operation.
 - **Delete residual scratch** under `_local/scratch/` (Phase 5) — a local delete inside the gitignored `_local/` tree, never a version-control operation, and never a delete of a task folder, an archive, or the scratch root itself.
 - Invoke `/wf:index` through the **Skill** tool to update the per-task index (the wrapper writes `index.md` inline).
+- Run the Phase 3 **drift check** (`certified-commit.ops.md`, via `resolve_content`, `class: contract`) once before every `pr-merge`: read the task folder's `04_verify.md` and `04_drift.md`, append a `carry-forward` row to `04_drift.md` (only inside the task folder), and invoke `/wf:verify-spec` through the **Skill** tool at most once per drift event, only on a `reverify` outcome.
 
 **Forbidden:**
 
@@ -56,6 +57,7 @@ Invoked with no id, tf infers the task from the current branch (the same first-3
 - Run any destructive version-control operation. The only delivery write tf performs is `pr-merge`, through the provider contract; `pr-merge` is detect-first and never re-merges an already-merged pull request.
 - Write the current model id, any AI-attribution trailer, a "generated with" footer, an emoji, or any promotional tagline into the resolution comment. Model attribution belongs **only** in the local `09_finalize.md` artifact.
 - Name any concrete tracker, version-control tool, or command string anywhere in this skill's behaviour — only the abstract operation names above.
+- Invoke `pr-merge` after a `refuse` drift-check outcome, or run a second re-verify for the same drift event.
 
 ---
 
@@ -94,7 +96,12 @@ The local `09_finalize.md` artifact is the source of truth and carries the singl
 
 4. **Resolve and validate the branch.** Resolve the current branch via `current-branch-query`; its detached-HEAD signal → warn once ("Detached HEAD — cannot merge the task's pull request; checkout the task branch first."), record `**Merged PR:** failed (detached HEAD)`, and fall through to Phase 4. Then apply the shared **two-arm-plus-collision-guard predicate** (obtain the doc via `resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md` — never a raw `Read` of the plugin-cache path) §"Branch gate (bare-core aware)" step 2, compared case-insensitively; `{numeric-id}` is the task's own first-3+-digit run, and the lower-casing is for comparison only, never changing what is written or emitted. Do not restate the predicate here: the shared section is authoritative, and restating it is precisely how this check previously dropped the guard's self-exclusion clause and would have rejected every legitimate numeric-only branch. If the predicate does not accept the branch — no match, or a numeric-only match the guard rejected — warn once ("Not on the task branch for {task-id} — checkout the task branch before finalizing."), record `**Merged PR:** failed (not on task branch)`, and fall through to Phase 4. Finalizing is the one irreversible step, so a numeric collision must fail this check rather than merge another task's branch.
 
-5. **Merge.** Invoke `pr-merge` for the task's branch through the resolved delivery fragment (read it and follow it in-context; the fragment supplies the merge strategy — tf names none). Map its result:
+5. **Drift check before the merge (the certified commit).** On every run that reaches this step, follow the drift check in `certified-commit.ops.md` (`resolve_content({ workspaceRoot, ... })`, `class: contract`, `ref: certified-commit.ops.md`) §"The drift check" against the task folder and the branch's pushed head — unconditionally, whoever pushed last, so a head that moved after the verdict (a review-fix push, a remediation push, a manual push) cannot merge unchecked. Act on its single outcome:
+   - **`inert`**, **`bound`**, or **`carried`** → continue to the merge. On `carried` the check has appended its `carry-forward` row to `04_drift.md` with `Path` `tf`; surface one line naming the kind and both commits. Under a caller that already ran this check on the same head, it returns `bound` or `carried` and costs no re-verify.
+   - **`reverify`** → invoke `/wf:verify-spec {task-id}` through the **Skill** tool **exactly once** for this drift event — it runs in drift mode, scoped to the binding..head diff, and writes its own report and ledger row — then re-run the check once without re-entering its re-verify step. `bound` → continue to the merge; anything else → the `refuse` bullet.
+   - **`refuse`** → **no `pr-merge`**. Warn once, record `**Merged PR:** refused (head <B> drifted from the certified commit <A> — <reason>)` (`uncertified`, `reverified-fail`, or `unreadable`), and **stop the finalize here**: skip Phases 4–6 so the work item stays open and the task folder stays active for a re-run, run Phase 7's index update, and emit `TF — partial`. A drift re-verify that does not PASS is never a trigger for another verify⇄fix round.
+
+6. **Merge.** Invoke `pr-merge` for the task's branch through the resolved delivery fragment (read it and follow it in-context; the fragment supplies the merge strategy — tf names none). Map its result:
    - `merged` → capture `<url>`; record `**Merged PR:** <url>` in `09_finalize.md`.
    - `already-merged` → the pull request was already merged (the provider's detect-first no-op); capture `<url>`; record `**Merged PR:** already merged (<url>)`.
    - **Merge blocked / provider error** (failing checks, unresolved conversations, not-mergeable, or the underlying tool not authenticated) — a **mid-run failure**: warn once, naming the operation and the provider's own reason, record `**Merged PR:** failed (<reason>)`, and fall through to Phase 4. The local finalize still completes; the merge can be retried by re-running tf (the idempotency read-back and the provider's detect-first guard make a retry safe).
@@ -203,6 +210,7 @@ When Phase 3 recorded no merge, drop the "Resolved via …" reference and state 
 - **No tracker registered (genuinely unconfigured):** silent local-only — no comment, no status change, no message, no capability term; archive and index complete.
 - **Registered-but-unrecoverable delivery or tracker:** the write surfaces the hedged candidate-naming diagnosis from the record's `diagnostics` field (delivery once at Phase 3, tracker once at Phase 4), never asserting a pack owns the surface; the local finalize completes.
 - **Merge blocked** (failing checks, unresolved conversations, not-mergeable) or **tool not authenticated:** mid-run failure — warn once with the provider's reason, record it on the `**Merged PR:**` line, complete the local finalize; re-running tf retries the merge safely (detect-first + idempotency read-back).
+- **Head drifted from the certified commit:** the Phase 3 drift check carries a `base-sync`/`version-bump` drift forward with a `tf` ledger row, runs one scoped `/wf:verify-spec` for any other drift, and on an uncertified head, a re-verify that did not PASS, or an unreadable record merges nothing: `**Merged PR:** refused (…)`, no tracker close, no archive, `TF — partial`. A re-run checks again and merges once a PASS certifies the head. No `04_verify.md` (a task never verified) is `inert` and changes nothing.
 - **Not on the task branch / detached HEAD:** merge is skipped with a one-time warning; the local finalize completes. Checkout the task branch and re-run to merge.
 - **Mid-run tracker failure:** warn once, record the reason, continue local-only; the archive and index are never blocked.
 - **Partial prior run** (merge succeeded but archive/index did not): the `**Merged PR:**` read-back skips the re-merge; the archive move is skip-if-present; the index is re-updated — the run completes idempotently.
@@ -220,7 +228,7 @@ When Phase 3 recorded no merge, drop the "Resolved via …" reference and state 
 TF — <finalized | already-finalized | partial>
 
 Task: {task-id} — <title>
-Merged PR: <url | already merged (url) | skipped (no delivery provider) | failed (reason)>
+Merged PR: <url | already merged (url) | skipped (no delivery provider) | refused (reason) | failed (reason)>
 Resolution comment: <posted | skipped (no tracker) | failed (reason)>
 Status: <closed as <status> | skipped (no tracker) | failed (reason)>
 Archive: {task-root}/_archive/{task-id}/
@@ -229,6 +237,6 @@ Index: <updated | update failed (reason)>
 Next: none — terminus
 ```
 
-`finalized` — every applicable step completed; an unconfigured provider counts as a clean skip, not a failure (the bare-core finalize is a `finalized`). `partial` — the local archive and index completed but a **configured** provider step failed mid-run (merge blocked, tracker error); the finalize can be re-run to retry that step. `already-finalized` — the task was detected already archived.
+`finalized` — every applicable step completed; an unconfigured provider counts as a clean skip, not a failure (the bare-core finalize is a `finalized`). `partial` — the local archive and index completed but a **configured** provider step failed mid-run (merge blocked, tracker error); the finalize can be re-run to retry that step. A drift-check refusal is also `partial`, with `Merged PR: refused (reason)`, `Resolution comment:` and `Status:` reading `skipped (merge refused)`, and `Archive: not archived (merge refused)` — nothing is closed or archived, so a re-run picks it up. `already-finalized` — the task was detected already archived.
 
 **The final output block must always be the very last thing output to chat.**

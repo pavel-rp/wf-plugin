@@ -28,7 +28,12 @@
 #   W4  the paired rationale doc exists;
 #   W5  /wf:ship runs the drift check on every Phase 4.2 remediation push and
 #       again before /wf:tf, may invoke the Skill tool for the one re-verify,
-#       and blocks on a refuse outcome before any merge (WF-819).
+#       and blocks on a refuse outcome before any merge (WF-819);
+#   W6  /wf-review:address-pr runs the drift check on every head it pushes,
+#       reaching the ops doc through the resolver's content surface, with one
+#       re-verify per drift event and a refuse that blocks the merge (WF-820);
+#   W7  /wf:tf runs the drift check unconditionally before pr-merge and merges
+#       nothing on a refuse outcome (WF-820).
 #
 # --selftest runs the ops-doc evaluator over seeded synthetic docs and requires
 # it to REJECT each defective one (exit 1, never a harness error) and ACCEPT the
@@ -140,6 +145,48 @@ evaluate_ship() {
   return 0
 }
 
+# evaluate_address_pr <file> <label> — applies W6 to the /wf-review:address-pr
+# skill body; returns 1 on any violation. A review-fix push must be checked, the
+# ops doc must be reached through the content surface (the skill lives in a pack),
+# and a refuse must never be reported as mergeable.
+evaluate_address_pr() {
+  local file="$1" label="$2" bad=0
+  require "$file" "$label" W6 'address-pr runs the drift check after its push' '^## Phase 8 — Drift check \(the certified commit\)' || bad=1
+  require "$file" "$label" W6b 'address-pr reaches the ops doc through the content surface' '`class: contract`, `ref: certified-commit\.ops\.md`' || bad=1
+  require "$file" "$label" W6c 'address-pr runs one re-verify per drift event' '\*\*exactly once\*\* for this drift event' || bad=1
+  require "$file" "$label" W6d 'address-pr reports a refuse as unmergeable' '\*\*.refuse.\*\* → report' || bad=1
+  require "$file" "$label" W6e 'address-pr may invoke the Skill tool for the re-verify' '^allowed-tools: \[.*Skill.*\]' || bad=1
+  require "$file" "$label" W6f 'address-pr renders the Drift line' '^Drift: <' || bad=1
+  # Scenario rows — one per address-pr acceptance case:
+  require "$file" "$label" W6g 'scenario: a carry-forward push is recorded under the address-pr path' '`04_drift\.md` with `Path` `address-pr`' || bad=1
+  require "$file" "$label" W6h 'scenario: a second push after a rebind is its own B..C event' 're-verifies B\.\.C only' || bad=1
+  require "$file" "$label" W6i 'scenario: fresh findings on unchanged code become drift residuals' 'into drift residuals' || bad=1
+  require "$file" "$label" W6j 'scenario: a failed drift re-verify stops, no second round' 'never a trigger for another' || bad=1
+  if grep -qE '(Read|Glob|cat).*plugins/wf/skills/_contracts' "$file"; then
+    printf '%s: [W6k] the pack reads a core contract by filesystem path; reach it through resolve_content\n' "$label"
+    bad=1
+  fi
+  [ "$bad" -eq 0 ] || return 1
+  printf '%s: OK — drift check after every address-pr push via the content surface, one re-verify per event, refuse unmergeable, all four address-pr scenarios pinned\n' "$label"
+  return 0
+}
+
+# evaluate_tf <file> <label> — applies W7 to the /wf:tf skill body; returns 1 on
+# any violation. The finalizer must re-check the head before every merge, on
+# every run, and must merge nothing on a refuse.
+evaluate_tf() {
+  local file="$1" label="$2" bad=0
+  require "$file" "$label" W7 'tf runs the drift check before the merge' '\*\*Drift check before the merge \(the certified commit\)\.\*\*' || bad=1
+  require "$file" "$label" W7b 'tf resolves the ops doc' 'ref: certified-commit\.ops\.md' || bad=1
+  require "$file" "$label" W7c 'tf checks unconditionally, whoever pushed last' 'unconditionally, whoever pushed last' || bad=1
+  require "$file" "$label" W7d 'tf merges nothing on a refuse outcome' '\*\*.refuse.\*\* → \*\*no `pr-merge`\*\*' || bad=1
+  require "$file" "$label" W7e 'tf runs one re-verify per drift event' '\*\*exactly once\*\* for this drift event' || bad=1
+  require "$file" "$label" W7f 'tf may invoke the Skill tool for the re-verify' '^allowed-tools: \[.*Skill.*\]' || bad=1
+  [ "$bad" -eq 0 ] || return 1
+  printf '%s: OK — drift check before every merge on every run, one re-verify per event, refuse merges nothing\n' "$label"
+  return 0
+}
+
 # --- self-test --------------------------------------------------------------
 
 if [ "${1:-}" = "--selftest" ]; then
@@ -242,11 +289,86 @@ SHIP
     selftest_fail=$((selftest_fail + 1))
   fi
 
+  sound_address_pr() {
+    cat <<'ADDR'
+allowed-tools: [Read, Edit, Task, Skill]
+
+## Phase 8 — Drift check (the certified commit)
+
+Follow the check (`resolve_content`, `class: contract`, `ref: certified-commit.ops.md`) on the pushed head.
+- `carried` → the check appended its row to `04_drift.md` with `Path` `address-pr`.
+- **`reverify`** → invoke the audit **exactly once** for this drift event; it turns fresh findings on unchanged code into drift residuals.
+- **`refuse`** → report the head as unmergeable; never a trigger for another verify⇄fix round.
+A second push to C after a rebind to B re-verifies B..C only.
+
+Drift: <inert | bound | carried | refused — reason | n/a>
+ADDR
+  }
+
+  sound_address_pr >"$tmp/addr-sound.md"
+  sound_address_pr | grep -v '^## Phase 8' >"$tmp/addr-no-check.md"
+  sound_address_pr | sed 's/`class: contract`, `ref: certified-commit\.ops\.md`/`ref: certified-commit.ops.md`/' >"$tmp/addr-no-content-surface.md"
+  sound_address_pr >"$tmp/addr-raw-read.md"
+  printf 'Read plugins/wf/skills/_contracts/certified-commit.ops.md directly.\n' >>"$tmp/addr-raw-read.md"
+  sound_address_pr | sed 's/\*\*exactly once\*\* for this drift event/as often as needed/' >"$tmp/addr-unbounded-reverify.md"
+  sound_address_pr | grep -v '`refuse`' >"$tmp/addr-refuse-mergeable.md"
+  sound_address_pr | sed 's/, Skill//' >"$tmp/addr-no-skill.md"
+  sound_address_pr | grep -v '^Drift: ' >"$tmp/addr-no-drift-line.md"
+  sound_address_pr | grep -v 'B\.\.C only' >"$tmp/addr-no-rebind-scenario.md"
+  sound_address_pr | sed 's/; it turns fresh findings on unchanged code into drift residuals//' >"$tmp/addr-no-residuals.md"
+
+  for case in addr-no-check addr-no-content-surface addr-raw-read addr-unbounded-reverify addr-refuse-mergeable addr-no-skill addr-no-drift-line addr-no-rebind-scenario addr-no-residuals; do
+    evaluate_address_pr "$tmp/$case.md" "selftest/$case" >/dev/null 2>&1
+    rc=$?
+    if [ "$rc" -ne 1 ]; then
+      err "SELFTEST FAIL — seeded '$case' address-pr doc returned exit $rc; expected 1"
+      selftest_fail=$((selftest_fail + 1))
+    fi
+  done
+
+  if ! evaluate_address_pr "$tmp/addr-sound.md" "selftest/addr-sound" >/dev/null 2>&1; then
+    err "SELFTEST FAIL — the address-pr evaluator REJECTED the seeded sound doc"
+    evaluate_address_pr "$tmp/addr-sound.md" "selftest/addr-sound" >&2
+    selftest_fail=$((selftest_fail + 1))
+  fi
+
+  sound_tf() {
+    cat <<'TF'
+allowed-tools: [Read, Write, Skill]
+
+5. **Drift check before the merge (the certified commit).** Follow `ref: certified-commit.ops.md` on every run — unconditionally, whoever pushed last.
+   - **`reverify`** → invoke the audit **exactly once** for this drift event.
+   - **`refuse`** → **no `pr-merge`**; stop the finalize.
+TF
+  }
+
+  sound_tf >"$tmp/tf-sound.md"
+  sound_tf | grep -v 'Drift check before the merge' >"$tmp/tf-no-check.md"
+  sound_tf | sed 's/ — unconditionally, whoever pushed last//' >"$tmp/tf-conditional.md"
+  sound_tf | grep -v '`refuse`' >"$tmp/tf-refuse-merges.md"
+  sound_tf | sed 's/\*\*exactly once\*\* for this drift event/as often as needed/' >"$tmp/tf-unbounded-reverify.md"
+  sound_tf | sed 's/, Skill//' >"$tmp/tf-no-skill.md"
+
+  for case in tf-no-check tf-conditional tf-refuse-merges tf-unbounded-reverify tf-no-skill; do
+    evaluate_tf "$tmp/$case.md" "selftest/$case" >/dev/null 2>&1
+    rc=$?
+    if [ "$rc" -ne 1 ]; then
+      err "SELFTEST FAIL — seeded '$case' tf doc returned exit $rc; expected 1"
+      selftest_fail=$((selftest_fail + 1))
+    fi
+  done
+
+  if ! evaluate_tf "$tmp/tf-sound.md" "selftest/tf-sound" >/dev/null 2>&1; then
+    err "SELFTEST FAIL — the tf evaluator REJECTED the seeded sound doc"
+    evaluate_tf "$tmp/tf-sound.md" "selftest/tf-sound" >&2
+    selftest_fail=$((selftest_fail + 1))
+  fi
+
   if [ "$selftest_fail" -ne 0 ]; then
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "certified-commit-guard: self-test passed — nine seeded ops-doc defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), seven seeded ship-wiring defects rejected (no push check, no pre-merge check, refuse proceeds, unbounded re-verify, no Skill tool, a resume that bypasses a refusal, a dropped rebind scenario), and both sound docs accepted."
+  echo "certified-commit-guard: self-test passed — nine seeded ops-doc defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), seven seeded ship-wiring defects rejected (no push check, no pre-merge check, refuse proceeds, unbounded re-verify, no Skill tool, a resume that bypasses a refusal, a dropped rebind scenario), nine seeded address-pr defects rejected (no check, no content surface, a raw core read, unbounded re-verify, refuse reported mergeable, no Skill tool, no Drift line, a dropped rebind scenario, no drift residuals), five seeded tf defects rejected (no pre-merge check, a conditional check, refuse merges, unbounded re-verify, no Skill tool), and all four sound docs accepted."
   exit 0
 fi
 
@@ -258,8 +380,10 @@ TEMPLATE="$ROOT/plugins/wf/skills/verify-spec/references/verify-template.md"
 VERIFY="$ROOT/plugins/wf/skills/verify-spec/SKILL.md"
 PR="$ROOT/plugins/wf/skills/pr/SKILL.md"
 SHIP="$ROOT/plugins/wf/skills/ship/SKILL.md"
+TF="$ROOT/plugins/wf/skills/tf/SKILL.md"
+ADDRESS_PR="$ROOT/plugins/wf-review/skills/address-pr/SKILL.md"
 
-for f in "$OPS" "$TEMPLATE" "$VERIFY" "$PR" "$SHIP"; do
+for f in "$OPS" "$TEMPLATE" "$VERIFY" "$PR" "$SHIP" "$TF" "$ADDRESS_PR"; do
   if [ ! -f "$f" ]; then
     err "target file is absent: $f"
     exit 2
@@ -286,9 +410,11 @@ fi
 [ "$bad" -eq 0 ] || fail=$((fail + 1))
 
 evaluate_ship "$SHIP" "SHIP" || fail=$((fail + 1))
+evaluate_address_pr "$ADDRESS_PR" "ADDRESS-PR" || fail=$((fail + 1))
+evaluate_tf "$TF" "TF" || fail=$((fail + 1))
 
 if [ "$fail" -ne 0 ]; then
   err "FAIL — the certified-commit contract or its consumer wiring is incomplete."
   exit 1
 fi
-echo "certified-commit-guard: PASS — the ops doc keeps every outcome, reason, kind and bound; verify-spec certifies and runs drift mode; /wf:pr runs the drift check before any pull request exists; /wf:ship runs it on every CI-remediation push and before the merge."
+echo "certified-commit-guard: PASS — the ops doc keeps every outcome, reason, kind and bound; verify-spec certifies and runs drift mode; /wf:pr runs the drift check before any pull request exists; /wf:ship runs it on every CI-remediation push and before the merge; /wf-review:address-pr runs it on every review-fix push; /wf:tf runs it before every merge."
