@@ -513,8 +513,14 @@ function extractKeyValues(markdown) {
 function normalizeValue(raw) {
   if (raw === void 0) return null;
   let v = raw.trim();
-  const bt = /^`(.*)`$/.exec(v);
-  if (bt) v = bt[1].trim();
+  const bt = /^(`+)([\s\S]*[^`])\1$/.exec(v) ?? /^(`+)()\1$/.exec(v);
+  if (bt) {
+    let inner = bt[2];
+    if (inner.length >= 2 && inner.startsWith(" ") && inner.endsWith(" ") && inner.trim() !== "") {
+      inner = inner.slice(1, -1);
+    }
+    v = inner.trim();
+  }
   if (v === "" || v === "\u2014") return null;
   if (/^<.*>$/.test(v)) return null;
   return v;
