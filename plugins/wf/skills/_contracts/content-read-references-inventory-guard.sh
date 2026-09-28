@@ -18,11 +18,14 @@
 # WHAT A CALL SITE IS. Any occurrence of the class token `references-template` in
 # a `plugins/*/skills/**/*.md` or `plugins/*/agents/*.md` file whose call text —
 # from the token to the first closing `)` or `}` (bounded) — names a `ref:` ending
-# in `.md`. The `skill:` key names the owning skill; `plugin:` (omitted for core)
-# must equal the consumer's own plugin. Both syntaxes the tree uses are parsed —
-# backtick lists and object literals, wrapped across lines or not. A mention that
-# names no `.md` ref (contract prose, an interface permission statement, a
-# never-read rationale pointer) is not a call site.
+# in `.md`. The `ref` is a relative path and may nest under `references/`
+# (`sub/t.md`), exactly as the resolver's `isSafeRelPath` admits; a ref the
+# resolver refuses (absolute, or a `.`, `..` or empty segment) is not a read. The
+# `skill:` key names the owning skill; `plugin:` (omitted for core) must equal the
+# consumer's own plugin. Both syntaxes the tree uses are parsed — backtick lists
+# and object literals, wrapped across lines or not. A mention that names no `.md`
+# ref (contract prose, an interface permission statement, a never-read rationale
+# pointer) is not a call site.
 #
 # WHAT A CONSUMER IS. The owning skill (`<plugin>/skills/<skill>`, including a
 # call written in that skill's own `references/*` files, which run in the skill's
@@ -30,7 +33,8 @@
 #
 # §4.4 ROW SHAPE. `| \`<consumer>\` | \`a.md\`, \`b.md\` (<owner-skill>) |` — a
 # template without a parenthesised owner belongs to the consumer skill itself; an
-# agent row, or a read of another skill's template, must name the owner.
+# agent row, or a read of another skill's template, must name the owner. A template
+# may be a nested path (`sub/t.md`); a row naming an unsafe path is a violation.
 #
 # Only the references class is enforced. The inventory's other four classes are
 # the dated C011 baseline and are deliberately not checked here.
@@ -58,14 +62,23 @@ python3 - "$ROOT" "$@" <<'PY'
 import os, re, sys, shutil, tempfile
 
 TOKEN = "references-template"
-KEY = re.compile(r"\b(plugin|skill|ref):\s*[\"`]?\s*([A-Za-z0-9_.-]+)")
-ITEM = re.compile(r"`([A-Za-z0-9_.-]+\.md)`(?:\s*\(([A-Za-z0-9_-]+)\))?")
+# `plugin:` and `skill:` are single segments; `ref:` is a relative path that may
+# nest under `references/` (`sub/t.md`), so it admits `/`. Its safety is judged
+# afterwards by safe_ref(), never by the pattern.
+KEY = re.compile(r"\b(plugin|skill):\s*[\"`]?\s*([A-Za-z0-9_.-]+)")
+REF = re.compile(r"\bref:\s*[\"`]?\s*([A-Za-z0-9_./-]+)")
+ITEM = re.compile(r"`([A-Za-z0-9_./-]+\.md)`(?:\s*\(([A-Za-z0-9_-]+)\))?")
 COUNTS = re.compile(r"(\d+)\s+templates\s*\|\s*(\d+)\s+consumers\s*\((\d+)\s+template reads\)")
 WINDOW = 400
 
 
 class Harness(Exception):
     pass
+
+
+def safe_ref(ref):
+    """Mirror the resolver's isSafeRelPath: relative, no `.`, `..` or empty segment."""
+    return bool(ref) and not ref.startswith("/") and all(s not in ("", ".", "..") for s in ref.split("/"))
 
 
 def consumer_of(rel):
@@ -103,8 +116,10 @@ def scan(root):
                 keys = {}
                 for k, v in KEY.findall(win):
                     keys.setdefault(k, v)
-                ref = keys.get("ref", "")
-                if not ref.endswith(".md"):
+                refm = REF.search(win)
+                ref = refm.group(1) if refm else ""
+                if not ref.endswith(".md") or not safe_ref(ref):
+                    # Not a template read: no `.md` ref, or a path the resolver refuses.
                     continue
                 line = text.count("\n", 0, m.start()) + 1
                 owner = keys.get("skill")
@@ -152,6 +167,9 @@ def parse_doc(doc):
         if not items:
             errors.append(f"§4.4 row names no template: {consumer}")
         for ref, owner in items:
+            if not safe_ref(ref):
+                errors.append(f"§4.4 row names an unsafe template path (absolute, or a '.', '..' or empty segment): {consumer} → {ref}")
+                continue
             if not owner:
                 if parts[1] != "skills":
                     errors.append(f"§4.4 agent row must name the owning skill for {ref}: {consumer}")
@@ -266,27 +284,67 @@ def selftest():
             "wrong-count": (doc([alpha, gamma], "4 templates | 2 consumers (3 template reads)"), 1, None),
         }
         failed = 0
-        for name, (body, want, remove) in cases.items():
-            put(f"{name}.md", body)
-            moved = None
-            if remove:
-                moved = os.path.join(tmp, remove) + ".away"
-                os.rename(os.path.join(tmp, remove), moved)
-            try:
-                got = evaluate(tmp, os.path.join(tmp, f"{name}.md"), quiet=True)
-            except Harness as e:
-                got = f"harness error ({e})"
-            if moved:
-                os.rename(moved, os.path.join(tmp, remove))
-            if got != want:
-                print(f"SELFTEST FAIL — '{name}' returned {got}, expected {want}", file=sys.stderr)
-                failed += 1
+
+        def run(cases):
+            nonlocal failed
+            for name, (body, want, remove) in cases.items():
+                put(f"{name}.md", body)
+                moved = None
+                if remove:
+                    moved = os.path.join(tmp, remove) + ".away"
+                    os.rename(os.path.join(tmp, remove), moved)
+                try:
+                    got = evaluate(tmp, os.path.join(tmp, f"{name}.md"), quiet=True)
+                except Harness as e:
+                    got = f"harness error ({e})"
+                if moved:
+                    os.rename(moved, os.path.join(tmp, remove))
+                if got != want:
+                    print(f"SELFTEST FAIL — '{name}' returned {got}, expected {want}", file=sys.stderr)
+                    failed += 1
+
+        run(cases)
+
+        # Nested refs (WF-897): a skill reading its own template one level down
+        # (backtick form), a pack agent reading another skill's template two levels
+        # down (wrapped object literal, owner-suffixed row), and two refs the
+        # resolver refuses — a `..` escape and an absolute path — which must not
+        # count as reads.
+        put("plugins/wf/skills/epsilon/SKILL.md",
+            "Obtain it via (`class: references-template`, `skill: epsilon`, `ref: sub/nested.md`).\n"
+            "Never (`class: references-template`, `skill: epsilon`, `ref: ../escape.md`).\n"
+            "Nor (`class: references-template`, `skill: epsilon`, `ref: /abs/x.md`).\n")
+        put("plugins/wf/skills/epsilon/references/sub/nested.md", "t\n")
+        put("plugins/wf-x/agents/zeta.md",
+            "resolve_content({ workspaceRoot, class: \"references-template\", plugin: \"wf-x\",\nskill: \"delta\", ref: \"deep/er/z.md\" })\n")
+        put("plugins/wf-x/skills/delta/references/deep/er/z.md", "t\n")
+
+        tree, _ = scan(tmp)
+        if ("wf/skills/epsilon", "epsilon", "sub/nested.md") not in tree \
+                or ("wf-x/agents/zeta", "delta", "deep/er/z.md") not in tree \
+                or any(not safe_ref(r) for _, _, r in tree):
+            print(f"SELFTEST FAIL — nested scan derived {sorted(tree)}", file=sys.stderr)
+            failed += 1
+
+        eps = "| `wf/skills/epsilon` | `sub/nested.md` |"
+        zeta = "| `wf-x/agents/zeta` | `deep/er/z.md` (delta) |"
+        run({
+            "nested-sound": (doc([alpha, gamma, eps, zeta], "5 templates | 4 consumers (5 template reads)"), 0, None),
+            "nested-missing-row": (doc([alpha, gamma, zeta], "4 templates | 3 consumers (4 template reads)"), 1, None),
+            "nested-mismatched-row": (doc([alpha, gamma, zeta, "| `wf/skills/epsilon` | `sub/other.md` |"],
+                                          "5 templates | 4 consumers (5 template reads)"), 1, None),
+            "nested-absent-template": (doc([alpha, gamma, eps, zeta], "5 templates | 4 consumers (5 template reads)"), 1,
+                                       "plugins/wf-x/skills/delta/references/deep/er/z.md"),
+            "unsafe-row": (doc([alpha, gamma, "| `wf/skills/epsilon` | `sub/nested.md`, `../escape.md` |", zeta],
+                               "5 templates | 4 consumers (5 template reads)"), 1, None),
+        })
         if failed:
             print(f"content-read-references-inventory-guard: self-test FAILED ({failed} case(s))", file=sys.stderr)
             return 1
         print("content-read-references-inventory-guard: self-test passed — four planted drifts rejected "
               "(missing row, stale row, absent template, wrong §5 count), the sound fixture accepted, "
-              "and the ref-less pointer ignored.")
+              "and the ref-less pointer ignored; nested refs derived whole, a nested row's absence, "
+              "mismatch or missing template rejected, an unsafe row rejected, and unsafe refs ignored.")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
