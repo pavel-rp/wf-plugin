@@ -33,7 +33,9 @@ ok()  { printf 'ok:   %s\n' "$*"; }
 
 # ---------------------------------------------------------------------------
 # The switch: `**Require Completed Review**` in a `## Review` section. On ONLY for the exact
-# value `on` (case-insensitive, backticks and surrounding blanks ignored); everything else off.
+# value `on` (case-insensitive; surrounding blanks and at most ONE matching outer backtick pair
+# ignored); everything else off. An interior, unmatched or doubled backtick is part of the value,
+# so a malformed cell such as `o`n never normalizes to on.
 # ---------------------------------------------------------------------------
 switch_state() {  # $1 = config text
   local v
@@ -42,7 +44,11 @@ switch_state() {  # $1 = config text
     insec && /\*\*Require Completed Review\*\*/ {
       n = split($0, cell, "|"); print cell[3]; exit
     }')
-  v=$(printf '%s' "$v" | tr -d '`' | tr '[:upper:]' '[:lower:]' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  v=$(printf '%s' "$v" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  case "$v" in
+    \`*\`) v="${v#\`}"; v="${v%\`}" ;;   # one matching outer pair only (length >= 2 by the pattern)
+  esac
+  v=$(printf '%s' "$v" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
   if [ "$v" = "on" ]; then echo on; else echo off; fi
 }
 
@@ -153,6 +159,13 @@ check_decision_table() {
   expect "switch: near-miss"       off "$(switch_state $'## Review\n| **Require Completed Review** | `onn` |')"
   expect "switch: on"              on  "$(switch_state $'## Review\n| **Require Completed Review** | `on` |')"
   expect "switch: ON, bare"        on  "$(switch_state $'## Review\n| **Require Completed Review** | ON |')"
+  expect "switch: padded \`On\`"    on  "$(switch_state $'## Review\n| **Require Completed Review** |   `On`   |')"
+  expect "switch: interior backtick" off "$(switch_state $'## Review\n| **Require Completed Review** | `o`n |')"
+  expect "switch: interior, wrapped" off "$(switch_state $'## Review\n| **Require Completed Review** | `o`n` |')"
+  expect "switch: unmatched open"  off "$(switch_state $'## Review\n| **Require Completed Review** | `on |')"
+  expect "switch: unmatched close" off "$(switch_state $'## Review\n| **Require Completed Review** | on` |')"
+  expect "switch: doubled pair"    off "$(switch_state $'## Review\n| **Require Completed Review** | ``on`` |')"
+  expect "switch: lone backtick"   off "$(switch_state $'## Review\n| **Require Completed Review** | ` |')"
   expect "lenses: complete"        yes "$(lenses_complete '3/3 completed, 0 inline')"
   expect "lenses: inline counted as expected" no "$(lenses_complete '2/3 completed, 1 inline')"
   expect "lenses: zero expected"   no  "$(lenses_complete '0/0 completed, 0 inline')"
