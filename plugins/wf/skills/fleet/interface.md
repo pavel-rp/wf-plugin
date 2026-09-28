@@ -90,7 +90,8 @@ item whose shipper reported a review-boundary hand-back — a closed list: read 
 `04_lens-request.md` read-only from the task folder under the worktree its own row records; dispatch
 each requested row as this orchestrator's own foreground child via the Agent tool (the row's agent
 token and prompt verbatim, routed first, no worktree isolation); write each returned block and then
-`manifest.md` into `_local/fleet/lenses/<id>/<tree>/`; and send that same shipper one continuation
+`manifest.md` (carrying the request's tree and round) into
+`_local/fleet/lenses/<id>/<tree>/r<round>/`, `<id>` accepted only as a single safe path segment; and send that same shipper one continuation
 message to re-invoke its ceremony. A row that fails is recorded failed and never re-run or applied by
 the orchestrator itself.
 

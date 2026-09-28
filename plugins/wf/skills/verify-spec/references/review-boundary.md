@@ -33,15 +33,23 @@ dispatch token, the same derivation the routing call already uses — and its `u
 
 ## The exchange folder
 
-`<dir>/<T>/`, where `<T>` is the content identity of the audited tree — the value this run would
-write on its `**Certified:**` line (`certified-commit.ops.md` §"Certification record"). Binding the
-folder to `<T>` is what keeps a block recorded for one tree from ever being consumed for another: a
-changed tree has no folder yet, so it hands back again. The verifying agent only **reads** the
-exchange folder; it never writes there.
+`<dir>/<T>/r<N>/` — the **request identity**, two halves:
+
+- `<T>` is the content identity of the audited tree — the value this run would write on its
+  `**Certified:**` line (`certified-commit.ops.md` §"Certification record"). It keeps a block
+  recorded for one tree from ever being consumed for another: a changed tree has no folder yet, so
+  it hands back again.
+- `<N>` is this run's round — the value it writes on the request's `**Round:**` line, a run of
+  decimal digits. The request and its prompts are round-sensitive (the Round context block at
+  `N >= 2`), so a later round on an **unchanged** tree must never consume an earlier round's blocks;
+  it looks under its own `r<N>/`, finds no record, and hands back again.
+
+The verifying agent only **reads** the exchange folder; it never writes there.
 
 ## Hand back — the lens request
 
-`<dir>/<T>/manifest.md` absent → the verifying agent writes the request into its own task folder as
+No manifest for this request (§"Consume — the manifest and the blocks" names exactly when) → the
+verifying agent writes the request into its own task folder as
 `04_lens-request.md` (overwriting any earlier one), writes **no** `04_verify.md`, rotates nothing,
 records no receipt, and ends with the `VERIFY — Handed-off` block. The request carries everything a
 dispatcher needs and nothing it must infer:
@@ -53,7 +61,7 @@ dispatcher needs and nothing it must infer:
 **Commit:** <HEAD SHA>
 **Round:** <N>
 **Workspace:** <absolute workspace root of the verifying agent>
-**Exchange:** <dir>/<T>/
+**Exchange:** <dir>/<T>/r<N>/
 **Requested by:** <model identifier>
 **Requested at:** <ISO 8601 timestamp>
 
@@ -75,7 +83,7 @@ VERIFY — Handed-off
 
 {task-id}: review boundary reached — <e> lens row(s) requested
 Request: <task-folder>/04_lens-request.md
-Exchange: <dir>/<T>/
+Exchange: <dir>/<T>/r<N>/
 Next: /wf:verify-spec {task-id} --review-boundary <dir>   (after the caller records the requested blocks)
 ```
 
@@ -87,8 +95,24 @@ against, because the dispatcher runs in a different workspace.
 
 ## Consume — the manifest and the blocks
 
-`<dir>/<T>/manifest.md` present → consume it. For each enabled subagent row, find the manifest row
-with the same role:
+**Validate the binding first.** The manifest is this request's record only when
+`<dir>/<T>/r<N>/manifest.md` is present **and** its `**Tree:**` equals this run's `<T>` **and** its
+`**Round:**` equals this run's `<N>`. Every other case is **no record for this request** — the agent
+hands back with a fresh request (§"Hand back — the lens request") and no block in that folder counts
+as completed:
+
+| Case | Outcome |
+|---|---|
+| Same tree, different round — only an earlier round's folder or manifest exists | no record → hand back |
+| Changed tree — no folder under the new `<T>` | no record → hand back |
+| Manifest present, `**Tree:**` or `**Round:**` missing or not equal to this run's value | no record → hand back |
+| Manifest present, `**Tree:**` and `**Round:**` both match | consume, per the table below |
+
+A mismatch is never counted as a row `not completed`: stale blocks carry no claim about this
+request, so the honest outcome is to ask again, not to report a gap the current request never had.
+
+Consume a matching manifest: for each enabled subagent row, find the manifest row with the same
+role:
 
 | Manifest says | File | Row counts as |
 |---|---|---|
@@ -97,7 +121,7 @@ with the same role:
 | `failed — <reason>` | — | expected, not completed — reason as recorded |
 | no row for this role | — | expected, not completed — reason `not in manifest` |
 
-A manifest that cannot be parsed makes every enabled subagent row `not completed — manifest
+A matching manifest whose row table cannot be parsed makes every enabled subagent row `not completed — manifest
 unreadable`. A row that did not complete gets a Coverage `Incomplete` entry naming its role and
 reason, and its role in the `**Lenses:**` suffix (`verify-template.md` §"Lens count"). It is
 **never** re-dispatched and **never** run inline: the boundary exists so its rubric is applied by an
@@ -109,7 +133,8 @@ request); the count is always over **this** run's enabled rows.
 ## What a dispatcher records
 
 The caller that passed the flag dispatches every `## Row` of the request as **its own** isolated
-child, with the row's `**Agent:**` token and prompt verbatim, then writes into `<dir>/<T>/`:
+child, with the row's `**Agent:**` token and prompt verbatim, then writes into the request's
+`**Exchange:**` folder `<dir>/<T>/r<N>/`:
 
 - one `<role>.md` per row whose child returned, holding the returned block verbatim;
 - `manifest.md` **last**, so its presence means the record is complete:
@@ -118,6 +143,7 @@ child, with the row's `**Agent:**` token and prompt verbatim, then writes into `
 # Lens blocks — {task-id}
 
 **Tree:** <T>
+**Round:** <N>
 **Recorded by:** <model identifier>
 **Recorded at:** <ISO 8601 timestamp>
 
@@ -126,6 +152,9 @@ child, with the row's `**Agent:**` token and prompt verbatim, then writes into `
 | <role> | <agent token> | returned | <role>.md |
 | <role> | <agent token> | failed — <one-line reason> | — |
 ```
+
+`**Tree:**` and `**Round:**` are copied verbatim from the request — they are the binding the consume
+step validates, so a manifest without both is never consumed.
 
 A child that errors, stalls out, or returns no well-formed `AUDIT-<LENS> — clean|findings` block is
 recorded `failed — <reason>`; the dispatcher never substitutes its own reading of the rubric.
