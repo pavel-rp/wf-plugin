@@ -99,9 +99,18 @@ function extractKeyValues(markdown: string): Map<string, string> {
 function normalizeValue(raw: string | undefined): string | null {
   if (raw === undefined) return null;
   let v = raw.trim();
-  // Strip a single wrapping pair of backticks.
-  const bt = /^`(.*)`$/.exec(v);
-  if (bt) v = bt[1].trim();
+  // Strip one wrapping code span: an opening run of N backticks closed by a
+  // run of exactly N (the same rule `splitTableRow` keeps a span by), plus the
+  // single padding space either side that lets a span start or end with a
+  // backtick.
+  const bt = /^(`+)([\s\S]*[^`])\1$/.exec(v) ?? /^(`+)()\1$/.exec(v);
+  if (bt) {
+    let inner = bt[2];
+    if (inner.length >= 2 && inner.startsWith(" ") && inner.endsWith(" ") && inner.trim() !== "") {
+      inner = inner.slice(1, -1);
+    }
+    v = inner.trim();
+  }
   if (v === "" || v === "—") return null;
   // Any angle-bracketed placeholder (e.g. <none>, <auto-detect>, <FILL: …>).
   if (/^<.*>$/.test(v)) return null;
