@@ -3,7 +3,17 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { normalizeSlashes } from "../src/resolver/paths.js";
@@ -13,6 +23,8 @@ import {
   DEFAULT_SETUP_TIMEOUT_SECONDS,
   MAX_SETUP_TIMEOUT_SECONDS,
   parseSetupTimeout,
+  renderSetupState,
+  setupCommandDigest,
 } from "../src/resolver/workspace-setup.js";
 import { ResolverService } from "../src/service.js";
 
@@ -126,6 +138,81 @@ test("timed-out: a command exceeding its timeout blocks with a named reason", ()
     assert.equal(result.reason, "timed-out");
     assert.equal(result.timeoutSeconds, 1);
     assert.equal(result.command, "sleep 5");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+// WF-872 — the success marker is never trusted or written through a link.
+
+const MARKED = "echo ran > setup-marker.txt";
+
+function validMarker(): string {
+  return renderSetupState(setupCommandDigest(MARKED), "2026-01-01T00:00:00.000Z");
+}
+
+test("unsafe-path: an external marker carrying the current digest never yields already-done", () => {
+  const ws = workspace(config({ "Dependency Setup Command": `\`${MARKED}\`` }));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    write(`${outside}/marker.json`, validMarker());
+    mkdirSync(`${ws.root}/_local/resolver`, { recursive: true });
+    symlinkSync(`${outside}/marker.json`, `${ws.root}/_local/resolver/setup-state.json`);
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "blocked", JSON.stringify(result));
+    assert.equal(result.reason, "unsafe-path");
+    assert.equal(result.command, MARKED, "the declared command is still echoed");
+    assert.equal(existsSync(`${ws.root}/setup-marker.txt`), false, "the command is not run");
+    assert.equal(readFileSync(`${outside}/marker.json`, "utf8"), validMarker(), "the external file is untouched");
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("unsafe-path: a dangling marker symlink blocks and creates nothing outside", () => {
+  const ws = workspace(config({ "Dependency Setup Command": `\`${MARKED}\`` }));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    mkdirSync(`${ws.root}/_local/resolver`, { recursive: true });
+    symlinkSync(`${outside}/never.json`, `${ws.root}/_local/resolver/setup-state.json`);
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "blocked");
+    assert.equal(result.reason, "unsafe-path");
+    assert.equal(existsSync(`${outside}/never.json`), false);
+    assert.equal(existsSync(`${ws.root}/setup-marker.txt`), false);
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("unsafe-path: a symlinked `_local/resolver` ancestor is neither read nor written through", () => {
+  const ws = workspace(config({ "Dependency Setup Command": `\`${MARKED}\`` }));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    write(`${outside}/setup-state.json`, validMarker());
+    symlinkSync(outside, `${ws.root}/_local/resolver`);
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "blocked");
+    assert.equal(result.reason, "unsafe-path");
+    assert.match(result.detail, /_local\/resolver/);
+    assert.equal(existsSync(`${ws.root}/setup-marker.txt`), false);
+    assert.equal(readFileSync(`${outside}/setup-state.json`, "utf8"), validMarker());
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("contained marker: the ordinary path records success as a regular file inside the workspace", () => {
+  const ws = workspace(config({ "Dependency Setup Command": `\`${MARKED}\`` }));
+  try {
+    assert.equal(ws.service().runWorkspaceSetup().status, "succeeded");
+    const marker = `${ws.root}/_local/resolver/setup-state.json`;
+    assert.ok(lstatSync(marker).isFile() && !lstatSync(marker).isSymbolicLink());
+    assert.equal(JSON.parse(readFileSync(marker, "utf8")).commandDigest, setupCommandDigest(MARKED));
+    assert.equal(ws.service().runWorkspaceSetup().status, "already-done");
   } finally {
     ws.cleanup();
   }

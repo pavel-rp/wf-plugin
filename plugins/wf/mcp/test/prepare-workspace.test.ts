@@ -28,6 +28,7 @@ import { normalizeSlashes } from "../src/resolver/paths.js";
 import { createDefaultPorts } from "../src/ports.js";
 import { parsePluginList } from "../src/resolver/plugin-list.js";
 import { planPreparation } from "../src/resolver/prepare-workspace.js";
+import { inspectContainedStatePath, writeContainedStateFile } from "../src/resolver/contained-state.js";
 import { ResolverService } from "../src/service.js";
 
 function git(cwd: string, ...args: string[]): void {
@@ -310,6 +311,84 @@ test("unsafe-path: a symlinked source entry is refused and nothing is written", 
     assert.equal(existsSync(`${family.child}/_local`), false);
   } finally {
     family.cleanup();
+  }
+});
+
+// WF-872 — the machine binding ledger is proved link-free before any copy.
+
+test("unsafe-path: a dangling binding-ledger symlink blocks before any copy and creates nothing outside", () => {
+  const family = makeFamily();
+  try {
+    mkdirSync(`${family.child}/_local`);
+    const outside = `${family.root}/outside/ledger.json`;
+    symlinkSync(outside, `${family.child}/_local/install-state.json`);
+    const result = service(family.child, family.install).prepareWorkspace(family.source);
+    assert.equal(result.status === "blocked" && result.reason, "unsafe-path", JSON.stringify(result));
+    assert.equal(result.status === "blocked" && result.path, "_local/install-state.json");
+    assert.equal(existsSync(outside), false, "the link target is never created");
+    assert.equal(existsSync(`${family.root}/outside`), false);
+    assert.equal(existsSync(`${family.child}/_local/config.md`), false, "no copy lands on a blocker");
+  } finally {
+    family.cleanup();
+  }
+});
+
+test("unsafe-path: a binding-ledger symlink to an existing file is neither trusted as present nor written", () => {
+  const family = makeFamily();
+  try {
+    mkdirSync(`${family.child}/_local`);
+    const outside = `${family.root}/external-ledger.json`;
+    write(outside, "external\n");
+    symlinkSync(outside, `${family.child}/_local/install-state.json`);
+    const result = service(family.child, family.install).prepareWorkspace(family.source);
+    assert.equal(result.status === "blocked" && result.reason, "unsafe-path");
+    assert.equal(result.status === "blocked" && result.path, "_local/install-state.json");
+    assert.equal(readFileSync(outside, "utf8"), "external\n");
+    assert.equal(existsSync(`${family.child}/_local/config.md`), false);
+  } finally {
+    family.cleanup();
+  }
+});
+
+test("unsafe-path: a symlinked ledger ancestor blocks and writes nothing through it", () => {
+  const family = makeFamily();
+  try {
+    const outsideDir = `${family.root}/outside-local`;
+    mkdirSync(outsideDir);
+    symlinkSync(outsideDir, `${family.child}/_local`);
+    const result = service(family.child, family.install).prepareWorkspace(family.source);
+    assert.equal(result.status === "blocked" && result.reason, "unsafe-path");
+    assert.equal(result.status === "blocked" && result.path, "_local");
+    assert.deepEqual(readdirSync(outsideDir), [], "nothing lands in the link target");
+  } finally {
+    family.cleanup();
+  }
+});
+
+test("contained-state: the inspection refuses every link and the writer creates only real directories", () => {
+  const root = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-contained-"))));
+  try {
+    assert.deepEqual(inspectContainedStatePath(root, "_local/resolver/state.json"), { ok: true, state: "absent" });
+    assert.deepEqual(writeContainedStateFile(root, "_local/resolver/state.json", "one\n"), { ok: true });
+    assert.equal(readFileSync(`${root}/_local/resolver/state.json`, "utf8"), "one\n");
+    assert.deepEqual(inspectContainedStatePath(root, "_local/resolver/state.json"), { ok: true, state: "file" });
+    assert.deepEqual(writeContainedStateFile(root, "_local/resolver/state.json", "two\n"), { ok: true });
+    assert.equal(readFileSync(`${root}/_local/resolver/state.json`, "utf8"), "two\n");
+
+    // A link that resolves INSIDE the workspace is refused too: no link is followed.
+    write(`${root}/_local/real.json`, "real\n");
+    symlinkSync(`${root}/_local/real.json`, `${root}/_local/linked.json`);
+    const inside = inspectContainedStatePath(root, "_local/linked.json");
+    assert.equal(!inside.ok && inside.path, "_local/linked.json");
+    const refused = writeContainedStateFile(root, "_local/linked.json", "x\n");
+    assert.equal(!refused.ok && refused.kind, "unsafe");
+    assert.equal(readFileSync(`${root}/_local/real.json`, "utf8"), "real\n");
+
+    for (const rel of ["", "/abs", "_local/../x", "_local//x", "_local\\x"]) {
+      assert.equal(inspectContainedStatePath(root, rel).ok, false, `refused: ${JSON.stringify(rel)}`);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
