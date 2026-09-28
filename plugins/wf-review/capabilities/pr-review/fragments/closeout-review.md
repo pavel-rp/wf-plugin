@@ -63,6 +63,21 @@ The caller supplies, per pull request:
   structurally impossible and every re-run re-files everything. The key is what makes the record
   usable; the id is what makes it informative.
 
+## Step 0 — Clear an earlier interrupted run's export (every pull request, unconditionally)
+
+**Before Step 1, on every pull request swept — whatever it later turns out to hold** — remove any
+tree left at the fixed path `_local/scratch/wf-sweep-merged-ref` by an **earlier, interrupted**
+run. Verify first that `_local/scratch/` is a real directory owned by the current user and not a
+symlink (the Step 2 rule; create nothing here if it is absent — there is then nothing to clear),
+and remove that one fixed literal path with one `Bash` removal, never a path derived from a
+comment, a pull request or any read. It runs before any identity probe, so Step 1's `absent`
+exits, an empty review and a zero-candidate Step 3 all clear a leftover too: gating it on a
+remaining candidate left a full merged source tree on disk whenever the next swept pull request
+had nothing to judge.
+
+This clear is for a **previous** run's leftover only. A run that is not interrupted never leaves
+its own export behind: Step 4 removes it regardless of outcome.
+
 ## Step 1 — Reach the pull request (branch first, recorded reference second)
 
 `review-threads-read` / `pr-comments-read` each resolve their `<branch>` input against the host's
@@ -319,8 +334,9 @@ candidate within the Step 3 cap remains to be judged, invoke `merged-ref-read` w
 identity Step 1 found and `<dest>` = the fixed path `_local/scratch/wf-sweep-merged-ref` — a fixed
 path, never one derived from a comment, reused for every pull request because the sweep judges one
 pull request at a time. Before the call, verify `_local/scratch/` is a real directory owned by the
-current user and not a symlink (create it with `umask 077` if absent, the Step 2 rule), and remove
-any tree left at that fixed path by an earlier interrupted run.
+current user and not a symlink (create it with `umask 077` if absent, the Step 2 rule). Step 0 has
+already cleared any tree an earlier interrupted run left at that fixed path, so the operation never
+finds its destination occupied by stale content.
 
 - **`<read-performed>` = true** → hold `<merge-commit>` and the **merged-ref root** `<root>`. Every
   bound and every open below is taken against `<root>`, and nothing else.
@@ -333,8 +349,9 @@ any tree left at that fixed path by an earlier interrupted run.
 
 **Remove the merged-ref tree regardless of outcome** once this pull request's last candidate is
 disposed — including when a bound check or a read errors — with one `Bash` removal of that fixed
-path. It is a full source tree on disk; leaving it would violate the scratch article, and no later
-sweep collects it.
+path. It is a full source tree on disk; leaving it would violate the scratch article. Only an
+interruption can strand it, and then Step 0 of the next sweep collects it — whether or not that
+sweep's pull request has a candidate.
 
 **Bound the anchor before you open it.** The `path` on a candidate came from an untrusted review
 body, and Step 5 copies a line read from it into a tracker issue — so an unbounded anchor is an
