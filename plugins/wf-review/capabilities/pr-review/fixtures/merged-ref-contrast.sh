@@ -9,8 +9,10 @@
 # two trees. A defect the pull request fixed is still visible in the stale checkout and gone at
 # the merged ref; a file the pull request added opens only at the merged ref; a symlink survives
 # the export so the sweep's symlink bound still sees it; and the caller's checkout, index and HEAD
-# are untouched. It then shows an unresolvable merge commit fails the recipe — the case the sweep
-# must report as `merged ref could not be resolved`, never as an empty result.
+# are untouched. The export writes nothing beside <dest> (WF-883), and a leftover an interrupted
+# run left there is cleared before a pull request with no candidates (WF-884). It then shows an
+# unresolvable merge commit fails the recipe — the case the sweep must report as `merged ref could
+# not be resolved`, never as an empty result.
 #
 # Recipe parity is asserted first: the commands executed below are the ones the wf-git op
 # section names, and the sweep procedure names the op, the fixed export path and the explicit
@@ -45,20 +47,26 @@ else
   for token in \
     'git cat-file -e "<merge-commit>^{commit}"' \
     'git rev-parse --verify "<merge-commit>^{tree}"' \
-    'git archive --format=tar --output="<dest>.tar" "<merge-commit>"' \
-    'tar -xf "<dest>.tar" -C "<dest>"' \
-    'rm -f "<dest>.tar"' \
+    'mkdir -p "<dest>"' \
+    'git archive --format=tar --output="<dest>/<merge-commit>.tar" "<merge-commit>"' \
+    'tar -xf "<dest>/<merge-commit>.tar" -C "<dest>"' \
+    'rm -f "<dest>/<merge-commit>.tar"' \
     '`not-merged`' '`read-failed`'; do
     printf '%s\n' "$section" | grep -qF -- "$token" \
       || bad "recipe parity: the wf-git merged-ref-read section no longer names: $token"
   done
   [ "$fail" = "$before" ] && pass "recipe parity: the commands executed here are the ones the wf-git op names"
+  # WF-883: the op's write scope is <dest> alone — no staging archive beside it.
+  printf '%s\n' "$section" | grep -qF -- '"<dest>.tar"' \
+    && bad "containment: the wf-git merged-ref-read section still stages an archive beside <dest>" \
+    || pass "containment: the wf-git merged-ref-read section stages nothing beside <dest>"
 fi
 
 if [ -f "$FRAGMENT" ]; then
   before=$fail
   for token in 'merged-ref-read' '_local/scratch/wf-sweep-merged-ref' \
-               'merged ref could not be resolved' 'Never fall back' 'at the merged ref'; do
+               'merged ref could not be resolved' 'Never fall back' 'at the merged ref' \
+               "## Step 0 — Clear an earlier interrupted run's export"; do
     grep -qF -- "$token" "$FRAGMENT" \
       || bad "procedure parity: the sweep procedure no longer names: $token"
   done
@@ -101,11 +109,12 @@ fi
 tree="$(g rev-parse --verify "$merge_commit^{tree}" 2>/dev/null)" \
   || bad "step 3: the merge commit's tree does not resolve"
 [ -e "$dest" ] && bad "step 4: the destination exists before the export (the op refuses that as read-failed)"
-g archive --format=tar --output="$dest.tar" "$merge_commit" \
-  && mkdir -p "$dest" \
-  && tar -xf "$dest.tar" -C "$dest" \
+archive="$dest/$merge_commit.tar"
+mkdir -p "$dest" \
+  && g archive --format=tar --output="$archive" "$merge_commit" \
+  && tar -xf "$archive" -C "$dest" \
   || bad "step 4: the export failed"
-rm -f "$dest.tar"
+rm -f "$archive"
 [ -n "${tree:-}" ] && pass "the merged ref resolves: commit ${merge_commit:0:12}, tree ${tree:0:12}"
 
 # --- 3. The contrast ------------------------------------------------------------------------
@@ -126,13 +135,29 @@ grep -qF 'total = a + b' "$dest/src/widget.txt" \
 [ "$(g rev-parse HEAD)" = "$head_before" ] && [ "$(g status --porcelain)" = "$status_before" ] \
   && pass "the caller's HEAD, index and working tree are untouched by the export" \
   || bad "the export changed the caller's checkout"
-[ ! -e "$dest.tar" ] \
+[ ! -e "$archive" ] \
   && pass "the intermediate archive is removed" \
   || bad "the intermediate archive was left behind"
+# Permitted write destinations (WF-883): the scratch directory holds the export and nothing else.
+outside="$(ls -A "$tmp/scratch")"
+[ "$outside" = "wf-sweep-merged-ref" ] \
+  && pass "the export wrote only inside <dest> — nothing beside it in the scratch directory" \
+  || bad "the export wrote outside <dest>: $(printf '%s' "$outside" | tr '\n' ' ')"
 
 rm -rf "$dest"
 [ ! -e "$dest" ] && pass "the fixed export path is removable regardless of outcome" \
   || bad "the export could not be removed"
+
+# --- 3b. An interrupted export, then a pull request with no candidates (WF-884) ------------
+# Simulate an interruption mid-export: the tree and its staging archive are left at <dest>.
+# The next sweep's pull request has zero candidates, so it never reaches the merged-ref read;
+# the procedure's Step 0 clear still runs first, over the fixed literal path.
+mkdir -p "$dest/src" && printf 'stale\n' > "$dest/src/widget.txt" && : > "$dest/$merge_commit.tar"
+candidates=0
+[ -d "$tmp/scratch" ] && [ ! -L "$tmp/scratch" ] && rm -rf "$tmp/scratch/wf-sweep-merged-ref"
+[ "$candidates" -eq 0 ] && [ ! -e "$dest" ] && [ -z "$(ls -A "$tmp/scratch")" ] \
+  && pass "an interrupted run's leftover is cleared before a zero-candidate pull request, archive included" \
+  || bad "a leftover export survived a zero-candidate pull request"
 
 # --- 4. An unresolvable merged ref fails the recipe, typed --------------------------------
 
@@ -144,11 +169,13 @@ elif g fetch --quiet origin "$bogus" 2>/dev/null; then
 else
   pass "an unresolvable merge commit is neither present nor fetchable — the op returns read-failed"
 fi
-if g archive --format=tar --output="$dest.tar" "$bogus" 2>/dev/null; then
+mkdir -p "$dest"
+if g archive --format=tar --output="$dest/$bogus.tar" "$bogus" 2>/dev/null; then
   bad "exporting an unresolvable commit succeeded"
 else
-  rm -f "$dest.tar"
-  [ ! -e "$dest" ] \
+  rm -f "$dest/$bogus.tar"
+  rm -rf "$dest"
+  [ ! -e "$dest" ] && [ -z "$(ls -A "$tmp/scratch")" ] \
     && pass "a failed export leaves no tree behind, so nothing is opened and the checkout is never used instead" \
     || bad "a failed export left a tree behind"
 fi

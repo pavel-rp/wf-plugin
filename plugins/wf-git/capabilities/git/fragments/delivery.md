@@ -390,6 +390,15 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   index, or any branch, and without registering a second worktree the caller
   would have to unregister. Symlinks survive the export as symlinks, so a
   caller's own symlink bound still sees them.
+- **The archive lives inside `<dest>`, never beside it.** The export is staged
+  through a temporary tar file. It used to sit at `<dest>.tar`, a sibling the
+  core contract never granted — the op writes only inside `<dest>` — and an
+  interrupted export left it outside the path every caller removes (WF-883).
+  `<dest>` is now created first and the archive written as
+  `<dest>/<merge-commit>.tar`: named by the merge commit's own id, no path in
+  the exported tree can collide with it, and it is removed before the op
+  returns, success or failure. Whatever an interruption leaves is inside
+  `<dest>`, so the caller's one removal covers every byte the op wrote.
 - **`not-merged` is distinct from `read-failed`.** A pull request that is open,
   closed without merging, or carries no merge commit is a stated fact about the
   pull request; every other failure (host error, no such pull request, a commit
@@ -482,7 +491,9 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   commit, step 3 an unresolvable tree, or step 4 an existing `<dest>` or a failed
   archive/extract → `<reason>` = `read-failed` (a partial export removed); otherwise
   `<read-performed>` = true with `<merge-commit>`, `<tree>` and, when `<dest>` was
-  supplied, `<root>` — even when the local checkout predates the merge.
+  supplied, `<root>` — even when the local checkout predates the merge. On every
+  path nothing is written outside `<dest>`: the staging archive is inside it and
+  gone before the op returns.
 - **Review requests** — `review-request-read`: step 1 or step 2 non-zero (host
   error, no such pull request) → `<reason>` = `read-failed`; otherwise
   `<read-performed>` = true with `<pending>`, `<request-events>`, `<reviews>` and

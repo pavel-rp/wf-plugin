@@ -60,8 +60,9 @@ one `wf:context-distiller` Task dispatch per swept pull request, and `Read`/`Gre
 anchor plus four `Bash` purposes the served body names (claim verification is not among
 them — the served body requires the `Grep` tool for that) — one
 real-path resolution per candidate, under the merged-ref root, to bound the anchor, the removal of
-the fixed `_local/scratch/wf-sweep-merged-ref` export (any leftover before the read, and the export
-after each swept pull request, regardless of outcome), and one SHA-256 digest per ingested entry that
+the fixed `_local/scratch/wf-sweep-merged-ref` export (any earlier interrupted run's leftover before
+each swept pull request's identity probe, whatever that pull request holds, and the export after
+each swept pull request, regardless of outcome), and one SHA-256 digest per ingested entry that
 carries no thread node id (at most one per entry in each swept pull request's single 100-entry
 ingest) for its
 idempotency key, whose preimage is written to the fixed `_local/scratch/wf-sweep-digest.bin` (mode
