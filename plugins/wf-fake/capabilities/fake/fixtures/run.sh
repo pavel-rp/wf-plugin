@@ -17,6 +17,11 @@
 #      its fragment; newest-published-version-read additionally scripts BOTH polarities
 #      (a performed return AND a degraded one carrying a closed reason and no version),
 #      so its typed degradation is fixture-covered, not merely asserted in prose.
+#   7. TYPED-SHAPE VALIDATION — every scripted element of branch-head-read, merged-ref-read and
+#      review-request-read carries the contract's exact typed shape in its polarity (a performed
+#      element: every success field, well-typed, and no reason; a degraded one: a reason from the
+#      op's closed set and no success field), both polarities are scripted, and a seeded
+#      malformed copy of each op is rejected — so the validator is proven to bite, not assumed.
 #
 # Usage:  run.sh            run every check (default; used by CI)
 #         run.sh --selftest run only the no-egress regex scoping self-test
@@ -153,6 +158,117 @@ check_typed_results() {
   [ "$fail" = "$before" ] && ok "typed-result: every typed read documents read-performed; the version read scripts both polarities"
 }
 
+# Typed reads whose scripted elements are validated field-by-field against the contract
+# (capability-registry.ops.md, "The delivery provider surface"). Each spec names the success
+# fields a performed element must carry (`required`) or may carry (`optional`), each with its
+# type (`string` = non-empty string, `boolean`, `count` = non-negative integer), and the closed
+# set of degraded reasons a REGISTERED provider can produce (`no-provider` is core's own
+# bare-core token and unreachable while fake owns the surface).
+SHAPE_READS=(branch-head-read merged-ref-read review-request-read)
+shape_spec() {
+  case "$1" in
+    branch-head-read)
+      echo '{"required":{"commit":"string","tree":"string"},"optional":{},"reasons":["read-failed","not-published"]}' ;;
+    merged-ref-read)
+      echo '{"required":{"merge-commit":"string","tree":"string"},"optional":{"root":"string"},"reasons":["read-failed","not-merged"]}' ;;
+    review-request-read)
+      echo '{"required":{"requested":"boolean","pending":"count","request-events":"count","reviews":"count"},"optional":{},"reasons":["read-failed"]}' ;;
+    *) echo '' ;;
+  esac
+}
+
+# Prints one line per shape violation of scripts.delivery.$op in the JSON read from stdin.
+SHAPE_JQ='
+def seq: if type == "array" then . else [.] end;
+def typed($t):
+  if $t == "string" then (type == "string" and length > 0)
+  elif $t == "boolean" then type == "boolean"
+  elif $t == "count" then (type == "number" and . >= 0 and . == floor)
+  else false end;
+(.delivery[$op] // null) as $v
+| if $v == null then "no scripted entry"
+  else
+    ($v | seq) as $s
+    | (if ([$s[] | select(type == "object" and ."read-performed" == true)] | length) == 0
+       then "no performed (read-performed: true) element" else empty end),
+      (if ([$s[] | select(type == "object" and ."read-performed" == false)] | length) == 0
+       then "no degraded (read-performed: false) element" else empty end),
+      ($s | to_entries[] | .key as $i | .value as $e
+        | if ($e | type) != "object" or (($e."read-performed" | type) != "boolean") then
+            "element \($i): read-performed is not a boolean"
+          elif $e."read-performed" then
+            ($spec.required | to_entries[] | .key as $k | .value as $t
+              | select(($e | has($k) | not) or ($e[$k] | typed($t) | not))
+              | "element \($i): performed read lacks a well-typed \($k) (\($t))"),
+            ($spec.optional | to_entries[] | .key as $k | .value as $t
+              | select(($e | has($k)) and ($e[$k] | typed($t) | not))
+              | "element \($i): performed read carries a mistyped \($k) (\($t))"),
+            (if ($e | has("reason")) then "element \($i): performed read carries a reason" else empty end)
+          else
+            (if ($e.reason | type) != "string" or (($spec.reasons | index($e.reason)) == null)
+             then "element \($i): degraded reason \($e.reason // "<missing>" | tostring) is outside {\($spec.reasons | join(", "))}"
+             else empty end),
+            ((($spec.required + $spec.optional) | keys[]) as $k
+              | select($e | has($k))
+              | "element \($i): degraded read carries success-only field \($k)")
+          end)
+  end'
+
+shape_errors() {  # $1 = op; stdin = scripts JSON
+  jq -r --arg op "$1" --argjson spec "$(shape_spec "$1")" "$SHAPE_JQ" 2>/dev/null \
+    || echo "validator error"
+}
+
+# Seeded defects every SHAPE_READS op must reject. Each filter rewrites the op's scripted
+# array; `$spec` is that op's shape spec, so the seeds follow the contract rather than restating it.
+GENERIC_SEEDS=(
+  'map(select(."read-performed" == true))|drops the degraded element'
+  'map(select(."read-performed" == false))|drops the performed element'
+  'map(if ."read-performed" == true then del(.[$spec.required | keys[0]]) else . end)|removes a required success field'
+  'map(if ."read-performed" == true then . + {reason: "read-failed"} else . end)|adds a reason to a performed element'
+  'map(if ."read-performed" == false then . + {($spec.required | keys[0]): "x"} else . end)|adds a success field to a degraded element'
+  'map(if ."read-performed" == false then .reason = "no-provider" else . end)|scripts the unreachable no-provider reason'
+  'map(if ."read-performed" == false then del(.reason) else . end)|drops the degraded reason'
+)
+op_seeds() {  # op-specific type defects, same "filter|label" shape
+  case "$1" in
+    branch-head-read)
+      echo 'map(if ."read-performed" == true then .commit = 7 else . end)|a non-string commit' ;;
+    merged-ref-read)
+      echo 'map(if ."read-performed" == true then .root = 7 else . end)|a non-string root'
+      echo 'map(if ."read-performed" == true then .tree = "" else . end)|an empty tree'
+      echo 'map(if ."read-performed" == false then .reason = "not-published" else . end)|another op'"'"'s reason' ;;
+    review-request-read)
+      echo 'map(if ."read-performed" == true then .pending = "1" else . end)|a string count'
+      echo 'map(if ."read-performed" == true then .pending = -1 else . end)|a negative count'
+      echo 'map(if ."read-performed" == true then .reviews = 1.5 else . end)|a fractional count'
+      echo 'map(if ."read-performed" == true then .requested = "true" else . end)|a string requested'
+      echo 'map(if ."read-performed" == false then .reason = "not-merged" else . end)|another op'"'"'s reason' ;;
+  esac
+}
+
+check_typed_shapes() {
+  local op before=$fail out seed filter label
+  if [ "$HAVE_JQ" != 1 ]; then
+    ok "typed-shape: jq absent — skipping per-element shape validation"
+    return
+  fi
+  for op in "${SHAPE_READS[@]}"; do
+    out=$(shape_errors "$op" < "$SCRIPTS")
+    if [ -n "$out" ]; then
+      while IFS= read -r line; do err "typed-shape: scripts.delivery.$op — $line"; done <<< "$out"
+    fi
+    while IFS= read -r seed; do
+      [ -n "$seed" ] || continue
+      filter="${seed%|*}"; label="${seed##*|}"
+      out=$(jq --arg op "$op" --argjson spec "$(shape_spec "$op")" \
+              ".delivery[\$op] |= ($filter)" "$SCRIPTS" 2>/dev/null | shape_errors "$op")
+      [ -n "$out" ] || err "typed-shape: a seeded defect in scripts.delivery.$op ($label) was not rejected"
+    done < <(printf '%s\n' "${GENERIC_SEEDS[@]}"; op_seeds "$op")
+  done
+  [ "$fail" = "$before" ] && ok "typed-shape: ${SHAPE_READS[*]} script both polarities in the contract's exact shape; every seeded defect is rejected"
+}
+
 check_json() {
   if [ "$HAVE_JQ" = 1 ]; then
     jq empty "$SCRIPTS" 2>/dev/null && ok "json: sample-scripts.json parses" \
@@ -192,6 +308,7 @@ else
   check_manifest
   check_json
   check_typed_results
+  check_typed_shapes
   selftest
 fi
 
