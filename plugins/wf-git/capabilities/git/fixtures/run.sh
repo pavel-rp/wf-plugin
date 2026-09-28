@@ -19,6 +19,8 @@
 #      newest-published-version-read documents every `<reason>` token reachable from a
 #      registered provider plus the performed return; branch-head-read likewise documents
 #      its remote-read performed return (<commit>, <tree>) and each reachable reason token.
+#   5. HEAD BINDING (WF-881) — branch-head-read reads the branch's configured remote and
+#      pr-merge is pinned to <expected-head>; exercised behaviorally against local bare remotes.
 #
 # Usage:  run.sh    run every check (default; used by CI)
 set -uo pipefail
@@ -187,12 +189,101 @@ check_typed_results() {
   [ "$fail" = "$before" ] && ok "typed-result: each typed read's own section documents read-performed and every reachable reason token"
 }
 
+# 5. HEAD BINDING (WF-881) — the head a drift check reads and the head a merge takes are the same
+#    one. Static: branch-head-read resolves the branch's configured remote (never a fixed origin)
+#    and pr-merge pins the merge to <expected-head>, mapping a moved head to `head-moved`.
+#    Behavioral: the documented branch-head-read sequence, run against a temporary repository
+#    whose branch is published ONLY to a non-origin remote, returns that remote's head; and the
+#    documented pr-merge pin, run against a stub host that honours the head-match condition,
+#    merges an unchanged head and refuses (head-moved) one that moved after verification.
+#    Everything runs in a private temp dir with local bare remotes — no network.
+check_head_binding() {
+  local before=$fail section tmp
+  section=$(op_section "$OPS" branch-head-read)
+  for token in 'branch\.<branch>\.(remote|merge)' '"<remote>" "refs/heads/<remote-branch>"' 'Never assume `origin`'; do
+    printf '%s\n' "$section" | grep -qF -- "$token" \
+      || err "head-binding: the branch-head-read section never names '$token' (it must read the branch's configured remote)"
+  done
+  section=$(op_section "$OPS" pr-merge)
+  for token in '<expected-head>' '--match-head-commit "<expected-head>"' 'headRefOid' '`head-moved`'; do
+    printf '%s\n' "$section" | grep -qF -- "$token" \
+      || err "head-binding: the pr-merge section never names '$token' (the merge must be pinned to the verified head)"
+  done
+  grep -qE '^\| pr-merge \|.*expected-head\?.*`head-moved`' "$PEER_OPS" \
+    || err "head-binding: the fixture owner's pr-merge row does not record expected-head? and head-moved"
+  command -v git >/dev/null 2>&1 || { err "head-binding: git is required for the behavioral check"; return; }
+
+  tmp="$(mktemp -d)"
+  (
+    set -e
+    export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+    export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+    git init -q --bare "$tmp/fork.git"
+    git init -q "$tmp/work"
+    cd "$tmp/work"
+    git commit -q --allow-empty -m one
+    git branch -q -m feat-x
+    git remote add fork "$tmp/fork.git"
+    git push -q fork HEAD:refs/heads/feat-x
+    git config branch.feat-x.remote fork
+    git config branch.feat-x.merge refs/heads/feat-x
+    pushed=$(git rev-parse HEAD)
+    git commit -q --allow-empty -m local-only   # the local head now LEADS the remote one
+
+    # --- branch-head-read, as documented (step 2 probe + fallback, ls-remote, step 3 fetch) ---
+    probe=$(git config --get-regexp '^branch\.feat-x\.(remote|merge)$' || true)
+    remote=$(printf '%s\n' "$probe" | awk '$1 ~ /\.remote$/ {print $2}')
+    rbranch=$(printf '%s\n' "$probe" | awk '$1 ~ /\.merge$/ {sub("^refs/heads/", "", $2); print $2}')
+    [ -n "$remote" ] || { remote=origin; rbranch=feat-x; }
+    [ "$remote" != "." ]
+    head=$(git ls-remote --exit-code --heads "$remote" "refs/heads/$rbranch" | awk 'NR==1 {print $1}')
+    git fetch --quiet "$remote" "refs/heads/$rbranch"
+    git rev-parse --verify -q "$head^{tree}" >/dev/null
+    [ "$head" = "$pushed" ] || { echo "read $head, expected the fork head $pushed" >&2; exit 11; }
+    # the fixed-origin read this replaces fails here: there is no origin remote at all
+    if git ls-remote --exit-code --heads origin "refs/heads/feat-x" >/dev/null 2>&1; then exit 12; fi
+
+    # --- pr-merge pin, as documented, against a stub host honouring --match-head-commit ---
+    mkdir "$tmp/bin"
+    cat >"$tmp/bin/gh" <<STUB
+#!/usr/bin/env bash
+cur=\$(git ls-remote --heads "$tmp/fork.git" refs/heads/feat-x | awk '{print \$1}')
+case "\$1 \$2" in
+  "pr view") printf '%s\n' "\$cur" ;;
+  "pr merge") want=""; while [ \$# -gt 0 ]; do [ "\$1" = --match-head-commit ] && want="\$2"; shift; done
+              [ -z "\$want" ] || [ "\$want" = "\$cur" ] || { echo "Head branch was modified" >&2; exit 1; }
+              echo "\$cur" >"$tmp/merged" ;;
+esac
+STUB
+    chmod +x "$tmp/bin/gh"
+    pin_merge() {  # $1 = expected head; prints the documented <state>
+      if bash "$tmp/bin/gh" pr merge feat-x --squash --match-head-commit "$1" 2>/dev/null; then
+        echo merged
+      elif [ "$(bash "$tmp/bin/gh" pr view feat-x --json headRefOid)" != "$1" ]; then
+        echo head-moved
+      else
+        echo error
+      fi
+    }
+    verified=$pushed
+    [ "$(pin_merge "$verified")" = merged ] || exit 13                 # unchanged head merges
+    [ "$(cat "$tmp/merged")" = "$verified" ] || exit 14                # ...and merges exactly it
+    rm -f "$tmp/merged"
+    git push -q fork HEAD:refs/heads/feat-x                             # a push lands after verification
+    [ "$(pin_merge "$verified")" = head-moved ] || exit 15             # the moved head is refused
+    [ ! -e "$tmp/merged" ] || exit 16                                   # ...and nothing was merged
+  ) || err "head-binding: behavioral check failed (exit $?) — the non-origin head read or the pinned merge did not behave as documented"
+  rm -rf "$tmp"
+  [ "$fail" = "$before" ] && ok "head-binding: branch-head-read reads a non-origin remote's head; pr-merge merges an unchanged head and refuses a moved one"
+}
+
 echo "== wf-git capability self-checks =="
 check_op_list_sane
 check_op_sections
 check_contract_parity
 check_cross_owner_parity
 check_typed_results
+check_head_binding
 
 if [ "$fail" -ne 0 ]; then
   echo "wf-git self-checks: FAIL" >&2

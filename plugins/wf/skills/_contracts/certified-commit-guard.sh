@@ -33,7 +33,8 @@
 #       reaching the ops doc through the resolver's content surface, with one
 #       re-verify per drift event and a refuse that blocks the merge (WF-820);
 #   W7  /wf:tf runs the drift check unconditionally before pr-merge and merges
-#       nothing on a refuse outcome (WF-820).
+#       nothing on a refuse outcome (WF-820); it pins pr-merge to the checked
+#       head and treats a head-moved refusal as a refuse (WF-881).
 #
 # --selftest runs the ops-doc evaluator over seeded synthetic docs and requires
 # it to REJECT each defective one (exit 1, never a harness error) and ACCEPT the
@@ -182,8 +183,10 @@ evaluate_tf() {
   require "$file" "$label" W7d 'tf merges nothing on a refuse outcome' '\*\*.refuse.\*\* → \*\*no `pr-merge`\*\*' || bad=1
   require "$file" "$label" W7e 'tf runs one re-verify per drift event' '\*\*exactly once\*\* for this drift event' || bad=1
   require "$file" "$label" W7f 'tf may invoke the Skill tool for the re-verify' '^allowed-tools: \[.*Skill.*\]' || bad=1
+  require "$file" "$label" W7g 'tf pins the merge to the drift-checked head' '`<expected-head>` = `B`' || bad=1
+  require "$file" "$label" W7h 'a head that moved after the check stops like a refuse' '`head-moved`.*exactly as a \*\*.refuse.\*\*' || bad=1
   [ "$bad" -eq 0 ] || return 1
-  printf '%s: OK — drift check before every merge on every run, one re-verify per event, refuse merges nothing\n' "$label"
+  printf '%s: OK — drift check before every merge on every run, one re-verify per event, refuse merges nothing, merge pinned to the checked head\n' "$label"
   return 0
 }
 
@@ -339,6 +342,8 @@ allowed-tools: [Read, Write, Skill]
 5. **Drift check before the merge (the certified commit).** Follow `ref: certified-commit.ops.md` on every run — unconditionally, whoever pushed last.
    - **`reverify`** → invoke the audit **exactly once** for this drift event.
    - **`refuse`** → **no `pr-merge`**; stop the finalize.
+6. **Merge.** Invoke `pr-merge`, passing **`<expected-head>` = `B`** whenever step 5 checked a head.
+   - `head-moved` → nothing merged. Handle it exactly as a **`refuse`**.
 TF
   }
 
@@ -348,8 +353,10 @@ TF
   sound_tf | grep -v '`refuse`' >"$tmp/tf-refuse-merges.md"
   sound_tf | sed 's/\*\*exactly once\*\* for this drift event/as often as needed/' >"$tmp/tf-unbounded-reverify.md"
   sound_tf | sed 's/, Skill//' >"$tmp/tf-no-skill.md"
+  sound_tf | sed 's/, passing \*\*`<expected-head>` = `B`\*\* whenever step 5 checked a head//' >"$tmp/tf-unpinned-merge.md"
+  sound_tf | grep -v '`head-moved`' >"$tmp/tf-head-moved-merges.md"
 
-  for case in tf-no-check tf-conditional tf-refuse-merges tf-unbounded-reverify tf-no-skill; do
+  for case in tf-no-check tf-conditional tf-refuse-merges tf-unbounded-reverify tf-no-skill tf-unpinned-merge tf-head-moved-merges; do
     evaluate_tf "$tmp/$case.md" "selftest/$case" >/dev/null 2>&1
     rc=$?
     if [ "$rc" -ne 1 ]; then
@@ -368,7 +375,7 @@ TF
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "certified-commit-guard: self-test passed — nine seeded ops-doc defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), seven seeded ship-wiring defects rejected (no push check, no pre-merge check, refuse proceeds, unbounded re-verify, no Skill tool, a resume that bypasses a refusal, a dropped rebind scenario), nine seeded address-pr defects rejected (no check, no content surface, a raw core read, unbounded re-verify, refuse reported mergeable, no Skill tool, no Drift line, a dropped rebind scenario, no drift residuals), five seeded tf defects rejected (no pre-merge check, a conditional check, refuse merges, unbounded re-verify, no Skill tool), and all four sound docs accepted."
+  echo "certified-commit-guard: self-test passed — nine seeded ops-doc defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), seven seeded ship-wiring defects rejected (no push check, no pre-merge check, refuse proceeds, unbounded re-verify, no Skill tool, a resume that bypasses a refusal, a dropped rebind scenario), nine seeded address-pr defects rejected (no check, no content surface, a raw core read, unbounded re-verify, refuse reported mergeable, no Skill tool, no Drift line, a dropped rebind scenario, no drift residuals), seven seeded tf defects rejected (no pre-merge check, a conditional check, refuse merges, unbounded re-verify, no Skill tool, an unpinned merge, a moved head merged), and all four sound docs accepted."
   exit 0
 fi
 
