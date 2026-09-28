@@ -47,7 +47,9 @@
 #                       its own selfcheck.sh, so the kit is validated by this same entrypoint.
 #  13. PLAN IDENTITY  — (WF-834) the approved plan stays byte-identical: no corpus 02_plan.md
 #                       carries implement progress marks (they live in 02_progress.md); every
-#                       02_progress.md's **Plan digest:** equals the sha256 of its sibling plan and
+#                       02_progress.md carries exactly one well-formed **Plan digest:** (a missing,
+#                       malformed or duplicated header is rejected — WF-878, proven on synthetic
+#                       records), which equals the sha256 of its sibling plan and
 #                       carries a status line per plan step; every run reporting IMPLEMENT — Complete
 #                       has one; a scratch-planted edit to each such plan breaks the digest (the
 #                       detector is not vacuous); and the planted-plan-edit item's clean control
@@ -590,10 +592,50 @@ sha256_of() {
   else shasum -a 256 "$1" | awk '{print $1}'; fi
 }
 
-progress_digest() { sed -nE 's/^\*\*Plan digest:\*\*[[:space:]]*([0-9a-f]{64})[[:space:]]*$/\1/p' "$1" | head -1; }
+# A progress record binds its plan through EXACTLY ONE well-formed **Plan digest:** header (WF-878).
+# Prints the digest and returns 0; otherwise prints the rejection reason and returns 1 — never the
+# first valid value of several, never a silent skip of a malformed line:
+#   missing | malformed | duplicate-identical | duplicate-conflicting
+progress_digest() {
+  local n vals
+  [ -f "$1" ] || { echo missing; return 1; }
+  n="$(grep -c '^\*\*Plan digest:\*\*' "$1")"
+  vals="$(sed -nE 's/^\*\*Plan digest:\*\*(.*)$/\1/p' "$1" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+  case "$n" in
+    0) echo missing; return 1;;
+    1) ;;
+    *) if [ "$(printf '%s\n' "$vals" | LC_ALL=C sort -u | grep -c '')" -eq 1 ]; then echo duplicate-identical
+       else echo duplicate-conflicting; fi
+       return 1;;
+  esac
+  printf '%s\n' "$vals" | grep -Eq '^[0-9a-f]{64}$' || { echo malformed; return 1; }
+  printf '%s\n' "$vals"
+}
 
 check_plan_identity() {
-  local before=$fail f dir rel want got step steps marks n_plan=0 n_prog=0 n_impl=0 tx run
+  local before=$fail f dir rel want got step steps marks n_plan=0 n_prog=0 n_impl=0 n_meta=0 tx run
+  # (f) Meta (WF-878): the digest reader rejects every ambiguous or malformed header shape and
+  #     accepts exactly one well-formed one — proven on synthetic records, not assumed.
+  local mdir="$TMP/digest-meta" d1 d2 spec rest name expect body out st want_st
+  mkdir -p "$mdir"
+  d1="$(printf '%064d' 0)"; d2="$(printf '%064d' 1)"
+  for spec in \
+    "missing|missing|# T — Implementation progress\n\n**Plan:** 02_plan.md" \
+    "malformed-short|malformed|**Plan digest:** ${d1%?}" \
+    "malformed-uppercase|malformed|**Plan digest:** $(printf '%064d' 0 | tr 0 A)" \
+    "malformed-beside-valid|duplicate-conflicting|**Plan digest:** $d1\n**Plan digest:** not-a-digest" \
+    "duplicate-identical|duplicate-identical|**Plan digest:** $d1\n**Plan digest:** $d1" \
+    "duplicate-conflicting|duplicate-conflicting|**Plan digest:** $d1\n**Plan digest:** $d2" \
+    "valid|$d1|# T — Implementation progress\n\n**Plan digest:** $d1 \n\n- [x] STEP-001: read"; do
+    name="${spec%%|*}"; rest="${spec#*|}"; expect="${rest%%|*}"; body="${rest#*|}"
+    printf '%b\n' "$body" > "$mdir/$name.md"
+    out="$(progress_digest "$mdir/$name.md")"; st=$?
+    if [ "$name" = valid ]; then want_st=0; else want_st=1; fi
+    { [ "$st" = "$want_st" ] && [ "$out" = "$expect" ]; } \
+      || err "plan-identity: digest meta — synthetic '$name' record read as '$out' (status $st), expected '$expect' (status $want_st)"
+    n_meta=$((n_meta+1))
+  done
+
   # (a) No plan snapshot carries implement progress marks — the old plan-tick shape. The planted
   #     run is the one deliberate exception; (d) proves it halts.
   while IFS= read -r f; do
@@ -611,8 +653,9 @@ check_plan_identity() {
     case "$f" in "$PLANTED"/seeded-breakage/*) continue;; esac
     n_prog=$((n_prog+1)); dir="$(dirname "$f")"; rel="${dir#$ITEMS/}"
     [ -f "$dir/02_plan.md" ] || { err "plan-identity: $rel has 02_progress.md but no sibling 02_plan.md"; continue; }
-    want="$(progress_digest "$f")"
-    [ -n "$want" ] || { err "plan-identity: $rel/02_progress.md carries no **Plan digest:** line"; continue; }
+    if ! want="$(progress_digest "$f")"; then
+      err "plan-identity: $rel/02_progress.md must carry exactly one well-formed **Plan digest:** line — $want"; continue
+    fi
     got="$(sha256_of "$dir/02_plan.md")"
     [ "$got" = "$want" ] || err "plan-identity: $rel/02_plan.md is NOT byte-identical to the plan its progress record bound (sha256 $got != $want)"
     steps="$(grep -oE '^(### )?(- \[[ x]\] )?STEP-[0-9]{3}' "$dir/02_plan.md" | grep -oE 'STEP-[0-9]{3}' | LC_ALL=C sort -u)"
@@ -649,8 +692,12 @@ check_plan_identity() {
     term="$(grep -oE 'SHIP — [A-Za-z-]+' "$run/transcript.jsonl" | tail -1)"
     if [ "$kind" = clean ]; then
       [ "$verdict" = identical ] || err "plan-identity: clean control $rel — approved plan is not byte-identical to its gate:plan digest"
-      [ "$(progress_digest "$(dirname "$plan")/02_progress.md")" = "$approved" ] \
-        || err "plan-identity: clean control $rel — 02_progress.md's **Plan digest:** is not the approved digest"
+      if got="$(progress_digest "$(dirname "$plan")/02_progress.md")"; then
+        [ "$got" = "$approved" ] \
+          || err "plan-identity: clean control $rel — 02_progress.md's **Plan digest:** is not the approved digest"
+      else
+        err "plan-identity: clean control $rel — 02_progress.md must carry exactly one well-formed **Plan digest:** line — $got"
+      fi
       { [ "${npr:-0}" -ge 1 ] && [ "$term" = "SHIP — Merged" ]; } \
         || err "plan-identity: clean control $rel did not open and merge a PR (pr-create=$npr, terminal='$term')"
     else
@@ -660,7 +707,7 @@ check_plan_identity() {
     fi
   done
 
-  [ "$fail" = "$before" ] && ok "plan-identity: $n_plan plan snapshot(s) carry no progress marks; $n_prog progress record(s) bind their plan byte-for-byte and a planted edit breaks each; $n_impl completed-implement run(s) carry 02_progress.md; the planted plan edit halts before any PR while the clean control merges"
+  [ "$fail" = "$before" ] && ok "plan-identity: $n_meta synthetic digest record(s) prove only exactly one well-formed **Plan digest:** is accepted; $n_plan plan snapshot(s) carry no progress marks; $n_prog progress record(s) bind their plan byte-for-byte and a planted edit breaks each; $n_impl completed-implement run(s) carry 02_progress.md; the planted plan edit halts before any PR while the clean control merges"
 }
 
 check_provenance
