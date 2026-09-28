@@ -9,17 +9,83 @@
 
 import type { CoreConfig, RoutingProjectConfig } from "./types.js";
 
-/** Extract every `| **Key** | value |` pair, keyed by the lowercased key. */
+/** Length of the run of backticks starting at `i`. */
+function backtickRun(text: string, i: number): number {
+  let n = 0;
+  while (text[i + n] === "`") n += 1;
+  return n;
+}
+
+/**
+ * Split one `| a | b | … |` table row into trimmed cells (WF-871).
+ *
+ * The rule, documented for projects in the config template:
+ *   - a `|` inside a backtick code span (an opening run of N backticks closed
+ *     by the next run of exactly N) belongs to the cell, verbatim;
+ *   - `\|` outside a code span is an escaped, literal `|`;
+ *   - any other `|` ends the cell.
+ * An unmatched backtick run is literal text. The leading `|` is required and a
+ * trailing `|` closes the last cell; text after the final `|` that is not blank
+ * forms one more cell.
+ */
+export function splitTableRow(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let i = line.startsWith("|") ? 1 : 0;
+  while (i < line.length) {
+    const ch = line[i];
+    if (ch === "\\" && line[i + 1] === "|") {
+      current += "|";
+      i += 2;
+      continue;
+    }
+    if (ch === "`") {
+      const n = backtickRun(line, i);
+      let j = i + n;
+      let close = -1;
+      while (j < line.length) {
+        if (line[j] === "`") {
+          const m = backtickRun(line, j);
+          if (m === n) {
+            close = j;
+            break;
+          }
+          j += m;
+        } else {
+          j += 1;
+        }
+      }
+      if (close >= 0) {
+        current += line.slice(i, close + n);
+        i = close + n;
+      } else {
+        current += line.slice(i, i + n);
+        i += n;
+      }
+      continue;
+    }
+    if (ch === "|") {
+      cells.push(current.trim());
+      current = "";
+      i += 1;
+      continue;
+    }
+    current += ch;
+    i += 1;
+  }
+  if (current.trim() !== "") cells.push(current.trim());
+  return cells;
+}
+
+/** Extract every `| **Key** | value |` pair, keyed by the lowercased key. The
+ *  value is the whole second cell under `splitTableRow`'s rule, so a shell
+ *  pipeline inside a code span (or written with `\|`) is kept complete. */
 function extractKeyValues(markdown: string): Map<string, string> {
   const map = new Map<string, string>();
   for (const rawLine of markdown.split(/\r?\n/)) {
     const line = rawLine.replace(/\r$/, "").trim();
     if (!line.startsWith("|")) continue;
-    const cells = line
-      .replace(/^\|/, "")
-      .replace(/\|$/, "")
-      .split("|")
-      .map((c) => c.trim());
+    const cells = splitTableRow(line);
     if (cells.length < 2) continue;
     const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
     if (!keyMatch) continue;
