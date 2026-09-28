@@ -47,6 +47,17 @@ The stated context bound for a single `/wf:ship` run, in approximate accumulated
 
 The **one** command that installs this project's dependencies in a freshly prepared worktree — run by the resolver's `run_workspace_setup` in the worktree root, through the platform shell, exactly as written here. `/wf:fleet` has every shipper run it after `prepare_workspace` and before the ceremony, and a failure or a timeout stops that item with a named reason before any phase runs. Only this project config declares it: no capability can supply or inject one. Leave it `<none>` when the project needs no install step — nothing runs then. **Dependency Setup Timeout** is the bound in whole seconds (default `600`, ceiling `3600`). A repo initialized before these keys existed simply has no `## Worktree Setup` section and runs nothing.
 
+**How a value cell is read (every `| **Key** | value |` row in this file).**
+- The value is the whole second cell.
+- A `|` inside a backtick code span belongs to the value, verbatim. For example, `` `npm ci | tee install.log` `` is the complete pipeline.
+- Outside a code span, write a literal pipe as `\|`. For example, `npm ci \| tee install.log` reads as `npm ci | tee install.log`.
+- Any other `|` ends the cell, so a third column after the value is ignored.
+- Inside a code span, `\|` stays exactly as written.
+
+**How the setup run behaves.**
+- The run is serialized per worktree under `_local/resolver/setup.lock`. A concurrent caller waits for the holder and then reports `already-done` instead of running the command again.
+- On a timeout, or once the command exits, every process the command started is stopped before the result is reported.
+
 ## Version Check
 
 | Key | Value |

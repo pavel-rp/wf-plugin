@@ -22,8 +22,24 @@
 //
 // Reads go through the existing contained reader (`readContainedCapabilityFile`),
 // which applies the same per-segment rule and opens with `O_NOFOLLOW`.
+//
+// WF-871 adds the setup lock's primitives on the same rule: a create-exclusive
+// write (temp file hard-linked into place, so exactly one creator wins and the
+// file is never seen half-written), a contained remove, and the rename/link
+// pair a stale-lock reclaim uses.
 
-import { closeSync, fsyncSync, lstatSync, mkdirSync, openSync, realpathSync, renameSync, rmSync, writeSync } from "node:fs";
+import {
+  closeSync,
+  fsyncSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeSync,
+} from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
@@ -91,11 +107,15 @@ export function inspectContainedStatePath(root: string, rel: string): ContainedS
 }
 
 /**
- * Write `content` to `rel` under `root` without following a link anywhere on
- * the path. Refuses (`unsafe`) exactly where the inspection refuses; a
- * filesystem error after the path proved safe is `failed`.
+ * Prove `rel` safe, create its missing parent directories one level at a time
+ * (re-checking each as it goes), and re-check the whole path immediately
+ * before the caller writes. Returns the canonical parent directory and the
+ * terminal name.
  */
-export function writeContainedStateFile(root: string, rel: string, content: string): ContainedStateWrite {
+function prepareContainedParent(
+  root: string,
+  rel: string,
+): { ok: true; dir: string; name: string; state: "absent" | "file" } | { ok: false; kind: "unsafe" | "failed"; path: string; detail: string } {
   const before = inspectContainedStatePath(root, rel);
   if (!before.ok) return before;
 
@@ -131,22 +151,21 @@ export function writeContainedStateFile(root: string, rel: string, content: stri
   // immediately before the write.
   const after = inspectContainedStatePath(root, rel);
   if (!after.ok) return after;
+  return { ok: true, dir, name: segments[segments.length - 1], state: after.state };
+}
 
-  const name = segments[segments.length - 1];
-  const target = join(dir, name);
+/** Write `content` to a fresh, uniquely named temp file beside `name` in `dir`
+ *  (created exclusively, so never through a planted link) and fsync it. */
+function writeTempBeside(dir: string, name: string, content: string): string {
   const temp = join(dir, `.${name}.wf-state-${randomBytes(8).toString("hex")}.tmp`);
   let fd: number | null = null;
   try {
-    // `wx` is O_CREAT|O_EXCL: the temp file is created fresh and never
-    // resolved through an existing link. `rename` replaces the directory entry
-    // itself and never follows a link at the destination.
     fd = openSync(temp, "wx");
     writeSync(fd, Buffer.from(content, "utf8"));
     fsyncSync(fd);
     closeSync(fd);
     fd = null;
-    renameSync(temp, target);
-    return { ok: true };
+    return temp;
   } catch (err) {
     if (fd !== null) {
       try {
@@ -160,6 +179,122 @@ export function writeContainedStateFile(root: string, rel: string, content: stri
     } catch {
       /* a stranded temp file is inert and uniquely named */
     }
+    throw err;
+  }
+}
+
+/**
+ * Write `content` to `rel` under `root` without following a link anywhere on
+ * the path. Refuses (`unsafe`) exactly where the inspection refuses; a
+ * filesystem error after the path proved safe is `failed`.
+ */
+export function writeContainedStateFile(root: string, rel: string, content: string): ContainedStateWrite {
+  const parent = prepareContainedParent(root, rel);
+  if (!parent.ok) return parent;
+  let temp: string | null = null;
+  try {
+    // `wx` is O_CREAT|O_EXCL: the temp file is created fresh and never
+    // resolved through an existing link. `rename` replaces the directory entry
+    // itself and never follows a link at the destination.
+    temp = writeTempBeside(parent.dir, parent.name, content);
+    renameSync(temp, join(parent.dir, parent.name));
+    return { ok: true };
+  } catch (err) {
+    if (temp !== null) {
+      try {
+        rmSync(temp, { force: true });
+      } catch {
+        /* a stranded temp file is inert and uniquely named */
+      }
+    }
     return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be written: ${messageOf(err)}` };
+  }
+}
+
+export type ContainedStateCreate =
+  | { ok: true }
+  | { ok: false; kind: "exists" }
+  | { ok: false; kind: "unsafe" | "failed"; path: string; detail: string };
+
+/**
+ * Create `rel` under `root` holding `content` ONLY if nothing is there yet
+ * (WF-871's setup lock). The content is written to a temp file first and then
+ * hard-linked into place: the link is create-exclusive at the filesystem, so
+ * exactly one of several concurrent creators wins, and the winner's file is
+ * never observed empty or half-written. A present file — or one that appears
+ * between the check and the link — is `exists`.
+ */
+export function createContainedStateFileExclusive(root: string, rel: string, content: string): ContainedStateCreate {
+  const parent = prepareContainedParent(root, rel);
+  if (!parent.ok) return parent;
+  if (parent.state === "file") return { ok: false, kind: "exists" };
+  let temp: string | null = null;
+  try {
+    temp = writeTempBeside(parent.dir, parent.name, content);
+    linkSync(temp, join(parent.dir, parent.name));
+    return { ok: true };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return { ok: false, kind: "exists" };
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be created: ${messageOf(err)}` };
+  } finally {
+    if (temp !== null) {
+      try {
+        rmSync(temp, { force: true });
+      } catch {
+        /* a stranded temp file is inert and uniquely named */
+      }
+    }
+  }
+}
+
+/** Remove `rel` under `root` when it is a contained regular file; an absent
+ *  file is already removed. A link anywhere on the path is refused, never
+ *  followed. */
+export function removeContainedStateFile(root: string, rel: string): ContainedStateWrite {
+  const inspected = inspectContainedStatePath(root, rel);
+  if (!inspected.ok) return inspected;
+  if (inspected.state === "absent") return { ok: true };
+  try {
+    rmSync(join(realpathSync(root), ...rel.split("/")), { force: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be removed: ${messageOf(err)}` };
+  }
+}
+
+/** Atomically move the contained regular file `rel` to `toRel` (same parent
+ *  directory). `absent` when `rel` was not there to move. */
+export function renameContainedStateFile(
+  root: string,
+  rel: string,
+  toRel: string,
+): { ok: true; moved: boolean } | { ok: false; kind: "unsafe" | "failed"; path: string; detail: string } {
+  const from = inspectContainedStatePath(root, rel);
+  if (!from.ok) return from;
+  const to = inspectContainedStatePath(root, toRel);
+  if (!to.ok) return to;
+  if (from.state === "absent") return { ok: true, moved: false };
+  try {
+    const base = realpathSync(root);
+    renameSync(join(base, ...rel.split("/")), join(base, ...toRel.split("/")));
+    return { ok: true, moved: true };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, moved: false };
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
+  }
+}
+
+/** Hard-link the contained file `fromRel` to `toRel` only if `toRel` is free —
+ *  the restore half of a lock reclaim that captured a live holder's file. */
+export function linkContainedStateFileExclusive(root: string, fromRel: string, toRel: string): boolean {
+  const from = inspectContainedStatePath(root, fromRel);
+  const to = inspectContainedStatePath(root, toRel);
+  if (!from.ok || !to.ok || from.state !== "file" || to.state !== "absent") return false;
+  try {
+    const base = realpathSync(root);
+    linkSync(join(base, ...fromRel.split("/")), join(base, ...toRel.split("/")));
+    return true;
+  } catch {
+    return false;
   }
 }

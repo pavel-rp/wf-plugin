@@ -9,17 +9,83 @@
 
 import type { CoreConfig, RoutingProjectConfig } from "./types.js";
 
-/** Extract every `| **Key** | value |` pair, keyed by the lowercased key. */
+/** Length of the run of backticks starting at `i`. */
+function backtickRun(text: string, i: number): number {
+  let n = 0;
+  while (text[i + n] === "`") n += 1;
+  return n;
+}
+
+/**
+ * Split one `| a | b | … |` table row into trimmed cells (WF-871).
+ *
+ * The rule, documented for projects in the config template:
+ *   - a `|` inside a backtick code span (an opening run of N backticks closed
+ *     by the next run of exactly N) belongs to the cell, verbatim;
+ *   - `\|` outside a code span is an escaped, literal `|`;
+ *   - any other `|` ends the cell.
+ * An unmatched backtick run is literal text. The leading `|` is required and a
+ * trailing `|` closes the last cell; text after the final `|` that is not blank
+ * forms one more cell.
+ */
+export function splitTableRow(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let i = line.startsWith("|") ? 1 : 0;
+  while (i < line.length) {
+    const ch = line[i];
+    if (ch === "\\" && line[i + 1] === "|") {
+      current += "|";
+      i += 2;
+      continue;
+    }
+    if (ch === "`") {
+      const n = backtickRun(line, i);
+      let j = i + n;
+      let close = -1;
+      while (j < line.length) {
+        if (line[j] === "`") {
+          const m = backtickRun(line, j);
+          if (m === n) {
+            close = j;
+            break;
+          }
+          j += m;
+        } else {
+          j += 1;
+        }
+      }
+      if (close >= 0) {
+        current += line.slice(i, close + n);
+        i = close + n;
+      } else {
+        current += line.slice(i, i + n);
+        i += n;
+      }
+      continue;
+    }
+    if (ch === "|") {
+      cells.push(current.trim());
+      current = "";
+      i += 1;
+      continue;
+    }
+    current += ch;
+    i += 1;
+  }
+  if (current.trim() !== "") cells.push(current.trim());
+  return cells;
+}
+
+/** Extract every `| **Key** | value |` pair, keyed by the lowercased key. The
+ *  value is the whole second cell under `splitTableRow`'s rule, so a shell
+ *  pipeline inside a code span (or written with `\|`) is kept complete. */
 function extractKeyValues(markdown: string): Map<string, string> {
   const map = new Map<string, string>();
   for (const rawLine of markdown.split(/\r?\n/)) {
     const line = rawLine.replace(/\r$/, "").trim();
     if (!line.startsWith("|")) continue;
-    const cells = line
-      .replace(/^\|/, "")
-      .replace(/\|$/, "")
-      .split("|")
-      .map((c) => c.trim());
+    const cells = splitTableRow(line);
     if (cells.length < 2) continue;
     const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
     if (!keyMatch) continue;
@@ -29,13 +95,46 @@ function extractKeyValues(markdown: string): Map<string, string> {
   return map;
 }
 
+/**
+ * The content of a code span that wraps the whole of `v`, or `null` when `v`
+ * is not exactly one code span. Uses `splitTableRow`'s span rule: the opening
+ * run is the full leading run of N backticks, and it closes at the first later
+ * run of exactly N.
+ */
+function wrappingSpanContent(v: string): string | null {
+  const n = backtickRun(v, 0);
+  if (n === 0) return null;
+  let j = n;
+  while (j < v.length) {
+    if (v[j] === "`") {
+      const m = backtickRun(v, j);
+      if (m === n) return j + n === v.length ? v.slice(n, j) : null;
+      j += m;
+    } else {
+      j += 1;
+    }
+  }
+  return null;
+}
+
 /** Unwrap a backticked value and treat placeholders/`<none>` as unset. */
 function normalizeValue(raw: string | undefined): string | null {
   if (raw === undefined) return null;
   let v = raw.trim();
-  // Strip a single wrapping pair of backticks.
-  const bt = /^`(.*)`$/.exec(v);
-  if (bt) v = bt[1].trim();
+  // Strip one wrapping code span under `splitTableRow`'s rule: the full
+  // leading run of N backticks is closed by the FIRST later run of exactly N.
+  // The value is unwrapped only when that closing run ends the value; any
+  // other shape (no closing run, or text after it) is kept verbatim. The single
+  // padding space either side that lets a span start or end with a backtick is
+  // dropped.
+  const inner = wrappingSpanContent(v);
+  if (inner !== null) {
+    let body = inner;
+    if (body.length >= 2 && body.startsWith(" ") && body.endsWith(" ") && body.trim() !== "") {
+      body = body.slice(1, -1);
+    }
+    v = body.trim();
+  }
   if (v === "" || v === "—") return null;
   // Any angle-bracketed placeholder (e.g. <none>, <auto-detect>, <FILL: …>).
   if (/^<.*>$/.test(v)) return null;
