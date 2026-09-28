@@ -13,20 +13,42 @@ import {
   rmSync,
   symlinkSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { normalizeSlashes } from "../src/resolver/paths.js";
 import { createDefaultPorts } from "../src/ports.js";
-import { parseCoreConfig } from "../src/resolver/config.js";
+import { parseCoreConfig, splitTableRow } from "../src/resolver/config.js";
 import {
+  acquireSetupLock,
   DEFAULT_SETUP_TIMEOUT_SECONDS,
   MAX_SETUP_TIMEOUT_SECONDS,
   parseSetupTimeout,
+  renderSetupLock,
   renderSetupState,
+  SETUP_LOCK_RELPATH,
   setupCommandDigest,
+  type SetupLockDeps,
+  type WorkspaceSetupResponse,
 } from "../src/resolver/workspace-setup.js";
 import { ResolverService } from "../src/service.js";
+
+// WF-871 — child mode: this same bundled file, re-run as a separate process,
+// performs ONE setup call for the root it is handed and prints the response.
+// That is what makes the concurrency test a real cross-process race.
+const CHILD_ROOT = process.env.WF_SETUP_CHILD_ROOT;
+if (CHILD_ROOT) {
+  const response = new ResolverService({
+    ...createDefaultPorts(CHILD_ROOT),
+    listPlugins: () => ({ plugins: [], ok: true, contractOk: true, issues: [] }),
+  }).runWorkspaceSetup();
+  // Synchronous write then exit, before any `test(...)` below is registered.
+  writeSync(1, JSON.stringify(response));
+  process.exit(0);
+}
 
 function write(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -253,4 +275,211 @@ test("fleet template: preparation then setup run before the ceremony, and the sc
 
   const step0 = skill.slice(skill.indexOf("## Step 0"), skill.indexOf("## The tick loop"));
   assert.match(step0, /\*\*Setup command:\*\*/, "the scoreboard header echoes the setup command");
+});
+
+// ---------------------------------------------------------------------------
+// WF-871 — exact values, serialized runs, and a fully stopped process tree.
+// ---------------------------------------------------------------------------
+
+function pause(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function lockPath(root: string): string {
+  return `${root}/${SETUP_LOCK_RELPATH}`;
+}
+
+function markerPath(root: string): string {
+  return `${root}/_local/resolver/setup-state.json`;
+}
+
+/** Run one setup call in a separate resolver process for `root`. */
+function runInChild(root: string): Promise<WorkspaceSetupResponse> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url)], {
+      env: { ...process.env, WF_SETUP_CHILD_ROOT: root },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (chunk) => (out += chunk.toString("utf8")));
+    child.stderr.on("data", (chunk) => (err += chunk.toString("utf8")));
+    child.on("error", reject);
+    child.on("close", () => {
+      try {
+        resolvePromise(JSON.parse(out) as WorkspaceSetupResponse);
+      } catch {
+        reject(new Error(`child produced no response: ${out}${err}`));
+      }
+    });
+  });
+}
+
+test("config cells: a pipe inside a code span or written as \\| stays in the value", () => {
+  assert.deepEqual(splitTableRow("| **K** | `a | b` | note |"), ["**K**", "`a | b`", "note"]);
+  assert.deepEqual(splitTableRow("| **K** | a \\| b |"), ["**K**", "a | b"]);
+  assert.deepEqual(splitTableRow("| **K** | ``x ` | y`` |"), ["**K**", "``x ` | y``"]);
+  assert.deepEqual(splitTableRow("| **K** | `unclosed | rest |"), ["**K**", "`unclosed", "rest"]);
+
+  const backticked = parseCoreConfig(config({ "Dependency Setup Command": "`npm ci | tee install.log`" }));
+  assert.equal(backticked.dependencySetupCommand, "npm ci | tee install.log");
+  const escaped = parseCoreConfig(config({ "Dependency Setup Command": "npm ci \\| tee install.log" }));
+  assert.equal(escaped.dependencySetupCommand, "npm ci | tee install.log");
+  const verbatim = parseCoreConfig(config({ "Dependency Setup Command": "`grep -E 'a\\|b' x || true`" }));
+  assert.equal(verbatim.dependencySetupCommand, "grep -E 'a\\|b' x || true", "a code span is taken verbatim");
+});
+
+test("config cells: existing rows keep their meaning, a third column included", () => {
+  const cfg = parseCoreConfig(
+    "| Key | Value | Note |\n|---|---|---|\n| **Task Root** | `_local` | where tasks live |\n| **Verify Command** | `(cd x && npm run build)` | build |\n| **Context Ceiling** | `<none>` | |\n",
+  );
+  assert.equal(cfg.taskRoot, "_local");
+  assert.equal(cfg.verifyCommand, "(cd x && npm run build)");
+  assert.equal(cfg.contextCeiling, null);
+});
+
+test("a declared pipeline runs complete and is echoed verbatim", () => {
+  const ws = workspace(config({ "Dependency Setup Command": "`echo piped | tr a-z A-Z > piped.txt`" }));
+  try {
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "succeeded", JSON.stringify(result));
+    assert.equal(result.command, "echo piped | tr a-z A-Z > piped.txt");
+    assert.equal(readFileSync(`${ws.root}/piped.txt`, "utf8").trim(), "PIPED");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("timeout stops the whole process tree: a descendant never writes afterwards", () => {
+  const ws = workspace(
+    config({ "Dependency Setup Command": "`(sleep 2; echo late > late.txt) & sleep 30`", "Dependency Setup Timeout": "`1`" }),
+  );
+  try {
+    const started = Date.now();
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "blocked", JSON.stringify(result));
+    assert.equal(result.reason, "timed-out");
+    assert.ok(Date.now() - started < 10_000, "the call returns at the timeout, not when the tree would finish");
+    pause(3_000);
+    assert.equal(existsSync(`${ws.root}/late.txt`), false, "the backgrounded descendant was stopped with its group");
+    assert.equal(existsSync(lockPath(ws.root)), false, "the lock is released on timeout");
+    assert.equal(existsSync(markerPath(ws.root)), false, "a timeout records no success");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("a straggler left running when the command exits is stopped before success is reported", () => {
+  const ws = workspace(config({ "Dependency Setup Command": "`(sleep 2; echo late > straggler.txt) & echo started`" }));
+  try {
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "succeeded", JSON.stringify(result));
+    assert.match(result.outputTail, /started/);
+    pause(3_000);
+    assert.equal(existsSync(`${ws.root}/straggler.txt`), false);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("failure releases the lock and records nothing; a retry runs again, then already-done", () => {
+  const ws = workspace(config({ "Dependency Setup Command": "`test -f ok.txt || { touch ok.txt; exit 3; }`" }));
+  try {
+    const failed = ws.service().runWorkspaceSetup();
+    assert.equal(failed.status, "blocked");
+    assert.equal(failed.reason, "failed");
+    assert.equal(existsSync(lockPath(ws.root)), false, "failure releases the lock");
+    assert.equal(existsSync(markerPath(ws.root)), false, "failure creates no success marker");
+
+    const retried = ws.service().runWorkspaceSetup();
+    assert.equal(retried.status, "succeeded", JSON.stringify(retried));
+    assert.equal(existsSync(lockPath(ws.root)), false);
+    assert.equal(ws.service().runWorkspaceSetup().status, "already-done");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("concurrent resolver processes run the command exactly once", async () => {
+  const ws = workspace(config({ "Dependency Setup Command": "`echo run >> runs.txt; sleep 1`" }));
+  try {
+    const results = await Promise.all([runInChild(ws.root), runInChild(ws.root)]);
+    const statuses = results.map((r) => r.status).sort();
+    assert.deepEqual(statuses, ["already-done", "succeeded"], JSON.stringify(results));
+    const runs = readFileSync(`${ws.root}/runs.txt`, "utf8").trim().split("\n");
+    assert.equal(runs.length, 1, "the command ran once");
+    assert.equal(existsSync(lockPath(ws.root)), false, "the lock is released");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("a lock whose holder process is gone is reclaimed", () => {
+  const ws = workspace(config({ "Dependency Setup Command": `\`${MARKED}\`` }));
+  try {
+    const gone = spawnSync(process.execPath, ["-e", ""]).pid;
+    assert.ok(typeof gone === "number");
+    write(lockPath(ws.root), renderSetupLock({ pid: gone, host: hostname(), token: "stale", acquiredAt: "2026-01-01T00:00:00.000Z" }));
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "succeeded", JSON.stringify(result));
+    assert.equal(existsSync(lockPath(ws.root)), false);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("a live holder past the wait bound is busy, and its lock is left alone", () => {
+  const ws = workspace(config({}));
+  try {
+    const held = renderSetupLock({ pid: process.pid, host: hostname(), token: "live", acquiredAt: "2026-01-01T00:00:00.000Z" });
+    write(lockPath(ws.root), held);
+    let clock = 0;
+    const deps: SetupLockDeps = {
+      pid: process.pid + 1,
+      host: hostname(),
+      now: () => clock,
+      sleepMs: (ms) => {
+        clock += ms;
+      },
+      processAlive: () => true,
+    };
+    const result = acquireSetupLock(ws.root, 1_000, deps);
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.kind, "busy");
+    assert.match(!result.ok ? result.detail : "", /setup\.lock/);
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), held, "a live holder's lock is never taken over");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("unsafe-path: a symlinked setup lock blocks and the command does not run", () => {
+  const ws = workspace(config({ "Dependency Setup Command": `\`${MARKED}\`` }));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    write(`${outside}/lock`, "not ours\n");
+    mkdirSync(`${ws.root}/_local/resolver`, { recursive: true });
+    symlinkSync(`${outside}/lock`, lockPath(ws.root));
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "blocked", JSON.stringify(result));
+    assert.equal(result.reason, "unsafe-path");
+    assert.equal(existsSync(`${ws.root}/setup-marker.txt`), false);
+    assert.equal(readFileSync(`${outside}/lock`, "utf8"), "not ours\n");
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("not-declared never touches setup state, even under a symlinked `_local/resolver`", () => {
+  const ws = workspace(config({}));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    symlinkSync(outside, `${ws.root}/_local/resolver`);
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "not-declared", JSON.stringify(result));
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
 });
