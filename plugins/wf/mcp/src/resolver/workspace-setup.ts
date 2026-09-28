@@ -25,7 +25,13 @@ export const MAX_SETUP_TIMEOUT_SECONDS = 3600;
 /** The bounded amount of trailing command output ever returned. */
 export const SETUP_OUTPUT_TAIL_CHARS = 2000;
 
-export type SetupBlocker = "unprepared" | "failed" | "timed-out";
+/** `unsafe-path`: the success marker's path, or a directory on the way to it,
+ *  is a symbolic link or otherwise not a real directory / regular file — the
+ *  marker is neither trusted nor written through it (WF-872). */
+export type SetupBlocker = "unprepared" | "failed" | "timed-out" | "unsafe-path";
+
+/** Upper bound on the success marker's size; it is a two-field JSON record. */
+export const SETUP_STATE_MAX_BYTES = 64 * 1024;
 
 /** What the command-execution port reports. */
 export type SetupCommandResult = {
