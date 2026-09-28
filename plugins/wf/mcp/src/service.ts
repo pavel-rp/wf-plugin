@@ -210,10 +210,13 @@ import {
 import {
   planWorkspaceSetup,
   renderSetupState,
+  SETUP_STATE_MAX_BYTES,
   SETUP_STATE_RELPATH,
   type SetupCommandResult,
   type WorkspaceSetupResponse,
 } from "./resolver/workspace-setup.js";
+import { inspectContainedStatePath, writeContainedStateFile } from "./resolver/contained-state.js";
+import { readContainedCapabilityFile } from "./resolver/engine.js";
 import {
   COUNTERPART_MAP_FILENAME,
   computeCounterparts,
@@ -5970,6 +5973,17 @@ export class ResolverService {
       return blocked(plan.reason, plan.path, plan.detail, source.worktreeRoot, child.worktreeRoot);
     }
 
+    // The binding ledger is written after the copies, so its path is proved
+    // link-free BEFORE any copy lands: an unsafe ledger path blocks with nothing
+    // written at all (WF-872).
+    const ledgerHome = resolveLedgerHome();
+    if (ledgerHome.ok && ledgerHome.bindingPath !== ledgerHome.portablePath) {
+      const ledger = inspectContainedStatePath(this.ports.workspaceRoot, ledgerHome.bindingPath);
+      if (!ledger.ok) {
+        return blocked("unsafe-path", ledger.path, ledger.detail, source.worktreeRoot, child.worktreeRoot);
+      }
+    }
+
     const copied = applyPreparation(child.worktreeRoot, plan.copies);
     if (copied.length > 0) {
       this.invalidate([
@@ -5977,6 +5991,9 @@ export class ResolverService {
       ]);
     }
     const install = this.regenerateMachineBinding();
+    if (install.state === "unsafe") {
+      return blocked("unsafe-path", install.path, install.detail, source.worktreeRoot, child.worktreeRoot);
+    }
     const diagnostics = install.diagnostic === null ? [] : [install.diagnostic];
     return {
       status: copied.length === 0 && install.state !== "regenerated" ? "already-prepared" : "prepared",
@@ -5995,14 +6012,19 @@ export class ResolverService {
    * the machine-local ledger path; the portable half and the committed `.wf/`
    * ledger are never touched. An existing ledger is left as it is (`present`),
    * and an unobservable inventory is reported (`unavailable`) rather than guessed.
+   * The ledger path is inspected and written without following a link; an
+   * unsafe path is `unsafe`, never read as absent (WF-872).
    */
-  private regenerateMachineBinding(): { state: InstallStateOutcome; diagnostic: string | null } {
+  private regenerateMachineBinding():
+    | { state: InstallStateOutcome; diagnostic: string | null }
+    | { state: "unsafe"; path: string; detail: string } {
     const home = resolveLedgerHome();
     if (!home.ok || home.bindingPath === home.portablePath) {
       return { state: "unavailable", diagnostic: "the machine binding ledger home is not separable from the portable ledger." };
     }
-    const bindingAbs = joinSlash(this.ports.workspaceRoot, home.bindingPath);
-    if (this.ports.readFile(bindingAbs) !== null) return { state: "present", diagnostic: null };
+    const existing = inspectContainedStatePath(this.ports.workspaceRoot, home.bindingPath);
+    if (!existing.ok) return { state: "unsafe", path: existing.path, detail: existing.detail };
+    if (existing.state === "file") return { state: "present", diagnostic: null };
 
     let inspected: Map<string, InspectPackResponse>;
     try {
@@ -6018,20 +6040,16 @@ export class ResolverService {
     }
     const rendered = renderLedgerMutation(null, updates, `the machine binding ledger \`${home.bindingPath}\``);
     if (!rendered.ok) return { state: "unavailable", diagnostic: rendered.detail };
-    this.ports.writeFile(bindingAbs, rendered.content);
+    const written = writeContainedStateFile(this.ports.workspaceRoot, home.bindingPath, rendered.content);
+    if (!written.ok) {
+      if (written.kind === "unsafe") return { state: "unsafe", path: written.path, detail: written.detail };
+      return { state: "unavailable", diagnostic: written.detail };
+    }
     return { state: "regenerated", diagnostic: null };
   }
 
   runWorkspaceSetup(): WorkspaceSetupResponse {
     const config = this.resolveConfig().coreConfig;
-    const plan = planWorkspaceSetup(
-      {
-        ...config,
-        dependencySetupCommand: config.dependencySetupCommand ?? null,
-        dependencySetupTimeout: config.dependencySetupTimeout ?? null,
-      },
-      this.ports.readFile(joinSlash(this.ports.workspaceRoot, SETUP_STATE_RELPATH)),
-    );
     const base = {
       command: null as string | null,
       timeoutSeconds: 0,
@@ -6040,6 +6058,27 @@ export class ResolverService {
       outputTail: "",
       diagnostics: [] as string[],
     };
+    // The success marker is trusted as `already-done`, so it is read only when
+    // its whole path is link-free and contained — never through a link that
+    // could hand back state from outside the workspace (WF-872).
+    const marker = this.readSetupState();
+    if (!marker.ok) {
+      return {
+        ...base,
+        command: config.dependencySetupCommand ?? null,
+        status: "blocked",
+        reason: "unsafe-path",
+        detail: marker.detail,
+      };
+    }
+    const plan = planWorkspaceSetup(
+      {
+        ...config,
+        dependencySetupCommand: config.dependencySetupCommand ?? null,
+        dependencySetupTimeout: config.dependencySetupTimeout ?? null,
+      },
+      marker.text,
+    );
     switch (plan.kind) {
       case "unprepared":
         return {
@@ -6109,11 +6148,38 @@ export class ResolverService {
             : `exited with status ${result.exitCode}`;
       return { ...observed, status: "blocked", reason: "failed", detail: `the setup command ${how}.` };
     }
-    this.ports.writeFile(
-      joinSlash(this.ports.workspaceRoot, SETUP_STATE_RELPATH),
+    const recorded = writeContainedStateFile(
+      this.ports.workspaceRoot,
+      SETUP_STATE_RELPATH,
       renderSetupState(plan.digest, new Date().toISOString()),
     );
+    if (!recorded.ok) {
+      return {
+        ...observed,
+        status: "blocked",
+        reason: recorded.kind === "unsafe" ? "unsafe-path" : "failed",
+        detail: `the setup command succeeded, but its success record was not written: ${recorded.detail}`,
+      };
+    }
     return { ...observed, status: "succeeded", reason: null, detail: "the setup command succeeded." };
+  }
+
+  /** The setup success marker's text, read without following a link: `null`
+   *  when absent, or a named refusal when any segment of its path is unsafe. */
+  private readSetupState(): { ok: true; text: string | null } | { ok: false; detail: string } {
+    const inspected = inspectContainedStatePath(this.ports.workspaceRoot, SETUP_STATE_RELPATH);
+    if (!inspected.ok) return { ok: false, detail: inspected.detail };
+    if (inspected.state === "absent") return { ok: true, text: null };
+    const read = readContainedCapabilityFile(this.ports.workspaceRoot, SETUP_STATE_RELPATH, SETUP_STATE_MAX_BYTES);
+    if (read.status === "ok") return { ok: true, text: read.content };
+    if (read.status === "missing") return { ok: true, text: null };
+    // Present but unreadable in some way (oversized, swapped mid-read, …): not
+    // trusted, and the command re-runs — the safe side, as an unreadable
+    // record already was before (`readSetupStateDigest`).
+    if (read.status === "unsafe") {
+      return { ok: false, detail: `\`${SETUP_STATE_RELPATH}\` did not stay a contained regular file while it was read.` };
+    }
+    return { ok: true, text: null };
   }
 
   // --- counterpart listing (WF-758) ------------------------------------------
