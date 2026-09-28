@@ -443,12 +443,65 @@ function parsePluginList(raw) {
 }
 
 // src/resolver/config.ts
+function backtickRun(text, i) {
+  let n = 0;
+  while (text[i + n] === "`") n += 1;
+  return n;
+}
+function splitTableRow(line) {
+  const cells = [];
+  let current = "";
+  let i = line.startsWith("|") ? 1 : 0;
+  while (i < line.length) {
+    const ch = line[i];
+    if (ch === "\\" && line[i + 1] === "|") {
+      current += "|";
+      i += 2;
+      continue;
+    }
+    if (ch === "`") {
+      const n = backtickRun(line, i);
+      let j = i + n;
+      let close = -1;
+      while (j < line.length) {
+        if (line[j] === "`") {
+          const m = backtickRun(line, j);
+          if (m === n) {
+            close = j;
+            break;
+          }
+          j += m;
+        } else {
+          j += 1;
+        }
+      }
+      if (close >= 0) {
+        current += line.slice(i, close + n);
+        i = close + n;
+      } else {
+        current += line.slice(i, i + n);
+        i += n;
+      }
+      continue;
+    }
+    if (ch === "|") {
+      cells.push(current.trim());
+      current = "";
+      i += 1;
+      continue;
+    }
+    current += ch;
+    i += 1;
+  }
+  if (current.trim() !== "") cells.push(current.trim());
+  return cells;
+}
 function extractKeyValues(markdown) {
   const map = /* @__PURE__ */ new Map();
   for (const rawLine of markdown.split(/\r?\n/)) {
     const line = rawLine.replace(/\r$/, "").trim();
     if (!line.startsWith("|")) continue;
-    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    const cells = splitTableRow(line);
     if (cells.length < 2) continue;
     const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
     if (!keyMatch) continue;

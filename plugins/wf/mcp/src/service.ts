@@ -208,11 +208,15 @@ import {
   type PrepareWorkspaceResponse,
 } from "./resolver/prepare-workspace.js";
 import {
+  acquireSetupLock,
   planWorkspaceSetup,
+  releaseSetupLock,
   renderSetupState,
+  SETUP_LOCK_WAIT_GRACE_SECONDS,
   SETUP_STATE_MAX_BYTES,
   SETUP_STATE_RELPATH,
   type SetupCommandResult,
+  type SetupPlan,
   type WorkspaceSetupResponse,
 } from "./resolver/workspace-setup.js";
 import { inspectContainedStatePath, writeContainedStateFile } from "./resolver/contained-state.js";
@@ -6058,27 +6062,47 @@ export class ResolverService {
       outputTail: "",
       diagnostics: [] as string[],
     };
-    // The success marker is trusted as `already-done`, so it is read only when
-    // its whole path is link-free and contained — never through a link that
-    // could hand back state from outside the workspace (WF-872).
-    const marker = this.readSetupState();
-    if (!marker.ok) {
+    const setupConfig = {
+      ...config,
+      dependencySetupCommand: config.dependencySetupCommand ?? null,
+      dependencySetupTimeout: config.dependencySetupTimeout ?? null,
+    };
+    // `unprepared` and `not-declared` depend on config alone, so they are
+    // decided before any setup state is touched (WF-871): an undeclared
+    // command never reads the marker or the lock.
+    const early = planWorkspaceSetup(setupConfig, null);
+    if (early.kind !== "run") return this.setupOutcome(base, early);
+
+    // Serialize the state check, the run and the marker write for this
+    // workspace (WF-871). A concurrent caller waits for the holder, then finds
+    // the marker and reports `already-done`.
+    const lock = acquireSetupLock(
+      this.ports.workspaceRoot,
+      (early.timeoutSeconds + SETUP_LOCK_WAIT_GRACE_SECONDS) * 1000,
+    );
+    if (!lock.ok) {
       return {
         ...base,
-        command: config.dependencySetupCommand ?? null,
+        command: early.command,
+        timeoutSeconds: early.timeoutSeconds,
+        diagnostics: early.diagnostics,
         status: "blocked",
-        reason: "unsafe-path",
-        detail: marker.detail,
+        reason: lock.kind === "unsafe" ? "unsafe-path" : lock.kind === "busy" ? "timed-out" : "failed",
+        detail: lock.detail,
       };
     }
-    const plan = planWorkspaceSetup(
-      {
-        ...config,
-        dependencySetupCommand: config.dependencySetupCommand ?? null,
-        dependencySetupTimeout: config.dependencySetupTimeout ?? null,
-      },
-      marker.text,
-    );
+    try {
+      return this.runWorkspaceSetupLocked(base, setupConfig);
+    } finally {
+      releaseSetupLock(this.ports.workspaceRoot, lock.token);
+    }
+  }
+
+  /** Map a plan that runs nothing to its response. */
+  private setupOutcome(
+    base: Omit<WorkspaceSetupResponse, "status" | "reason" | "detail">,
+    plan: Exclude<SetupPlan, { kind: "run" }>,
+  ): WorkspaceSetupResponse {
     switch (plan.kind) {
       case "unprepared":
         return {
@@ -6106,9 +6130,29 @@ export class ResolverService {
           reason: null,
           detail: "this command already succeeded in this worktree; it was not re-run.",
         };
-      case "run":
-        break;
     }
+  }
+
+  /** The check, run and marker write — called only while the setup lock is held. */
+  private runWorkspaceSetupLocked(
+    base: Omit<WorkspaceSetupResponse, "status" | "reason" | "detail">,
+    setupConfig: Parameters<typeof planWorkspaceSetup>[0],
+  ): WorkspaceSetupResponse {
+    // The success marker is trusted as `already-done`, so it is read only when
+    // its whole path is link-free and contained — never through a link that
+    // could hand back state from outside the workspace (WF-872).
+    const marker = this.readSetupState();
+    if (!marker.ok) {
+      return {
+        ...base,
+        command: setupConfig.dependencySetupCommand,
+        status: "blocked",
+        reason: "unsafe-path",
+        detail: marker.detail,
+      };
+    }
+    const plan = planWorkspaceSetup(setupConfig, marker.text);
+    if (plan.kind !== "run") return this.setupOutcome(base, plan);
 
     const running = {
       ...base,

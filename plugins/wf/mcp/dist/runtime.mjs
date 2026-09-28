@@ -23808,7 +23808,7 @@ function registerResolverTools(server, selectService) {
     "run_workspace_setup",
     {
       title: "run workspace setup",
-      description: "Run the ONE dependency-setup command the project declares in its own config (`Dependency Setup Command`), in this workspace's root, bounded by `Dependency Setup Timeout` seconds (default 600, ceiling 3600). No capability source is ever read for the command, so a capability-declared setup command never runs. Returns `not-declared` (the key is empty \u2014 nothing ran), `succeeded`, `already-done` (this same command already succeeded here \u2014 not re-run), or `blocked` with one reason: `unprepared` (no resolved project config \u2014 prepare first), `failed` (non-zero exit, a signal, or the command could not start \u2014 `detail` names which), `timed-out`, `unsafe-path` (the success marker `_local/resolver/setup-state.json`, or a directory on the way to it, is a symbolic link \u2014 dangling or not \u2014 or not a real directory / regular file; the marker is never trusted or written through it, so it never yields `already-done`). Every outcome echoes the declared `command` verbatim, plus `exitCode`, `durationMs` and a bounded output tail.",
+      description: "Run the ONE dependency-setup command the project declares in its own config (`Dependency Setup Command`), in this workspace's root, bounded by `Dependency Setup Timeout` seconds (default 600, ceiling 3600). No capability source is ever read for the command, so a capability-declared setup command never runs. The check, the run and the success record are serialized per workspace under `_local/resolver/setup.lock`: a concurrent caller waits for the holder (bounded by the timeout plus a grace period) and then reports `already-done` rather than running the command again. The command runs in a process group of its own, and every process it started is stopped on a timeout and once it exits, before the result is reported. Returns `not-declared` (the key is empty \u2014 nothing ran), `succeeded`, `already-done` (this same command already succeeded here \u2014 not re-run), or `blocked` with one reason: `unprepared` (no resolved project config \u2014 prepare first), `failed` (non-zero exit, a signal, or the command could not start \u2014 `detail` names which), `timed-out` (the command exceeded its timeout, or another run held the setup lock past the wait bound \u2014 `detail` names which), `unsafe-path` (the success marker `_local/resolver/setup-state.json` or the setup lock, or a directory on the way to them, is a symbolic link \u2014 dangling or not \u2014 or not a real directory / regular file; the marker is never trusted or written through it, so it never yields `already-done`). Every outcome echoes the declared `command` verbatim, plus `exitCode`, `durationMs` and a bounded output tail.",
       inputSchema: workspaceOnlyInput
     },
     async (args) => selected(args, (service) => service.runWorkspaceSetup())
@@ -23826,88 +23826,325 @@ function registerResolverTools(server, selectService) {
 
 // src/ports.ts
 import {
-  closeSync as closeSync2,
-  fsyncSync,
-  lstatSync as lstatSync2,
-  mkdirSync as mkdirSync2,
-  openSync as openSync2,
+  closeSync as closeSync3,
+  fsyncSync as fsyncSync2,
+  lstatSync as lstatSync3,
+  mkdirSync as mkdirSync3,
+  openSync as openSync3,
   readFileSync as readFileSync3,
   readdirSync as readdirSync2,
-  realpathSync as realpathSync3,
-  renameSync as renameSync2,
-  rmSync as rmSync2,
+  realpathSync as realpathSync4,
+  renameSync as renameSync3,
+  rmSync as rmSync3,
   rmdirSync,
   unlinkSync,
   writeFileSync as writeFileSync2,
-  writeSync
+  writeSync as writeSync2
 } from "node:fs";
 import { execFileSync as execFileSync3, spawnSync } from "node:child_process";
 
 // src/resolver/workspace-setup.ts
-import { createHash as createHash2 } from "node:crypto";
-var SETUP_STATE_RELPATH = "_local/resolver/setup-state.json";
-var DEFAULT_SETUP_TIMEOUT_SECONDS = 600;
-var MAX_SETUP_TIMEOUT_SECONDS = 3600;
-var SETUP_OUTPUT_TAIL_CHARS = 2e3;
-var SETUP_STATE_MAX_BYTES = 64 * 1024;
-function parseSetupTimeout(raw) {
-  if (raw === null) return { seconds: DEFAULT_SETUP_TIMEOUT_SECONDS, diagnostic: null };
-  const trimmed = raw.trim();
-  if (!/^[0-9]+$/.test(trimmed) || Number(trimmed) <= 0) {
-    return {
-      seconds: DEFAULT_SETUP_TIMEOUT_SECONDS,
-      diagnostic: `Dependency Setup Timeout \`${raw}\` is not a positive whole number of seconds; the default ${DEFAULT_SETUP_TIMEOUT_SECONDS} applies.`
-    };
-  }
-  const seconds = Number(trimmed);
-  if (seconds > MAX_SETUP_TIMEOUT_SECONDS) {
-    return {
-      seconds: MAX_SETUP_TIMEOUT_SECONDS,
-      diagnostic: `Dependency Setup Timeout ${seconds} exceeds the ${MAX_SETUP_TIMEOUT_SECONDS}-second ceiling; the ceiling applies.`
-    };
-  }
-  return { seconds, diagnostic: null };
+import { createHash as createHash3, randomBytes as randomBytes3 } from "node:crypto";
+import { hostname } from "node:os";
+
+// src/resolver/contained-state.ts
+import {
+  closeSync,
+  fsyncSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  realpathSync as realpathSync2,
+  renameSync,
+  rmSync,
+  writeSync
+} from "node:fs";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+function messageOf(err) {
+  return err instanceof Error ? err.message : String(err);
 }
-function setupCommandDigest(command) {
-  return createHash2("sha256").update(command, "utf8").digest("hex");
+function unsafe(path, detail) {
+  return { ok: false, kind: "unsafe", path, detail };
 }
-function readSetupStateDigest(text) {
-  if (text === null) return null;
+function lexicallyPlain(rel) {
+  if (rel.length === 0 || rel.includes("\0") || rel.includes("\\")) return false;
+  if (rel.startsWith("/") || /^[A-Za-z]:/.test(rel)) return false;
+  return !rel.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+}
+function inspectContainedStatePath(root, rel) {
+  if (!lexicallyPlain(rel)) {
+    return unsafe(rel, `\`${rel}\` is not a plain workspace-relative path.`);
+  }
+  let cursor;
   try {
-    const parsed = JSON.parse(text);
-    return typeof parsed.commandDigest === "string" && /^[a-f0-9]{64}$/.test(parsed.commandDigest) ? parsed.commandDigest : null;
+    cursor = realpathSync2(root);
+  } catch (err) {
+    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = rel.split("/");
+  for (let i = 0; i < segments.length; i += 1) {
+    cursor = join(cursor, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync(cursor);
+    } catch (err) {
+      if (err.code === "ENOENT") return { ok: true, state: "absent" };
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink()) {
+      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
+    }
+    const terminal = i === segments.length - 1;
+    if (!terminal && !stat.isDirectory()) {
+      return unsafe(shown, `\`${shown}\` is not a real directory.`);
+    }
+    if (terminal && !stat.isFile()) {
+      return unsafe(shown, `\`${shown}\` exists but is not a regular file.`);
+    }
+  }
+  return { ok: true, state: "file" };
+}
+function prepareContainedParent(root, rel) {
+  const before = inspectContainedStatePath(root, rel);
+  if (!before.ok) return before;
+  const segments = rel.split("/");
+  let dir;
+  try {
+    dir = realpathSync2(root);
+  } catch (err) {
+    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    dir = join(dir, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    try {
+      mkdirSync(dir);
+    } catch (err) {
+      if (err.code !== "EEXIST") {
+        return { ok: false, kind: "failed", path: shown, detail: `\`${shown}\` could not be created: ${messageOf(err)}` };
+      }
+    }
+    let stat;
+    try {
+      stat = lstatSync(dir);
+    } catch (err) {
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      return unsafe(shown, `\`${shown}\` is not a real directory; resolver setup state follows no link.`);
+    }
+  }
+  const after = inspectContainedStatePath(root, rel);
+  if (!after.ok) return after;
+  return { ok: true, dir, name: segments[segments.length - 1], state: after.state };
+}
+function writeTempBeside(dir, name, content) {
+  const temp = join(dir, `.${name}.wf-state-${randomBytes(8).toString("hex")}.tmp`);
+  let fd = null;
+  try {
+    fd = openSync(temp, "wx");
+    writeSync(fd, Buffer.from(content, "utf8"));
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = null;
+    return temp;
+  } catch (err) {
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+      }
+    }
+    try {
+      rmSync(temp, { force: true });
+    } catch {
+    }
+    throw err;
+  }
+}
+function writeContainedStateFile(root, rel, content) {
+  const parent = prepareContainedParent(root, rel);
+  if (!parent.ok) return parent;
+  let temp = null;
+  try {
+    temp = writeTempBeside(parent.dir, parent.name, content);
+    renameSync(temp, join(parent.dir, parent.name));
+    return { ok: true };
+  } catch (err) {
+    if (temp !== null) {
+      try {
+        rmSync(temp, { force: true });
+      } catch {
+      }
+    }
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be written: ${messageOf(err)}` };
+  }
+}
+function createContainedStateFileExclusive(root, rel, content) {
+  const parent = prepareContainedParent(root, rel);
+  if (!parent.ok) return parent;
+  if (parent.state === "file") return { ok: false, kind: "exists" };
+  let temp = null;
+  try {
+    temp = writeTempBeside(parent.dir, parent.name, content);
+    linkSync(temp, join(parent.dir, parent.name));
+    return { ok: true };
+  } catch (err) {
+    if (err.code === "EEXIST") return { ok: false, kind: "exists" };
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be created: ${messageOf(err)}` };
+  } finally {
+    if (temp !== null) {
+      try {
+        rmSync(temp, { force: true });
+      } catch {
+      }
+    }
+  }
+}
+function removeContainedStateFile(root, rel) {
+  const inspected = inspectContainedStatePath(root, rel);
+  if (!inspected.ok) return inspected;
+  if (inspected.state === "absent") return { ok: true };
+  try {
+    rmSync(join(realpathSync2(root), ...rel.split("/")), { force: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be removed: ${messageOf(err)}` };
+  }
+}
+function renameContainedStateFile(root, rel, toRel) {
+  const from = inspectContainedStatePath(root, rel);
+  if (!from.ok) return from;
+  const to = inspectContainedStatePath(root, toRel);
+  if (!to.ok) return to;
+  if (from.state === "absent") return { ok: true, moved: false };
+  try {
+    const base = realpathSync2(root);
+    renameSync(join(base, ...rel.split("/")), join(base, ...toRel.split("/")));
+    return { ok: true, moved: true };
+  } catch (err) {
+    if (err.code === "ENOENT") return { ok: true, moved: false };
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
+  }
+}
+function linkContainedStateFileExclusive(root, fromRel, toRel) {
+  const from = inspectContainedStatePath(root, fromRel);
+  const to = inspectContainedStatePath(root, toRel);
+  if (!from.ok || !to.ok || from.state !== "file" || to.state !== "absent") return false;
+  try {
+    const base = realpathSync2(root);
+    linkSync(join(base, ...fromRel.split("/")), join(base, ...toRel.split("/")));
+    return true;
   } catch {
-    return null;
+    return false;
   }
-}
-function renderSetupState(digest, completedAt) {
-  return `${JSON.stringify({ commandDigest: digest, completedAt }, null, 2)}
-`;
-}
-function planWorkspaceSetup(config2, stateText) {
-  if (config2.taskRoot === null) return { kind: "unprepared" };
-  const timeout = parseSetupTimeout(config2.dependencySetupTimeout);
-  const diagnostics = timeout.diagnostic === null ? [] : [timeout.diagnostic];
-  const command = config2.dependencySetupCommand;
-  if (command === null) {
-    return { kind: "not-declared", timeoutSeconds: timeout.seconds, diagnostics };
-  }
-  const digest = setupCommandDigest(command);
-  if (readSetupStateDigest(stateText) === digest) {
-    return { kind: "already-done", command, timeoutSeconds: timeout.seconds, diagnostics };
-  }
-  return { kind: "run", command, digest, timeoutSeconds: timeout.seconds, diagnostics };
-}
-function tailOf(output) {
-  return output.length <= SETUP_OUTPUT_TAIL_CHARS ? output : output.slice(output.length - SETUP_OUTPUT_TAIL_CHARS);
 }
 
-// src/ports.ts
-import { randomBytes as randomBytes2 } from "node:crypto";
-import { createHash as createHash4 } from "node:crypto";
-import { homedir } from "node:os";
-import { basename, dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
-import { fileURLToPath } from "node:url";
+// src/resolver/engine.ts
+import {
+  closeSync as closeSync2,
+  constants,
+  fstatSync,
+  lstatSync as lstatSync2,
+  openSync as openSync2,
+  readFileSync as readFileSync2,
+  readSync,
+  readdirSync,
+  realpathSync as realpathSync3,
+  statSync as statSync2
+} from "node:fs";
+import { isAbsolute as isAbsolute3, join as join3, relative, resolve as resolve2, sep } from "node:path";
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { createHash as createHash2 } from "node:crypto";
+
+// src/resolver/settings.ts
+var SETTINGS_STORAGE_DIR = "_local/profiles";
+var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
+var PROFILE_STORAGE_DIR = SETTINGS_STORAGE_DIR;
+var PROFILE_SUFFIX = ".profile.json";
+function capabilityProfileRelPath(capability) {
+  return `${PROFILE_STORAGE_DIR}/${capability}${PROFILE_SUFFIX}`;
+}
+var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
+var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
+function isSkillSlug(s) {
+  return typeof s === "string" && SEGMENT.test(s);
+}
+function settingsOverrideRelPath(skill) {
+  return `${SETTINGS_STORAGE_DIR}/${skill}${SETTINGS_OVERRIDE_SUFFIX}`;
+}
+function skillFromSettingsFilename(filename) {
+  if (!filename.endsWith(SETTINGS_OVERRIDE_SUFFIX)) return null;
+  const stem = filename.slice(0, -SETTINGS_OVERRIDE_SUFFIX.length);
+  return isSkillSlug(stem) ? stem : null;
+}
+function unquote(cell) {
+  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
+}
+function parseSettingsDeclaration(interfaceMd) {
+  const lines = interfaceMd.split(/\r?\n/);
+  let inSection = false;
+  let sawSection = false;
+  const decl = /* @__PURE__ */ new Map();
+  for (const line of lines) {
+    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inSection = /^settings$/i.test(heading[1].trim());
+      if (inSection) sawSection = true;
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 2) continue;
+    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
+    const key = unquote(cells[0]);
+    if (key === "key" || !SETTINGS_KEY.test(key)) continue;
+    decl.set(key, unquote(cells[1]));
+  }
+  return sawSection ? decl : null;
+}
+function parseSettingsOverride(jsonText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "a settings override must be a JSON object of key \u2192 value" };
+  }
+  return { ok: true, value: parsed };
+}
+function mergeSettings(declared, override) {
+  const values = {};
+  for (const [key, def] of declared) {
+    values[key] = override && Object.prototype.hasOwnProperty.call(override, key) ? override[key] : def;
+  }
+  const undeclared = [];
+  if (override) {
+    for (const key of Object.keys(override)) {
+      if (!declared.has(key)) undeclared.push(key);
+    }
+  }
+  undeclared.sort();
+  return { values, undeclared };
+}
+function locateInterface(skill, roots, readFile, joinSlash2) {
+  for (const root of roots) {
+    const path = joinSlash2(root, "skills", skill, "interface.md");
+    const content = readFile(path);
+    if (content === null) continue;
+    const declared = parseSettingsDeclaration(content);
+    if (declared === null) continue;
+    return { root, path, declared };
+  }
+  return null;
+}
 
 // src/resolver/registry.ts
 function splitRow(line) {
@@ -24062,6 +24299,1651 @@ function parseManifest(markdown) {
   }
   return { kind, fragments, payloads, articles, requires, conflicts, profileTemplate };
 }
+
+// src/resolver/plugin-list.ts
+var REQUIRED_FIELDS = [
+  { field: "id", type: "string" },
+  { field: "version", type: "string" },
+  { field: "scope", type: "string" },
+  { field: "enabled", type: "boolean" },
+  { field: "installPath", type: "string" }
+];
+function parsePluginList(raw) {
+  const issues = [];
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    return {
+      plugins: [],
+      contractOk: false,
+      issues: [
+        {
+          code: "plugin-list/unparseable",
+          message: `\`claude plugin list --json\` output is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+        }
+      ]
+    };
+  }
+  if (!Array.isArray(data)) {
+    return {
+      plugins: [],
+      contractOk: false,
+      issues: [
+        {
+          code: "plugin-list/not-an-array",
+          message: `\`claude plugin list --json\` must return a JSON array of plugin records; got ${data === null ? "null" : typeof data} \u2014 incompatible CLI output schema.`
+        }
+      ]
+    };
+  }
+  const plugins = [];
+  data.forEach((entry, i) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      issues.push({
+        code: "plugin-list/record-not-an-object",
+        message: `plugin record ${i} is not an object \u2014 incompatible CLI output schema.`
+      });
+      return;
+    }
+    const rec = entry;
+    let recOk = true;
+    for (const { field, type } of REQUIRED_FIELDS) {
+      if (!(field in rec)) {
+        issues.push({
+          code: "plugin-list/missing-field",
+          message: `plugin record ${i} is missing required field \`${field}\` \u2014 incompatible CLI output schema.`
+        });
+        recOk = false;
+      } else if (typeof rec[field] !== type) {
+        issues.push({
+          code: "plugin-list/wrong-type",
+          message: `plugin record ${i} field \`${field}\` should be a ${type}, got ${typeof rec[field]} \u2014 incompatible CLI output schema.`
+        });
+        recOk = false;
+      }
+    }
+    if (!recOk) return;
+    const id = rec.id;
+    const atIndex = id.indexOf("@");
+    const name = atIndex > 0 ? id.slice(0, atIndex) : id;
+    plugins.push({
+      id,
+      name,
+      version: rec.version,
+      scope: rec.scope,
+      enabled: rec.enabled,
+      installPath: normalizeSlashes(rec.installPath)
+    });
+  });
+  return { plugins, contractOk: issues.length === 0, issues };
+}
+
+// src/resolver/config.ts
+function backtickRun(text, i) {
+  let n = 0;
+  while (text[i + n] === "`") n += 1;
+  return n;
+}
+function splitTableRow(line) {
+  const cells = [];
+  let current = "";
+  let i = line.startsWith("|") ? 1 : 0;
+  while (i < line.length) {
+    const ch = line[i];
+    if (ch === "\\" && line[i + 1] === "|") {
+      current += "|";
+      i += 2;
+      continue;
+    }
+    if (ch === "`") {
+      const n = backtickRun(line, i);
+      let j = i + n;
+      let close = -1;
+      while (j < line.length) {
+        if (line[j] === "`") {
+          const m = backtickRun(line, j);
+          if (m === n) {
+            close = j;
+            break;
+          }
+          j += m;
+        } else {
+          j += 1;
+        }
+      }
+      if (close >= 0) {
+        current += line.slice(i, close + n);
+        i = close + n;
+      } else {
+        current += line.slice(i, i + n);
+        i += n;
+      }
+      continue;
+    }
+    if (ch === "|") {
+      cells.push(current.trim());
+      current = "";
+      i += 1;
+      continue;
+    }
+    current += ch;
+    i += 1;
+  }
+  if (current.trim() !== "") cells.push(current.trim());
+  return cells;
+}
+function extractKeyValues(markdown) {
+  const map = /* @__PURE__ */ new Map();
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.replace(/\r$/, "").trim();
+    if (!line.startsWith("|")) continue;
+    const cells = splitTableRow(line);
+    if (cells.length < 2) continue;
+    const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
+    if (!keyMatch) continue;
+    const key = keyMatch[1].trim().toLowerCase();
+    map.set(key, cells[1]);
+  }
+  return map;
+}
+function normalizeValue(raw) {
+  if (raw === void 0) return null;
+  let v = raw.trim();
+  const bt = /^`(.*)`$/.exec(v);
+  if (bt) v = bt[1].trim();
+  if (v === "" || v === "\u2014") return null;
+  if (/^<.*>$/.test(v)) return null;
+  return v;
+}
+function parseRoutingConfig(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^##\s+Routing\s*$/.test(line.trim()));
+  if (start < 0) return {};
+  const out = {};
+  for (const raw of lines.slice(start + 1)) {
+    const line = raw.trim();
+    if (/^##\s+/.test(line)) break;
+    if (!line.startsWith("|")) continue;
+    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((v) => v.trim());
+    if (cells.length < 3 || /^(role|-+)$/i.test(cells[0])) continue;
+    const role = cells[0].replace(/^`|`$/g, "").trim();
+    if (!/^[a-z][a-z0-9-]*$/.test(role)) continue;
+    out[role] = { model: normalizeValue(cells[1]), effort: normalizeValue(cells[2]) };
+  }
+  return out;
+}
+function parseCoreConfig(markdown) {
+  const kv = extractKeyValues(markdown);
+  return {
+    taskRoot: normalizeValue(kv.get("task root")),
+    verifyCommand: normalizeValue(kv.get("verify command")),
+    qaRules: normalizeValue(kv.get("qa rules")),
+    qaBaselineIgnore: normalizeValue(kv.get("qa baseline ignore")),
+    seedArchitectureDoc: normalizeValue(kv.get("architecture doc")),
+    seedBacklogPath: normalizeValue(kv.get("backlog path")),
+    standupStatuses: normalizeValue(kv.get("standup statuses")),
+    contextCeiling: normalizeValue(kv.get("context ceiling")),
+    versionDeclaration: normalizeValue(kv.get("version declaration")),
+    dependencySetupCommand: normalizeValue(kv.get("dependency setup command")),
+    dependencySetupTimeout: normalizeValue(kv.get("dependency setup timeout"))
+  };
+}
+
+// src/resolver/freshness.ts
+var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
+  "wf-config",
+  "registry",
+  "core-config",
+  "manifest",
+  "profile-template",
+  "profile",
+  // WF-329: slot-contribution bodies, personal slot overrides, and per-skill
+  // settings overrides join the re-read set — editing any of them invalidates
+  // the snapshot on the next query (recorded by their exact path, never a walk).
+  "slot-contribution",
+  "slot-override",
+  // WF-443: the committed `.wf/` project slot override joins the same re-read
+  // set, so a checked-in customization invalidates the snapshot on the next
+  // query exactly as a personal override does.
+  "slot-project-override",
+  "settings-override",
+  // WF-334: the composed constitution record joins the re-read set — editing a
+  // project clause (or re-composing capability articles into it) invalidates the
+  // snapshot on the next query, keeping the SessionStart constitution payload
+  // fresh through fingerprint discipline, never an un-fingerprinted raw read.
+  "constitution"
+]);
+function isAbsolute2(p) {
+  return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
+}
+function absOf(workspaceRoot, recordedPath) {
+  const p = normalizeSlashes(recordedPath);
+  return isAbsolute2(p) ? p : joinSlash(workspaceRoot, p);
+}
+function profileTemplateContent(snapshot, workspaceRoot, source, probe) {
+  if (!probe.readContainedFile) return null;
+  const capability = snapshot.capabilities.find(
+    (candidate) => candidate.profileTemplatePath === source.path
+  );
+  if (!capability?.resolvedPath) return null;
+  const capabilityRoot = absOf(workspaceRoot, capability.resolvedPath);
+  const templatePath = absOf(workspaceRoot, source.path);
+  const normalizedRoot = normalizeSlashes(capabilityRoot).replace(/\/+$/, "");
+  const normalizedTemplate = normalizeSlashes(templatePath);
+  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  if (!normalizedTemplate.startsWith(prefix)) return null;
+  const selectedPath = normalizedTemplate.slice(prefix.length);
+  if (resolveContainedCapabilityPath(capabilityRoot, selectedPath) !== normalizedTemplate) {
+    return null;
+  }
+  const read = probe.readContainedFile(
+    capabilityRoot,
+    selectedPath,
+    MAX_PROFILE_TEMPLATE_BYTES
+  );
+  return read.status === "ok" ? read.content : null;
+}
+function normalizePluginList(raw) {
+  if (raw === null) return null;
+  const parsed = parsePluginList(raw);
+  if (!parsed.contractOk) {
+    return raw;
+  }
+  const projected = parsed.plugins.map((p) => ({
+    id: p.id,
+    name: p.name,
+    version: p.version,
+    scope: p.scope,
+    enabled: p.enabled,
+    installPath: p.installPath
+  })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  return JSON.stringify(projected);
+}
+function evaluateFreshness(snapshot, workspaceRoot, probe) {
+  const reasons = [];
+  if (snapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+    reasons.push({
+      code: "schema/incompatible",
+      message: `snapshot schemaVersion ${String(
+        snapshot.schemaVersion
+      )} is incompatible with this runtime (expects ${SNAPSHOT_SCHEMA_VERSION}).`
+    });
+  }
+  const currentGenVersion = probe.generatorVersion ?? RESOLVER_GENERATOR.version;
+  if (snapshot.generator?.version && snapshot.generator.version !== currentGenVersion) {
+    reasons.push({
+      code: "resolver/version-changed",
+      message: `snapshot built by resolver ${snapshot.generator.version}; runtime is ${currentGenVersion}.`
+    });
+  }
+  for (const src of snapshot.sources) {
+    if (!FILE_SOURCE_KINDS.has(src.kind)) continue;
+    const content = src.kind === "profile-template" ? profileTemplateContent(snapshot, workspaceRoot, src, probe) : probe.readFile(absOf(workspaceRoot, src.path));
+    const now = fingerprint(src.kind, src.path, content);
+    if (now.present !== src.present || now.sha256 !== src.sha256) {
+      const change = !now.present ? "was removed" : !src.present ? "appeared" : "changed";
+      reasons.push({
+        code: `${src.kind}/changed`,
+        message: `${src.kind} source \`${src.path}\` ${change}.`,
+        source: src.path
+      });
+    }
+  }
+  if (probe.pluginListRaw !== void 0) {
+    const recorded = snapshot.sources.find((s) => s.kind === "plugin-list");
+    const now = fingerprint(
+      "plugin-list",
+      "claude plugin list --json",
+      normalizePluginList(probe.pluginListRaw)
+    );
+    if (!recorded || now.present !== recorded.present || now.sha256 !== recorded.sha256) {
+      reasons.push({
+        code: "plugin-list/changed",
+        message: "installed plugin inventory changed (add / remove / enable / disable) since the snapshot.",
+        source: "claude plugin list --json"
+      });
+    }
+  }
+  return { fresh: reasons.length === 0, reasons };
+}
+
+// src/resolver/constitution-core.ts
+var CORE_ARTICLES_HEADING = "## Core articles (provenance: core)";
+var UNATTENDED_GATE_CLAUSE = "A human approves; or, where unattended mode is established independently of the agent, a resolver-issued run-evidence record does: naming the gate, binding the approved artifact by digest, filed before the next phase, valid only in its requesting run, requested by but never written by the agent it authorises. Absent, unmatched, unverifiable, foreign-run, or digest-stale, the gate is unapproved: the run halts there, reported unproven.";
+var CORE_ARTICLES_BODY = Object.freeze([
+  "",
+  "- **core.1 \u2014 Spec is the source of truth.** A derived artifact (plan, task list) never overrides the spec; conformance is judged against the spec.",
+  `- **core.2 \u2014 No phase skips its gate.** Each phase's artifact feeds the next; nothing advances past an unapproved gate. ${UNATTENDED_GATE_CLAUSE}`,
+  "- **core.3 \u2014 Write scope.** Nothing writes outside `_local/` except the designated source-mutating skills and the resolver-owned declared lifecycle artifacts under `.wf/`, admitted only when both resolver-managed and of a declared class; every other component reads `.wf/` through the resolver and writes only inside `_local/`.",
+  "- **core.4 \u2014 Model attribution.** Every artifact carries a `**Model:** <id>` line, or a verb-shaped variant, naming the model that produced it.",
+  '- **core.5 \u2014 No AI attribution in commits.** Commit messages and PR descriptions carry no `Co-Authored-By` trailer, "generated with" footer, emoji, or promotional tagline.',
+  "- **core.6 \u2014 Never commit to `main`.** All work happens on a feature branch (`feat/\u2026`, `fix/\u2026`, `chore/\u2026`); pushing to `main` is forbidden whatever is registered, and in bare-core mode a branch gate skips with a stated reason rather than permit a `main` commit.",
+  "- **core.7 \u2014 Config over hardcode.** Project-specific values are read from `_local/config.md`, never hardcoded into a skill.",
+  "- **core.8 \u2014 Core never requires a capability.** Every core extension point ships a lean default and runs inert when no capability is registered; core never names or hard-depends on a specific capability.",
+  "- **core.9 \u2014 Scratch discipline.** Scratch and temporary files live only under `_local/scratch/` \u2014 never the repo root, system temp, or beside tracked files. (a) A scratch file's consumer deletes it as its own last act in that same run, never deferring to a sweep. (b) The run-ending skill deletes that run's coordination files \u2014 state, handoff, ledger, lock, marker \u2014 as part of ending it, on success or failure. The finalize sweep is a backstop that excuses neither.",
+  ""
+]);
+
+// src/resolver/constitution-compose.ts
+var CAPABILITY_ARTICLES_HEADING = "## Capability articles (provenance: each capability)";
+var PROJECT_CLAUSES_HEADING = "## Project clauses (provenance: project)";
+var REGISTRY_LINE_PREFIX = "**Registry:** ";
+function locateHeading(lines, heading) {
+  const found = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].trimEnd() === heading) found.push(index);
+  }
+  if (found.length === 0) {
+    return {
+      ok: false,
+      detail: `the composed constitution record carries no \`${heading}\` section, so its structure is not recognized; the record is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  if (found.length > 1) {
+    return {
+      ok: false,
+      detail: `the composed constitution record carries ${found.length} \`${heading}\` sections, so the section boundary is ambiguous; the record is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  return { ok: true, index: found[0] };
+}
+function nextTopLevelHeading(lines, from) {
+  for (let index = from; index < lines.length; index += 1) {
+    if (lines[index].startsWith("## ")) return index;
+  }
+  return lines.length;
+}
+function renderArticleBody(capabilities) {
+  const contributing = capabilities.filter((entry) => entry.articles.length > 0);
+  if (contributing.length === 0) {
+    return ["", "No registered capability declares a constitution article.", ""];
+  }
+  const out = [];
+  for (const entry of contributing) {
+    out.push("", `### ${entry.capability}`, "");
+    entry.articles.forEach((article, index) => {
+      out.push(`- **${entry.capability}.${index + 1} \u2014 ${article.key}:** ${article.value}`);
+    });
+  }
+  out.push("");
+  return out;
+}
+function refreshRegistryLine(preamble, registryNames) {
+  const hits = [];
+  for (let index = 0; index < preamble.length; index += 1) {
+    if (preamble[index].startsWith(REGISTRY_LINE_PREFIX)) hits.push(index);
+  }
+  if (hits.length !== 1) return [...preamble];
+  const out = [...preamble];
+  const eol = preamble[hits[0]].endsWith("\r") ? "\r" : "";
+  out[hits[0]] = `${REGISTRY_LINE_PREFIX}${registryNames.join(", ")}${eol}`;
+  return out;
+}
+function composeConstitutionRecord(input) {
+  const lines = input.current.split("\n");
+  const articles = locateHeading(lines, CAPABILITY_ARTICLES_HEADING);
+  if (!articles.ok) return articles;
+  const clauses = locateHeading(lines, PROJECT_CLAUSES_HEADING);
+  if (!clauses.ok) return clauses;
+  if (clauses.index <= articles.index) {
+    return {
+      ok: false,
+      detail: `the composed constitution record places \`${PROJECT_CLAUSES_HEADING}\` before \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  const articleSectionEnd = nextTopLevelHeading(lines, articles.index + 1);
+  if (articleSectionEnd !== clauses.index) {
+    return {
+      ok: false,
+      detail: `the composed constitution record carries an unrecognized section between \`${CAPABILITY_ARTICLES_HEADING}\` and \`${PROJECT_CLAUSES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  const coreArticles = input.coreArticles !== void 0 && input.coreArticles !== null && input.coreArticles.length > 0 ? input.coreArticles : null;
+  let coreStart = articles.index;
+  let coreSection = [];
+  if (coreArticles !== null) {
+    const core = locateHeading(lines, CORE_ARTICLES_HEADING);
+    if (!core.ok) return core;
+    if (core.index >= articles.index) {
+      return {
+        ok: false,
+        detail: `the composed constitution record places \`${CORE_ARTICLES_HEADING}\` at or after \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`
+      };
+    }
+    if (nextTopLevelHeading(lines, core.index + 1) !== articles.index) {
+      return {
+        ok: false,
+        detail: `the composed constitution record carries an unrecognized section between \`${CORE_ARTICLES_HEADING}\` and \`${CAPABILITY_ARTICLES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
+      };
+    }
+    coreStart = core.index;
+    coreSection = [lines[core.index].trimEnd(), ...coreArticles];
+  }
+  const refreshed = refreshRegistryLine(lines.slice(0, articles.index), input.registryNames);
+  const preamble = refreshed.slice(0, coreStart);
+  const preservedClauses = lines.slice(clauses.index);
+  const crlf = /\r\n/.test(input.current) && !/(^|[^\r])\n/.test(input.current);
+  const emit = (line) => crlf ? `${line.replace(/\r$/, "")}\r` : line;
+  const content = [
+    ...preamble,
+    ...coreSection.map(emit),
+    emit(lines[articles.index].trimEnd()),
+    ...renderArticleBody(input.capabilities).map(emit),
+    ...preservedClauses
+  ].join("\n");
+  return { ok: true, content, changed: content !== input.current };
+}
+function articlesByCapability(inputs) {
+  const order = [];
+  const byCapability = /* @__PURE__ */ new Map();
+  for (const input of inputs) {
+    const bucket = byCapability.get(input.capability);
+    if (bucket === void 0) {
+      order.push(input.capability);
+      byCapability.set(input.capability, [{ key: input.key, value: input.value }]);
+      continue;
+    }
+    bucket.push({ key: input.key, value: input.value });
+  }
+  return order.map((capability) => ({
+    capability,
+    articles: byCapability.get(capability) ?? []
+  }));
+}
+
+// src/resolver/constitution-drift.ts
+var CORE_DRIFT_CODE = "constitution/core-drift";
+var CORE_UNRECOGNIZED_CODE = "constitution/core-unrecognized";
+var ARTICLE_ID = /^- \*\*([^*\s]+)\s+—\s/;
+function articleId(line) {
+  const matched = ARTICLE_ID.exec(line);
+  return matched === null ? null : matched[1];
+}
+function meaningful(lines) {
+  const out = [];
+  for (const line of lines) {
+    const trimmed = line.replace(/\r$/, "").trimEnd();
+    if (trimmed.length > 0) out.push(trimmed);
+  }
+  return out;
+}
+function sameSequence(left, right) {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+function attribute(observed, expected) {
+  const expectedById = /* @__PURE__ */ new Map();
+  for (const line of expected) {
+    const id = articleId(line);
+    if (id !== null) expectedById.set(id, line);
+  }
+  const observedById = /* @__PURE__ */ new Map();
+  let unattributedLines = 0;
+  for (const line of observed) {
+    const id = articleId(line);
+    if (id === null) {
+      unattributedLines += 1;
+      continue;
+    }
+    observedById.set(id, line);
+  }
+  const differences = [];
+  for (const [id, line] of expectedById) {
+    const seen = observedById.get(id);
+    if (seen === void 0) differences.push({ id, state: "absent" });
+    else if (seen !== line) differences.push({ id, state: "changed" });
+  }
+  for (const id of observedById.keys()) {
+    if (!expectedById.has(id)) differences.push({ id, state: "unexpected" });
+  }
+  return { differences, unattributedLines };
+}
+function detectCoreArticleDrift(current, coreArticles) {
+  const expected = meaningful(coreArticles);
+  if (expected.length === 0) {
+    return {
+      verdict: "unrecognized",
+      detail: "no core-article body was supplied to compare against, so neither drift nor currency is asserted; an empty body means ABSENT to the composer, never a claim that the running release defines no articles."
+    };
+  }
+  const lines = current.split("\n");
+  const core = locateHeading(lines, CORE_ARTICLES_HEADING);
+  if (!core.ok) return { verdict: "unrecognized", detail: core.detail };
+  const articles = locateHeading(lines, CAPABILITY_ARTICLES_HEADING);
+  if (!articles.ok) return { verdict: "unrecognized", detail: articles.detail };
+  const clauses = locateHeading(lines, PROJECT_CLAUSES_HEADING);
+  if (!clauses.ok) return { verdict: "unrecognized", detail: clauses.detail };
+  if (core.index >= articles.index) {
+    return {
+      verdict: "unrecognized",
+      detail: `the composed constitution record places \`${CORE_ARTICLES_HEADING}\` at or after \`${CAPABILITY_ARTICLES_HEADING}\`, so its core section cannot be located; neither drift nor currency is asserted, and the record is not modified.`
+    };
+  }
+  if (nextTopLevelHeading(lines, core.index + 1) !== articles.index) {
+    return {
+      verdict: "unrecognized",
+      detail: `the composed constitution record carries an unrecognized section between \`${CORE_ARTICLES_HEADING}\` and \`${CAPABILITY_ARTICLES_HEADING}\`, so its core section cannot be delimited; neither drift nor currency is asserted, and the record is not modified.`
+    };
+  }
+  if (clauses.index <= articles.index) {
+    return {
+      verdict: "unrecognized",
+      detail: `the composed constitution record places \`${PROJECT_CLAUSES_HEADING}\` before \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure a re-composition recognizes; neither drift nor currency is asserted, and the record is not modified.`
+    };
+  }
+  if (nextTopLevelHeading(lines, articles.index + 1) !== clauses.index) {
+    return {
+      verdict: "unrecognized",
+      detail: `the composed constitution record carries an unrecognized section between \`${CAPABILITY_ARTICLES_HEADING}\` and \`${PROJECT_CLAUSES_HEADING}\`, which is not the structure a re-composition recognizes; neither drift nor currency is asserted, and the record is not modified.`
+    };
+  }
+  const observed = meaningful(lines.slice(core.index + 1, articles.index));
+  if (sameSequence(observed, expected)) return { verdict: "current" };
+  const { differences, unattributedLines } = attribute(observed, expected);
+  return { verdict: "stale", differences, unattributedLines };
+}
+var MAX_RENDERED_IDS = 20;
+var MAX_RENDERED_ID_LENGTH = 64;
+function summarize(differences, unattributedLines) {
+  const clamp = (id) => id.length <= MAX_RENDERED_ID_LENGTH ? id : `${id.slice(0, MAX_RENDERED_ID_LENGTH)}\u2026`;
+  const parts = [];
+  for (const state of ["changed", "absent", "unexpected"]) {
+    const ids = differences.filter((entry) => entry.state === state).map((entry) => entry.id);
+    if (ids.length === 0) continue;
+    const shown = ids.slice(0, MAX_RENDERED_IDS).map(clamp).join(", ");
+    const omitted = ids.length - MAX_RENDERED_IDS;
+    parts.push(omitted > 0 ? `${shown} and ${omitted} more ${state}` : `${shown} ${state}`);
+  }
+  if (unattributedLines > 0) {
+    parts.push(`${unattributedLines} record line(s) carrying no recognized article id`);
+  }
+  if (parts.length === 0) {
+    return "the section's article order or arrangement differs, though every article the release defines is present unchanged";
+  }
+  return parts.join("; ");
+}
+function coreArticleDriftDiagnostic(report) {
+  if (report.verdict === "current") return null;
+  if (report.verdict === "unrecognized") {
+    return {
+      severity: "info",
+      code: CORE_UNRECOGNIZED_CODE,
+      message: `the composed constitution's core-article currency could not be determined: ${report.detail}`
+    };
+  }
+  return {
+    severity: "warning",
+    code: CORE_DRIFT_CODE,
+    message: `the composed constitution's core articles are behind the running release \u2014 ${summarize(report.differences, report.unattributedLines)}. This check does not modify the record; re-compose it with \`/wf:constitution\` to carry the current articles.`
+  };
+}
+
+// src/resolver/resolve.ts
+function relativize(workspaceRoot, absPath) {
+  const abs = normalizeSlashes(absPath);
+  const root = normalizeSlashes(workspaceRoot).replace(/\/+$/, "");
+  if (abs === root) return ".";
+  if (abs.startsWith(root + "/")) return abs.slice(root.length + 1);
+  return abs;
+}
+function toAbsolute2(workspaceRoot, snapshotPath2) {
+  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
+}
+function questionPackName(resolvedPath, fallback) {
+  const normalized = normalizeSlashes(resolvedPath).replace(/\/+$/, "");
+  const separator = normalized.lastIndexOf("/");
+  const name = separator >= 0 ? normalized.slice(separator + 1) : normalized;
+  return name || fallback;
+}
+function inlineDispatchRel(dispatch) {
+  const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
+  return m ? m[1].trim() : null;
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function appendQuestionDiagnostics(target, questionDiagnostics) {
+  for (const issue3 of questionDiagnostics) {
+    target.push({
+      severity: "error",
+      code: issue3.code,
+      message: issue3.message,
+      category: "registry-invalid",
+      recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
+    });
+  }
+}
+function buildSnapshot(inputs, io) {
+  const { workspaceRoot } = inputs;
+  const diagnostics = [];
+  const sources = [];
+  const registryPath = normalizeSlashes(inputs.registryPathValue);
+  sources.push(fingerprint("wf-config", "wf.config.js", inputs.wfConfigContent));
+  sources.push(fingerprint("registry", registryPath, inputs.registryContent));
+  if (registryPath !== "_local/config.md") {
+    sources.push(fingerprint("core-config", "_local/config.md", inputs.coreConfigContent));
+  }
+  sources.push(
+    fingerprint(
+      "plugin-list",
+      "claude plugin list --json",
+      normalizePluginList(inputs.pluginListRaw)
+    )
+  );
+  const constitutionRecord = io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"));
+  sources.push(fingerprint("constitution", "_local/constitution.md", constitutionRecord));
+  if (constitutionRecord !== null) {
+    const drift = coreArticleDriftDiagnostic(
+      detectCoreArticleDrift(constitutionRecord, CORE_ARTICLES_BODY)
+    );
+    if (drift !== null) diagnostics.push(drift);
+  }
+  const registry2 = parseRegistry(inputs.registryContent ?? "");
+  const configMarkdown = inputs.coreConfigContent ?? inputs.registryContent ?? "";
+  const coreConfig = parseCoreConfig(configMarkdown);
+  const routing = parseRoutingConfig(configMarkdown);
+  let pluginList;
+  if (inputs.pluginListRaw === null) {
+    pluginList = { plugins: [], contractOk: true, issues: [] };
+    diagnostics.push({
+      severity: "warning",
+      code: "plugin-list/cli-unavailable",
+      message: "`claude plugin list --json` could not be run (CLI unavailable or errored); installed-pack facts are unknown for this snapshot. The plugin-list source is recorded as absent rather than an empty result \u2014 re-run once the `claude` CLI is available on PATH."
+    });
+  } else {
+    pluginList = parsePluginList(inputs.pluginListRaw);
+    for (const issue3 of pluginList.issues) {
+      diagnostics.push({ severity: "error", code: issue3.code, message: issue3.message });
+    }
+  }
+  const recordedRoots = registry2.pluginRoots.map((r) => ({
+    plugin: r.plugin,
+    root: r.root
+  }));
+  const installedRoots = pluginList.plugins.map((p) => ({
+    pluginName: p.name,
+    installPath: p.installPath
+  }));
+  const manifestExists = (p) => io.readFile(p) !== null;
+  const registeredByPlugin = /* @__PURE__ */ new Map();
+  const pluginRootProvenance = /* @__PURE__ */ new Map();
+  const capabilities = registry2.capabilities.map((row) => {
+    const anchor = /^plugin:([^/]+)\//.exec(row.path);
+    const pluginName = anchor ? anchor[1] : null;
+    const resolved = resolveCapabilityPath(row.path, {
+      workspaceRoot,
+      recordedRoots,
+      installedRoots,
+      manifestExists
+    });
+    let kind = null;
+    let fragments = [];
+    let articles = [];
+    let requires = [];
+    let conflicts = [];
+    let profileTemplatePath = null;
+    let questions = [];
+    if (resolved.manifestPath) {
+      const content = io.readFile(resolved.manifestPath);
+      if (content !== null) {
+        sources.push(
+          fingerprint("manifest", relativize(workspaceRoot, resolved.manifestPath), content)
+        );
+        const m = parseManifest(content);
+        kind = m.kind;
+        fragments = m.fragments;
+        articles = m.articles;
+        requires = m.requires;
+        conflicts = m.conflicts;
+        if (m.profileTemplate && resolved.resolvedPath) {
+          const packName = questionPackName(resolved.resolvedPath, row.name);
+          const profileTemplateAbs = resolveContainedCapabilityPath(
+            resolved.resolvedPath,
+            m.profileTemplate
+          );
+          if (profileTemplateAbs === null) {
+            appendQuestionDiagnostics(diagnostics, [
+              {
+                code: "question/template-path-invalid",
+                pack: packName,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${packName}\`, field \`profile-template\`: declared template path \`${m.profileTemplate}\` must be a forward-slash relative path contained beneath its capability folder.`
+              }
+            ]);
+          } else {
+            profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
+            const templateRead = io.readContainedFile ? io.readContainedFile(
+              resolved.resolvedPath,
+              m.profileTemplate,
+              MAX_PROFILE_TEMPLATE_BYTES
+            ) : {
+              status: "unsupported",
+              path: profileTemplateAbs,
+              content: null
+            };
+            const profileTemplateRaw = templateRead.status === "ok" ? templateRead.content : null;
+            sources.push(
+              fingerprint("profile-template", profileTemplatePath, profileTemplateRaw)
+            );
+            if (templateRead.status === "missing") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-missing",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`
+                }
+              ]);
+            } else if (templateRead.status === "too-large") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-too-large",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+                }
+              ]);
+            } else if (templateRead.status === "unsupported") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-reader-unavailable",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: no contained-file reader is available to read the declared template.`
+                }
+              ]);
+            } else if (templateRead.status !== "ok") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-path-invalid",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`
+                }
+              ]);
+            } else {
+              const parsedQuestions = parseQuestionDeclarations(packName, templateRead.content);
+              if (parsedQuestions.ok) questions = parsedQuestions.questions;
+              else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
+            }
+          }
+        }
+      }
+    }
+    const validity = resolved.manifestPath !== null ? "ok" : "unrecoverable";
+    if (validity === "unrecoverable") {
+      diagnostics.push({
+        severity: "error",
+        code: "capability/unrecoverable",
+        message: `capability \`${row.name}\` (path \`${row.path}\`) has no readable manifest \u2014 unrecoverable; re-run the owning pack's init to refresh its plugin root.`
+      });
+    }
+    if (pluginName) {
+      const entry = registeredByPlugin.get(pluginName) ?? {
+        capabilities: [],
+        anyUnrecoverable: false
+      };
+      entry.capabilities.push(row.name);
+      if (validity === "unrecoverable") entry.anyUnrecoverable = true;
+      registeredByPlugin.set(pluginName, entry);
+      const prev = pluginRootProvenance.get(pluginName);
+      if (resolved.provenance !== "unrecoverable" && prev !== "self-healed") {
+        pluginRootProvenance.set(pluginName, resolved.provenance);
+      } else if (!prev) {
+        pluginRootProvenance.set(pluginName, resolved.provenance);
+      }
+    }
+    return {
+      name: row.name,
+      registryPath: row.path,
+      resolvedPath: resolved.resolvedPath ? relativize(workspaceRoot, resolved.resolvedPath) : null,
+      manifestPath: resolved.manifestPath ? relativize(workspaceRoot, resolved.manifestPath) : null,
+      provenance: resolved.provenance,
+      kind,
+      fragments,
+      articles,
+      requires,
+      conflicts,
+      profileTemplatePath,
+      questions,
+      validity
+    };
+  });
+  const pluginRoots = registry2.pluginRoots.map((r) => {
+    const provenance = pluginRootProvenance.get(r.plugin) ?? "recorded";
+    const recordedRoot = normalizeSlashes(r.root);
+    let resolvedRoot = recordedRoot;
+    if (provenance === "self-healed") {
+      const installed = installedRoots.find((ir) => ir.pluginName === r.plugin);
+      resolvedRoot = installed ? relativize(workspaceRoot, installed.installPath) : null;
+    } else if (provenance === "unrecoverable") {
+      resolvedRoot = null;
+    } else {
+      resolvedRoot = relativize(workspaceRoot, recordedRoot);
+    }
+    return {
+      plugin: r.plugin,
+      recordedRoot: relativize(workspaceRoot, recordedRoot),
+      resolvedRoot,
+      provenance
+    };
+  });
+  const packs = [];
+  const seenPlugins = /* @__PURE__ */ new Set();
+  for (const p of pluginList.plugins) {
+    seenPlugins.add(p.name);
+    const reg = registeredByPlugin.get(p.name);
+    let state;
+    if (!p.enabled) {
+      state = "installed/disabled";
+    } else if (reg && reg.capabilities.length > 0) {
+      state = reg.anyUnrecoverable ? "registered/unrecoverable" : "active";
+    } else {
+      state = "installed/inactive";
+    }
+    packs.push({
+      pluginId: p.id,
+      pluginName: p.name,
+      version: p.version,
+      scope: p.scope,
+      enablement: p.enabled ? "enabled" : "disabled",
+      installPath: relativize(workspaceRoot, p.installPath),
+      state,
+      registeredCapabilities: reg?.capabilities ?? [],
+      diagnostics: state === "registered/unrecoverable" ? "registered capability manifest is unreadable under this installed pack \u2014 refresh its plugin root (re-run the pack init)." : null
+    });
+  }
+  for (const [pluginName, reg] of registeredByPlugin) {
+    if (seenPlugins.has(pluginName)) continue;
+    packs.push({
+      pluginId: pluginName,
+      pluginName,
+      version: null,
+      scope: null,
+      enablement: "unknown",
+      installPath: null,
+      state: "registered/unrecoverable",
+      registeredCapabilities: reg.capabilities,
+      diagnostics: `registered pack \`${pluginName}\` is not installed (absent from \`claude plugin list --json\`) \u2014 install it or remove its registry rows.`
+    });
+  }
+  const providerOwnership = [];
+  for (const cap of capabilities) {
+    for (const frag of cap.fragments) {
+      if (frag.contributionKind !== "provider" || !frag.scope) continue;
+      let fragmentPath = null;
+      const rel = inlineDispatchRel(frag.dispatch);
+      if (rel && cap.resolvedPath) {
+        fragmentPath = joinSlash(cap.resolvedPath, rel);
+      }
+      providerOwnership.push({
+        surface: frag.scope,
+        owner: cap.name,
+        fragmentPath,
+        state: cap.validity === "ok" ? "ok" : "unrecoverable"
+      });
+    }
+  }
+  const trackerOwner = providerOwnership.find(
+    (o) => o.surface === "tracker" && o.state === "ok"
+  );
+  const idShape = trackerOwner ? { source: `tracker:${trackerOwner.owner}`, scheme: null } : { source: "bare-core", scheme: "T<NNN>" };
+  const profiles = {};
+  for (const cap of capabilities) {
+    const profilePath = joinSlash(workspaceRoot, capabilityProfileRelPath(cap.name));
+    const content = io.readFile(profilePath);
+    sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
+    if (content === null) continue;
+    try {
+      const parsedProfile = JSON.parse(content);
+      profiles[cap.name] = parsedProfile;
+      if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
+        if (!isRecord2(parsedProfile)) {
+          cap.questions = [];
+          appendQuestionDiagnostics(diagnostics, [
+            {
+              code: "question/persisted-container-invalid",
+              pack: packName,
+              question: null,
+              field: "profile",
+              message: `pack \`${packName}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`
+            }
+          ]);
+        } else {
+          const applied = applyQuestionValues(cap.questions, { persisted: parsedProfile });
+          if (applied.ok) cap.questions = applied.questions;
+          else {
+            cap.questions = [];
+            appendQuestionDiagnostics(diagnostics, applied.diagnostics);
+          }
+        }
+      }
+    } catch {
+      if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
+        cap.questions = [];
+        appendQuestionDiagnostics(diagnostics, [
+          {
+            code: "question/persisted-unparseable",
+            pack: packName,
+            question: null,
+            field: "profile",
+            message: `pack \`${packName}\`, field \`profile\`: persisted question answers must be valid JSON.`
+          }
+        ]);
+      } else {
+        diagnostics.push({
+          severity: "warning",
+          code: "profile/unparseable",
+          message: `profile for \`${cap.name}\` is not valid JSON.`
+        });
+      }
+    }
+  }
+  const interfaceRoots = [];
+  if (inputs.corePluginRoot) interfaceRoots.push(normalizeSlashes(inputs.corePluginRoot));
+  for (const r of pluginRoots) {
+    if (r.resolvedRoot) interfaceRoots.push(toAbsolute2(workspaceRoot, r.resolvedRoot));
+  }
+  const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
+  const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
+  const settingsOverrides = [];
+  for (const filename of [...settingsFiles].sort()) {
+    const skill = skillFromSettingsFilename(filename);
+    if (!skill) continue;
+    const overridePath = joinSlash(settingsDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("settings-override", `${SETTINGS_STORAGE_DIR}/${filename}`, overrideRaw)
+    );
+    settingsOverrides.push(skill);
+    const parsed = parseSettingsOverride(overrideRaw);
+    if (!parsed.ok) {
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/unparseable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) is not a valid JSON object: ${parsed.error}`
+      });
+      continue;
+    }
+    const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
+    if (!located) {
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/interface-unresolvable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) has no locatable declaring \`interface.md\` \u2014 its keys cannot be validated. Install the owning pack or remove the override.`
+      });
+      continue;
+    }
+    const { undeclared } = mergeSettings(located.declared, parsed.value);
+    if (undeclared.length > 0) {
+      diagnostics.push({
+        severity: "error",
+        code: "settings/undeclared-key",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) carries ${undeclared.length === 1 ? "a key" : "keys"} its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}. Remove the undeclared ${undeclared.length === 1 ? "key" : "keys"} or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
+        category: "registry-invalid",
+        recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
+      });
+    }
+  }
+  const SLOT_RECOVERY = "The capability registry or a skill interface is invalid. Declare the missing slot in the skill's `## Slots` interface table, or remove the orphaned contribution/override, then run `/wf:resolve refresh`.";
+  const declaredSlotsCache = /* @__PURE__ */ new Map();
+  const declaredSlotsFor = (skill) => {
+    if (declaredSlotsCache.has(skill)) return declaredSlotsCache.get(skill) ?? null;
+    const located = locateSlotInterface(skill, interfaceRoots, io.readFile, joinSlash);
+    const set = located ? located.declared : null;
+    declaredSlotsCache.set(skill, set);
+    return set;
+  };
+  const isDeclared = (skillPoint, skill) => declaredSlotsFor(skill)?.has(skillPoint) ?? false;
+  const packSlots = [];
+  for (const cap of capabilities) {
+    if (cap.validity !== "ok" || !cap.resolvedPath) continue;
+    for (const frag of cap.fragments) {
+      if (frag.contributionKind !== "slot") continue;
+      const parsed = parseSlotScope(frag.scope);
+      if (!parsed) continue;
+      const rel = inlineDispatchRel(frag.dispatch);
+      if (!rel) continue;
+      const bodyAbs = joinSlash(toAbsolute2(workspaceRoot, cap.resolvedPath), rel);
+      packSlots.push({
+        capability: cap.name,
+        skillPoint: parsed.skillPoint,
+        skill: parsed.skillPoint.split(".")[0],
+        policy: parsed.policy,
+        bodyPath: bodyAbs,
+        bodyRel: relativize(workspaceRoot, bodyAbs)
+      });
+    }
+  }
+  const fingerprintedBodies = /* @__PURE__ */ new Set();
+  for (const ps of packSlots) {
+    if (!fingerprintedBodies.has(ps.bodyPath)) {
+      fingerprintedBodies.add(ps.bodyPath);
+      sources.push(fingerprint("slot-contribution", ps.bodyRel, io.readFile(ps.bodyPath)));
+    }
+    if (!isDeclared(ps.skillPoint, ps.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-contribution",
+        message: `capability \`${ps.capability}\` contributes to slot \`${ps.skillPoint}\`, which no active skill interface declares \u2014 the contribution would silently never fire. Declare the slot in the skill's \`## Slots\` interface table or remove the capability's \`slot\` fragment row.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
+  const slotOverrideDir = joinSlash(workspaceRoot, OVERRIDE_DIR);
+  const slotOverrideFiles = io.listFiles ? io.listFiles(slotOverrideDir) : [];
+  const overridePresent = /* @__PURE__ */ new Set();
+  for (const filename of [...slotOverrideFiles].sort()) {
+    const parsedName = slotPointFromOverrideFilename(filename);
+    if (!parsedName) continue;
+    const overridePath = joinSlash(slotOverrideDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("slot-override", `${OVERRIDE_DIR}/${filename}`, overrideRaw)
+    );
+    overridePresent.add(parsedName.skillPoint);
+    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-override",
+        message: `slot override \`${OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
+  const projectOverrideDir = joinSlash(workspaceRoot, PROJECT_OVERRIDE_DIR);
+  const projectOverrideFiles = io.listFiles ? io.listFiles(projectOverrideDir) : [];
+  const projectOverridePresent = /* @__PURE__ */ new Set();
+  for (const filename of [...projectOverrideFiles].sort()) {
+    const parsedName = slotPointFromOverrideFilename(filename);
+    if (!parsedName) continue;
+    const overridePath = joinSlash(projectOverrideDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("slot-project-override", `${PROJECT_OVERRIDE_DIR}/${filename}`, overrideRaw)
+    );
+    projectOverridePresent.add(parsedName.skillPoint);
+    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-project-override",
+        message: `project slot override \`${PROJECT_OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
+  const slotIds = /* @__PURE__ */ new Set([
+    ...packSlots.map((p) => p.skillPoint),
+    ...overridePresent,
+    ...projectOverridePresent
+  ]);
+  const slots = [...slotIds].sort().map((skillPoint) => {
+    const contributors = packSlots.filter((p) => p.skillPoint === skillPoint).map((p) => p.capability);
+    const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
+    const hasOverride = overridePresent.has(skillPoint);
+    const hasProjectOverride = projectOverridePresent.has(skillPoint);
+    let tier;
+    let winningSource;
+    if (hasOverride) {
+      tier = "local-override";
+      winningSource = "local-override";
+    } else if (hasProjectOverride) {
+      tier = "project-override";
+      winningSource = "project-override";
+    } else if (contributors.length > 0) {
+      tier = "pack-contribution";
+      winningSource = contributors[contributors.length - 1];
+    } else {
+      tier = "unfilled";
+      winningSource = null;
+    }
+    return {
+      skillPoint,
+      policy: policyOwner ? policyOwner.policy : null,
+      overridePresent: hasOverride,
+      projectOverridePresent: hasProjectOverride,
+      contributors,
+      tier,
+      winningSource
+    };
+  });
+  const providerConfig = {};
+  if (providerOwnership.some((o) => o.surface === "tracker")) {
+    diagnostics.push({
+      severity: "info",
+      code: "provider-config/deferred",
+      message: "tracker provider config values are resolved by the provider surface at query time (WF-270); the snapshot records ownership only, never a tracker product's config section."
+    });
+  }
+  const constitutionInputs = [];
+  for (const cap of capabilities) {
+    for (const a of cap.articles) {
+      constitutionInputs.push({ capability: cap.name, key: a.key, value: a.value });
+    }
+  }
+  return {
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    generatedAt: inputs.generatedAt,
+    generator: inputs.generator,
+    workspaceRoot: normalizeSlashes(workspaceRoot),
+    registryPath,
+    coreConfig,
+    routing,
+    capabilities,
+    pluginRoots,
+    packs,
+    providerOwnership,
+    idShape,
+    profiles,
+    providerConfig,
+    constitutionInputs,
+    slots,
+    settingsOverrides,
+    sources,
+    diagnostics
+  };
+}
+
+// src/resolver/snapshot-store.ts
+import {
+  mkdirSync as mkdirSync2,
+  readFileSync,
+  renameSync as renameSync2,
+  rmSync as rmSync2,
+  writeFileSync
+} from "node:fs";
+import { dirname, join as join2 } from "node:path";
+import { randomBytes as randomBytes2 } from "node:crypto";
+function snapshotPath(workspaceRoot) {
+  return join2(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
+}
+function writeSnapshot(workspaceRoot, snapshot) {
+  const target = snapshotPath(workspaceRoot);
+  const dir = dirname(target);
+  mkdirSync2(dir, { recursive: true });
+  const tmp = join2(dir, `.snapshot.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`);
+  const json = `${JSON.stringify(snapshot, null, 2)}
+`;
+  try {
+    writeFileSync(tmp, json, { encoding: "utf8" });
+    renameSync2(tmp, target);
+  } catch (err) {
+    try {
+      rmSync2(tmp, { force: true });
+    } catch {
+    }
+    throw err;
+  }
+  return target;
+}
+var SnapshotSchemaError = class extends Error {
+  constructor(found, expected) {
+    super(
+      `resolver snapshot schemaVersion ${String(found)} is incompatible with this runtime (expects ${expected}); rebuild the snapshot.`
+    );
+    this.found = found;
+    this.expected = expected;
+    this.name = "SnapshotSchemaError";
+  }
+  found;
+  expected;
+};
+function readSnapshot(workspaceRoot) {
+  const target = snapshotPath(workspaceRoot);
+  let raw;
+  try {
+    raw = readFileSync(target, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+  const parsed = JSON.parse(raw);
+  if (parsed.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+    throw new SnapshotSchemaError(parsed.schemaVersion, SNAPSHOT_SCHEMA_VERSION);
+  }
+  return parsed;
+}
+
+// src/resolver/engine.ts
+var DEFAULT_REGISTRY_RELPATH = "_local/config.md";
+function readOrNull(absPath) {
+  try {
+    return readFileSync2(absPath, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+}
+var noFollowFlagOverride = null;
+function hasStatIdentity(stat) {
+  return stat.dev !== 0n || stat.ino !== 0n;
+}
+function resolveNoFollowFlag() {
+  if (noFollowFlagOverride !== null) return noFollowFlagOverride;
+  return typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+}
+function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
+  const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
+  if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    return { status: "unsafe", path: lexicalPath, content: null };
+  }
+  const inside = (canonicalRoot, candidate) => {
+    const fromRoot = relative(canonicalRoot, candidate);
+    return fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute3(fromRoot);
+  };
+  const comparable = (path) => {
+    const normalized = normalizeSlashes(path);
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  };
+  const sameIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
+  let fd = null;
+  let targetValidated = false;
+  try {
+    const canonicalRoot = realpathSync3(root);
+    const rootStat = statSync2(canonicalRoot, { bigint: true });
+    if (!rootStat.isDirectory()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const segments = selectedPath.split("/");
+    const canonicalCandidate = resolve2(canonicalRoot, ...segments);
+    if (!inside(canonicalRoot, canonicalCandidate)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    let cursor = canonicalRoot;
+    for (const segment of segments) {
+      cursor = resolve2(cursor, segment);
+      if (lstatSync2(cursor).isSymbolicLink()) {
+        return { status: "unsafe", path: lexicalPath, content: null };
+      }
+    }
+    const canonicalTarget = realpathSync3(canonicalCandidate);
+    if (!inside(canonicalRoot, canonicalTarget) || comparable(canonicalTarget) !== comparable(canonicalCandidate)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const expected = statSync2(canonicalTarget, { bigint: true });
+    if (!expected.isFile()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (expected.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    targetValidated = true;
+    const noFollow = resolveNoFollowFlag();
+    if (noFollow === 0 && !hasStatIdentity(expected)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
+    fd = openSync2(
+      canonicalTarget,
+      noFollow === 0 ? constants.O_RDONLY | nonBlock : constants.O_RDONLY | noFollow | nonBlock
+    );
+    const opened = fstatSync(fd, { bigint: true });
+    if (!opened.isFile() || !sameIdentity(expected, opened)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (opened.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    const postOpenTarget = realpathSync3(canonicalCandidate);
+    const postOpenStat = statSync2(canonicalCandidate, { bigint: true });
+    const postOpenRoot = statSync2(canonicalRoot, { bigint: true });
+    if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity(opened, postOpenStat) || !sameIdentity(rootStat, postOpenRoot)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const chunks = [];
+    let total = 0;
+    while (total <= maxBytes) {
+      const remaining = maxBytes + 1 - total;
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, total);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    if (total > maxBytes) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    const afterRead = fstatSync(fd, { bigint: true });
+    if (!sameIdentity(opened, afterRead) || afterRead.size !== opened.size) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    return {
+      status: "ok",
+      path: normalizeSlashes(lexicalPath),
+      content: Buffer.concat(chunks, total)
+    };
+  } catch (err) {
+    const code = err.code;
+    if (code === "ELOOP") return { status: "unsafe", path: lexicalPath, content: null };
+    if (code === "ENOENT" && !targetValidated) {
+      return { status: "missing", path: lexicalPath, content: null };
+    }
+    return {
+      status: targetValidated ? "unsafe" : "unreadable",
+      path: lexicalPath,
+      content: null
+    };
+  } finally {
+    if (fd !== null) closeSync2(fd);
+  }
+}
+function readContainedCapabilityFile(root, selectedPath, maxBytes) {
+  const result = readContainedCapabilityBytes(root, selectedPath, maxBytes);
+  return result.status === "ok" ? { status: "ok", path: result.path, content: result.content.toString("utf8") } : { status: result.status, path: result.path, content: null };
+}
+function fingerprintContainedCapabilityFile(root, selectedPath, maxBytes) {
+  const result = readContainedCapabilityBytes(root, selectedPath, maxBytes);
+  return result.status === "ok" ? {
+    status: "ok",
+    path: result.path,
+    sha256: createHash2("sha256").update(result.content).digest("hex"),
+    bytes: result.content.length
+  } : { status: result.status, path: result.path, sha256: null, bytes: null };
+}
+function listFilesOrEmpty(absDir) {
+  try {
+    return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+var fsIO = {
+  readFile: readOrNull,
+  readContainedFile: readContainedCapabilityFile,
+  listFiles: listFilesOrEmpty
+};
+function extractRegistryPathRaw(wfConfig) {
+  if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
+  const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
+  const v = m?.[1]?.trim();
+  return v && v.length > 0 ? v : DEFAULT_REGISTRY_RELPATH;
+}
+function extractRegistryPath(wfConfig) {
+  return normalizeSlashes(extractRegistryPathRaw(wfConfig));
+}
+function runPluginList() {
+  try {
+    return execFileSync2("claude", ["plugin", "list", "--json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 16 * 1024 * 1024
+    });
+  } catch {
+    return null;
+  }
+}
+function resolveSnapshot(opts) {
+  const workspaceRoot = normalizeSlashes(opts.workspaceRoot);
+  const io = opts.io ?? fsIO;
+  const wfConfigContent = io.readFile(join3(opts.workspaceRoot, "wf.config.js"));
+  const registryPathValue = extractRegistryPath(wfConfigContent);
+  const registryAbs = join3(opts.workspaceRoot, registryPathValue);
+  const registryContent = io.readFile(registryAbs);
+  const coreConfigAbs = join3(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
+  const coreConfigContent = registryPathValue === DEFAULT_REGISTRY_RELPATH ? registryContent : io.readFile(coreConfigAbs);
+  const pluginListRaw = opts.pluginListRaw !== void 0 ? opts.pluginListRaw : runPluginList();
+  const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
+  const inputs = {
+    workspaceRoot,
+    registryPathValue,
+    registryContent,
+    wfConfigContent,
+    coreConfigContent,
+    pluginListRaw,
+    generatedAt: now.toISOString(),
+    generator: opts.generator ?? { ...RESOLVER_GENERATOR },
+    corePluginRoot: opts.corePluginRoot ?? null
+  };
+  return buildSnapshot(inputs, io);
+}
+
+// src/resolver/workspace-setup.ts
+var SETUP_STATE_RELPATH = "_local/resolver/setup-state.json";
+var DEFAULT_SETUP_TIMEOUT_SECONDS = 600;
+var MAX_SETUP_TIMEOUT_SECONDS = 3600;
+var SETUP_OUTPUT_TAIL_CHARS = 2e3;
+var SETUP_STATE_MAX_BYTES = 64 * 1024;
+function parseSetupTimeout(raw) {
+  if (raw === null) return { seconds: DEFAULT_SETUP_TIMEOUT_SECONDS, diagnostic: null };
+  const trimmed = raw.trim();
+  if (!/^[0-9]+$/.test(trimmed) || Number(trimmed) <= 0) {
+    return {
+      seconds: DEFAULT_SETUP_TIMEOUT_SECONDS,
+      diagnostic: `Dependency Setup Timeout \`${raw}\` is not a positive whole number of seconds; the default ${DEFAULT_SETUP_TIMEOUT_SECONDS} applies.`
+    };
+  }
+  const seconds = Number(trimmed);
+  if (seconds > MAX_SETUP_TIMEOUT_SECONDS) {
+    return {
+      seconds: MAX_SETUP_TIMEOUT_SECONDS,
+      diagnostic: `Dependency Setup Timeout ${seconds} exceeds the ${MAX_SETUP_TIMEOUT_SECONDS}-second ceiling; the ceiling applies.`
+    };
+  }
+  return { seconds, diagnostic: null };
+}
+function setupCommandDigest(command) {
+  return createHash3("sha256").update(command, "utf8").digest("hex");
+}
+function readSetupStateDigest(text) {
+  if (text === null) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return typeof parsed.commandDigest === "string" && /^[a-f0-9]{64}$/.test(parsed.commandDigest) ? parsed.commandDigest : null;
+  } catch {
+    return null;
+  }
+}
+function renderSetupState(digest, completedAt) {
+  return `${JSON.stringify({ commandDigest: digest, completedAt }, null, 2)}
+`;
+}
+function planWorkspaceSetup(config2, stateText) {
+  if (config2.taskRoot === null) return { kind: "unprepared" };
+  const timeout = parseSetupTimeout(config2.dependencySetupTimeout);
+  const diagnostics = timeout.diagnostic === null ? [] : [timeout.diagnostic];
+  const command = config2.dependencySetupCommand;
+  if (command === null) {
+    return { kind: "not-declared", timeoutSeconds: timeout.seconds, diagnostics };
+  }
+  const digest = setupCommandDigest(command);
+  if (readSetupStateDigest(stateText) === digest) {
+    return { kind: "already-done", command, timeoutSeconds: timeout.seconds, diagnostics };
+  }
+  return { kind: "run", command, digest, timeoutSeconds: timeout.seconds, diagnostics };
+}
+var SETUP_RUNNER_MARGIN_MS = 15e3;
+var SETUP_RUNNER_DRAIN_MS = 2e3;
+var SETUP_RUNNER_SOURCE = `
+const { spawn, spawnSync } = require("node:child_process");
+const req = JSON.parse(process.env.WF_SETUP_REQUEST);
+delete process.env.WF_SETUP_REQUEST;
+const win = process.platform === "win32";
+const out = { exitCode: null, signal: null, timedOut: false, output: "", error: null };
+let tail = "";
+const keep = (chunk) => {
+  tail += chunk.toString("utf8");
+  if (tail.length > req.tailChars) tail = tail.slice(tail.length - req.tailChars);
+};
+let child = null;
+let done = false;
+const finish = () => {
+  if (done) return;
+  done = true;
+  out.output = tail;
+  process.stdout.write(JSON.stringify(out), () => process.exit(0));
+};
+const stopGroup = () => {
+  if (child === null || child.pid === undefined) return;
+  try {
+    if (win) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+    else process.kill(-child.pid, "SIGKILL");
+  } catch {}
+};
+try {
+  child = spawn(req.command, { cwd: req.cwd, shell: true, detached: !win, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+} catch (err) {
+  out.error = err instanceof Error ? err.message : String(err);
+  finish();
+}
+if (child !== null) {
+  child.stdout.on("data", keep);
+  child.stderr.on("data", keep);
+  const timer = setTimeout(() => {
+    out.timedOut = true;
+    stopGroup();
+  }, req.timeoutMs);
+  child.on("error", (err) => {
+    clearTimeout(timer);
+    out.error = err instanceof Error ? err.message : String(err);
+    stopGroup();
+    finish();
+  });
+  child.on("exit", (code, signal) => {
+    clearTimeout(timer);
+    out.exitCode = code;
+    out.signal = signal;
+    stopGroup();
+    setTimeout(finish, ${SETUP_RUNNER_DRAIN_MS});
+  });
+  child.on("close", finish);
+}
+`;
+function parseSetupRunnerReport(stdout, durationMs) {
+  try {
+    const parsed = JSON.parse(stdout);
+    if (typeof parsed.timedOut !== "boolean") return null;
+    return {
+      exitCode: typeof parsed.exitCode === "number" ? parsed.exitCode : null,
+      signal: typeof parsed.signal === "string" ? parsed.signal : null,
+      timedOut: parsed.timedOut,
+      outputTail: tailOf(typeof parsed.output === "string" ? parsed.output : ""),
+      error: parsed.timedOut ? null : typeof parsed.error === "string" ? parsed.error : null,
+      durationMs
+    };
+  } catch {
+    return null;
+  }
+}
+var SETUP_LOCK_RELPATH = "_local/resolver/setup.lock";
+var SETUP_LOCK_WAIT_GRACE_SECONDS = 30;
+var SETUP_LOCK_POLL_MS = 100;
+var SETUP_LOCK_MAX_BYTES = 4096;
+function renderSetupLock(record2) {
+  return `${JSON.stringify(record2)}
+`;
+}
+function parseSetupLock(text) {
+  if (text === null) return null;
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0 && typeof parsed.host === "string" && typeof parsed.token === "string" && parsed.token.length > 0 && typeof parsed.acquiredAt === "string") {
+      return { pid: parsed.pid, host: parsed.host, token: parsed.token, acquiredAt: parsed.acquiredAt };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+var defaultSetupLockDeps = {
+  pid: process.pid,
+  host: hostname(),
+  now: () => Date.now(),
+  sleepMs: (ms) => {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  },
+  processAlive: (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (err) {
+      return err.code === "EPERM";
+    }
+  }
+};
+function readLock(root, rel) {
+  const read = readContainedCapabilityFile(root, rel, SETUP_LOCK_MAX_BYTES);
+  if (read.status === "ok") return { status: "ok", record: parseSetupLock(read.content) };
+  if (read.status === "missing") return { status: "missing" };
+  if (read.status === "unsafe") return { status: "unsafe" };
+  return { status: "ok", record: null };
+}
+function reclaimIfAbandoned(root, deps) {
+  const current = readLock(root, SETUP_LOCK_RELPATH);
+  if (current.status === "missing") return "retry";
+  if (current.status === "unsafe") return "unsafe";
+  const holder = current.record;
+  if (holder === null || holder.host !== deps.host || deps.processAlive(holder.pid)) return "held";
+  const aside = `${SETUP_LOCK_RELPATH}.stale-${randomBytes3(6).toString("hex")}`;
+  const moved = renameContainedStateFile(root, SETUP_LOCK_RELPATH, aside);
+  if (!moved.ok) return moved.kind === "unsafe" ? "unsafe" : "held";
+  if (!moved.moved) return "retry";
+  const captured = readLock(root, aside);
+  if (captured.status === "ok" && captured.record?.token !== holder.token) {
+    linkContainedStateFileExclusive(root, aside, SETUP_LOCK_RELPATH);
+  }
+  removeContainedStateFile(root, aside);
+  return "retry";
+}
+function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps) {
+  const token2 = randomBytes3(16).toString("hex");
+  const content = renderSetupLock({ pid: deps.pid, host: deps.host, token: token2, acquiredAt: new Date(deps.now()).toISOString() });
+  const deadline = deps.now() + waitMs;
+  for (; ; ) {
+    const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, content);
+    if (created.ok) return { ok: true, token: token2 };
+    if (created.kind !== "exists") return { ok: false, kind: created.kind, detail: created.detail };
+    const reclaim = reclaimIfAbandoned(root, deps);
+    if (reclaim === "unsafe") {
+      return {
+        ok: false,
+        kind: "unsafe",
+        detail: `\`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
+      };
+    }
+    if (reclaim === "retry") continue;
+    if (deps.now() >= deadline) {
+      return {
+        ok: false,
+        kind: "busy",
+        detail: `another setup run still holds \`${SETUP_LOCK_RELPATH}\` after ${Math.round(waitMs / 1e3)} seconds; the command was not run.`
+      };
+    }
+    deps.sleepMs(SETUP_LOCK_POLL_MS);
+  }
+}
+function releaseSetupLock(root, token2) {
+  const current = readLock(root, SETUP_LOCK_RELPATH);
+  if (current.status === "ok" && current.record?.token === token2) {
+    removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+  }
+}
+function tailOf(output) {
+  return output.length <= SETUP_OUTPUT_TAIL_CHARS ? output : output.slice(output.length - SETUP_OUTPUT_TAIL_CHARS);
+}
+
+// src/ports.ts
+import { randomBytes as randomBytes4 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
+import { homedir } from "node:os";
+import { basename, dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // src/resolver/payloads.ts
 var PAYLOAD_COLUMNS = [
@@ -24465,261 +26347,6 @@ function compareLifecycleEvidence(expectedPortable, observedPortable, priorBindi
   return { state: "equal", seedProposal: null, persisted: true };
 }
 
-// src/resolver/plugin-list.ts
-var REQUIRED_FIELDS = [
-  { field: "id", type: "string" },
-  { field: "version", type: "string" },
-  { field: "scope", type: "string" },
-  { field: "enabled", type: "boolean" },
-  { field: "installPath", type: "string" }
-];
-function parsePluginList(raw) {
-  const issues = [];
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (err) {
-    return {
-      plugins: [],
-      contractOk: false,
-      issues: [
-        {
-          code: "plugin-list/unparseable",
-          message: `\`claude plugin list --json\` output is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
-        }
-      ]
-    };
-  }
-  if (!Array.isArray(data)) {
-    return {
-      plugins: [],
-      contractOk: false,
-      issues: [
-        {
-          code: "plugin-list/not-an-array",
-          message: `\`claude plugin list --json\` must return a JSON array of plugin records; got ${data === null ? "null" : typeof data} \u2014 incompatible CLI output schema.`
-        }
-      ]
-    };
-  }
-  const plugins = [];
-  data.forEach((entry, i) => {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      issues.push({
-        code: "plugin-list/record-not-an-object",
-        message: `plugin record ${i} is not an object \u2014 incompatible CLI output schema.`
-      });
-      return;
-    }
-    const rec = entry;
-    let recOk = true;
-    for (const { field, type } of REQUIRED_FIELDS) {
-      if (!(field in rec)) {
-        issues.push({
-          code: "plugin-list/missing-field",
-          message: `plugin record ${i} is missing required field \`${field}\` \u2014 incompatible CLI output schema.`
-        });
-        recOk = false;
-      } else if (typeof rec[field] !== type) {
-        issues.push({
-          code: "plugin-list/wrong-type",
-          message: `plugin record ${i} field \`${field}\` should be a ${type}, got ${typeof rec[field]} \u2014 incompatible CLI output schema.`
-        });
-        recOk = false;
-      }
-    }
-    if (!recOk) return;
-    const id = rec.id;
-    const atIndex = id.indexOf("@");
-    const name = atIndex > 0 ? id.slice(0, atIndex) : id;
-    plugins.push({
-      id,
-      name,
-      version: rec.version,
-      scope: rec.scope,
-      enabled: rec.enabled,
-      installPath: normalizeSlashes(rec.installPath)
-    });
-  });
-  return { plugins, contractOk: issues.length === 0, issues };
-}
-
-// src/resolver/config.ts
-function extractKeyValues(markdown) {
-  const map = /* @__PURE__ */ new Map();
-  for (const rawLine of markdown.split(/\r?\n/)) {
-    const line = rawLine.replace(/\r$/, "").trim();
-    if (!line.startsWith("|")) continue;
-    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-    if (cells.length < 2) continue;
-    const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
-    if (!keyMatch) continue;
-    const key = keyMatch[1].trim().toLowerCase();
-    map.set(key, cells[1]);
-  }
-  return map;
-}
-function normalizeValue(raw) {
-  if (raw === void 0) return null;
-  let v = raw.trim();
-  const bt = /^`(.*)`$/.exec(v);
-  if (bt) v = bt[1].trim();
-  if (v === "" || v === "\u2014") return null;
-  if (/^<.*>$/.test(v)) return null;
-  return v;
-}
-function parseRoutingConfig(markdown) {
-  const lines = markdown.split(/\r?\n/);
-  const start = lines.findIndex((line) => /^##\s+Routing\s*$/.test(line.trim()));
-  if (start < 0) return {};
-  const out = {};
-  for (const raw of lines.slice(start + 1)) {
-    const line = raw.trim();
-    if (/^##\s+/.test(line)) break;
-    if (!line.startsWith("|")) continue;
-    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((v) => v.trim());
-    if (cells.length < 3 || /^(role|-+)$/i.test(cells[0])) continue;
-    const role = cells[0].replace(/^`|`$/g, "").trim();
-    if (!/^[a-z][a-z0-9-]*$/.test(role)) continue;
-    out[role] = { model: normalizeValue(cells[1]), effort: normalizeValue(cells[2]) };
-  }
-  return out;
-}
-function parseCoreConfig(markdown) {
-  const kv = extractKeyValues(markdown);
-  return {
-    taskRoot: normalizeValue(kv.get("task root")),
-    verifyCommand: normalizeValue(kv.get("verify command")),
-    qaRules: normalizeValue(kv.get("qa rules")),
-    qaBaselineIgnore: normalizeValue(kv.get("qa baseline ignore")),
-    seedArchitectureDoc: normalizeValue(kv.get("architecture doc")),
-    seedBacklogPath: normalizeValue(kv.get("backlog path")),
-    standupStatuses: normalizeValue(kv.get("standup statuses")),
-    contextCeiling: normalizeValue(kv.get("context ceiling")),
-    versionDeclaration: normalizeValue(kv.get("version declaration")),
-    dependencySetupCommand: normalizeValue(kv.get("dependency setup command")),
-    dependencySetupTimeout: normalizeValue(kv.get("dependency setup timeout"))
-  };
-}
-
-// src/resolver/freshness.ts
-var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
-  "wf-config",
-  "registry",
-  "core-config",
-  "manifest",
-  "profile-template",
-  "profile",
-  // WF-329: slot-contribution bodies, personal slot overrides, and per-skill
-  // settings overrides join the re-read set — editing any of them invalidates
-  // the snapshot on the next query (recorded by their exact path, never a walk).
-  "slot-contribution",
-  "slot-override",
-  // WF-443: the committed `.wf/` project slot override joins the same re-read
-  // set, so a checked-in customization invalidates the snapshot on the next
-  // query exactly as a personal override does.
-  "slot-project-override",
-  "settings-override",
-  // WF-334: the composed constitution record joins the re-read set — editing a
-  // project clause (or re-composing capability articles into it) invalidates the
-  // snapshot on the next query, keeping the SessionStart constitution payload
-  // fresh through fingerprint discipline, never an un-fingerprinted raw read.
-  "constitution"
-]);
-function isAbsolute2(p) {
-  return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
-}
-function absOf(workspaceRoot, recordedPath) {
-  const p = normalizeSlashes(recordedPath);
-  return isAbsolute2(p) ? p : joinSlash(workspaceRoot, p);
-}
-function profileTemplateContent(snapshot, workspaceRoot, source, probe) {
-  if (!probe.readContainedFile) return null;
-  const capability = snapshot.capabilities.find(
-    (candidate) => candidate.profileTemplatePath === source.path
-  );
-  if (!capability?.resolvedPath) return null;
-  const capabilityRoot = absOf(workspaceRoot, capability.resolvedPath);
-  const templatePath = absOf(workspaceRoot, source.path);
-  const normalizedRoot = normalizeSlashes(capabilityRoot).replace(/\/+$/, "");
-  const normalizedTemplate = normalizeSlashes(templatePath);
-  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
-  if (!normalizedTemplate.startsWith(prefix)) return null;
-  const selectedPath = normalizedTemplate.slice(prefix.length);
-  if (resolveContainedCapabilityPath(capabilityRoot, selectedPath) !== normalizedTemplate) {
-    return null;
-  }
-  const read = probe.readContainedFile(
-    capabilityRoot,
-    selectedPath,
-    MAX_PROFILE_TEMPLATE_BYTES
-  );
-  return read.status === "ok" ? read.content : null;
-}
-function normalizePluginList(raw) {
-  if (raw === null) return null;
-  const parsed = parsePluginList(raw);
-  if (!parsed.contractOk) {
-    return raw;
-  }
-  const projected = parsed.plugins.map((p) => ({
-    id: p.id,
-    name: p.name,
-    version: p.version,
-    scope: p.scope,
-    enabled: p.enabled,
-    installPath: p.installPath
-  })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  return JSON.stringify(projected);
-}
-function evaluateFreshness(snapshot, workspaceRoot, probe) {
-  const reasons = [];
-  if (snapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
-    reasons.push({
-      code: "schema/incompatible",
-      message: `snapshot schemaVersion ${String(
-        snapshot.schemaVersion
-      )} is incompatible with this runtime (expects ${SNAPSHOT_SCHEMA_VERSION}).`
-    });
-  }
-  const currentGenVersion = probe.generatorVersion ?? RESOLVER_GENERATOR.version;
-  if (snapshot.generator?.version && snapshot.generator.version !== currentGenVersion) {
-    reasons.push({
-      code: "resolver/version-changed",
-      message: `snapshot built by resolver ${snapshot.generator.version}; runtime is ${currentGenVersion}.`
-    });
-  }
-  for (const src of snapshot.sources) {
-    if (!FILE_SOURCE_KINDS.has(src.kind)) continue;
-    const content = src.kind === "profile-template" ? profileTemplateContent(snapshot, workspaceRoot, src, probe) : probe.readFile(absOf(workspaceRoot, src.path));
-    const now = fingerprint(src.kind, src.path, content);
-    if (now.present !== src.present || now.sha256 !== src.sha256) {
-      const change = !now.present ? "was removed" : !src.present ? "appeared" : "changed";
-      reasons.push({
-        code: `${src.kind}/changed`,
-        message: `${src.kind} source \`${src.path}\` ${change}.`,
-        source: src.path
-      });
-    }
-  }
-  if (probe.pluginListRaw !== void 0) {
-    const recorded = snapshot.sources.find((s) => s.kind === "plugin-list");
-    const now = fingerprint(
-      "plugin-list",
-      "claude plugin list --json",
-      normalizePluginList(probe.pluginListRaw)
-    );
-    if (!recorded || now.present !== recorded.present || now.sha256 !== recorded.sha256) {
-      reasons.push({
-        code: "plugin-list/changed",
-        message: "installed plugin inventory changed (add / remove / enable / disable) since the snapshot.",
-        source: "claude plugin list --json"
-      });
-    }
-  }
-  return { fresh: reasons.length === 0, reasons };
-}
-
 // src/resolver/failure.ts
 function categorizeCode(code) {
   if (code === "plugin-list/cli-unavailable") return "cli-unavailable";
@@ -24807,7 +26434,7 @@ function isSafeRelPath2(p) {
 function isBareFilename(p) {
   return isSafeRelPath2(p) && !p.includes("/");
 }
-function isSkillSlug(s) {
+function isSkillSlug2(s) {
   return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
 }
 function baseName(p) {
@@ -24815,7 +26442,7 @@ function baseName(p) {
   const i = n.lastIndexOf("/");
   return i >= 0 ? n.slice(i + 1) : n;
 }
-function toAbsolute2(workspaceRoot, snapshotPath2) {
+function toAbsolute3(workspaceRoot, snapshotPath2) {
   return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
 }
 function refused(refClass, reason) {
@@ -24879,7 +26506,7 @@ function resolveFragment(ref, snapshot, workspaceRoot) {
   return {
     kind: "path",
     refClass: cls,
-    path: joinSlash(toAbsolute2(workspaceRoot, cap.resolvedPath), ref.ref)
+    path: joinSlash(toAbsolute3(workspaceRoot, cap.resolvedPath), ref.ref)
   };
 }
 function resolveProfileTemplate(ref, snapshot, workspaceRoot) {
@@ -24905,9 +26532,9 @@ function resolveProfileTemplate(ref, snapshot, workspaceRoot) {
       `capability \`${capability}\` has no resolved capability root \u2014 its profile template cannot be served.`
     );
   }
-  const resolvedRoot = toAbsolute2(workspaceRoot, cap.resolvedPath);
+  const resolvedRoot = toAbsolute3(workspaceRoot, cap.resolvedPath);
   const capabilityRoot = resolvedRoot === "/" ? "/" : resolvedRoot.replace(/\/+$/, "");
-  const path = toAbsolute2(workspaceRoot, cap.profileTemplatePath);
+  const path = toAbsolute3(workspaceRoot, cap.profileTemplatePath);
   const prefix = capabilityRoot === "/" ? "/" : `${capabilityRoot}/`;
   if (!path.startsWith(prefix)) {
     return unresolved(
@@ -24946,7 +26573,7 @@ function resolveCoreDoc(cls, ref, corePluginRoot, subDir) {
 function resolveReferencesTemplate(ref, ctx) {
   const cls = "references-template";
   const { snapshot, workspaceRoot, corePluginRoot } = ctx;
-  if (!isSkillSlug(ref.skill)) {
+  if (!isSkillSlug2(ref.skill)) {
     return refused(cls, "a `references-template` ref requires a `skill` slug (lowercase, hyphenated).");
   }
   if (typeof ref.ref !== "string" || !isSafeRelPath2(ref.ref)) {
@@ -24970,1218 +26597,9 @@ function resolveReferencesTemplate(ref, ctx) {
         `plugin \`${plugin}\` has no resolved root (unmapped, or its recorded root dangles and self-heal recovered nothing) \u2014 its skill references cannot be served.`
       );
     }
-    root = toAbsolute2(workspaceRoot, rootRow.resolvedRoot);
+    root = toAbsolute3(workspaceRoot, rootRow.resolvedRoot);
   }
   return { kind: "path", refClass: cls, path: joinSlash(root, "skills", ref.skill, "references", ref.ref) };
-}
-
-// src/resolver/settings.ts
-var SETTINGS_STORAGE_DIR = "_local/profiles";
-var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
-var PROFILE_STORAGE_DIR = SETTINGS_STORAGE_DIR;
-var PROFILE_SUFFIX = ".profile.json";
-function capabilityProfileRelPath(capability) {
-  return `${PROFILE_STORAGE_DIR}/${capability}${PROFILE_SUFFIX}`;
-}
-var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
-var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
-function isSkillSlug2(s) {
-  return typeof s === "string" && SEGMENT.test(s);
-}
-function settingsOverrideRelPath(skill) {
-  return `${SETTINGS_STORAGE_DIR}/${skill}${SETTINGS_OVERRIDE_SUFFIX}`;
-}
-function skillFromSettingsFilename(filename) {
-  if (!filename.endsWith(SETTINGS_OVERRIDE_SUFFIX)) return null;
-  const stem = filename.slice(0, -SETTINGS_OVERRIDE_SUFFIX.length);
-  return isSkillSlug2(stem) ? stem : null;
-}
-function unquote(cell) {
-  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
-}
-function parseSettingsDeclaration(interfaceMd) {
-  const lines = interfaceMd.split(/\r?\n/);
-  let inSection = false;
-  let sawSection = false;
-  const decl = /* @__PURE__ */ new Map();
-  for (const line of lines) {
-    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
-    if (heading) {
-      inSection = /^settings$/i.test(heading[1].trim());
-      if (inSection) sawSection = true;
-      continue;
-    }
-    if (!inSection) continue;
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) continue;
-    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
-    if (cells.length < 2) continue;
-    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
-    const key = unquote(cells[0]);
-    if (key === "key" || !SETTINGS_KEY.test(key)) continue;
-    decl.set(key, unquote(cells[1]));
-  }
-  return sawSection ? decl : null;
-}
-function parseSettingsOverride(jsonText) {
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, error: "a settings override must be a JSON object of key \u2192 value" };
-  }
-  return { ok: true, value: parsed };
-}
-function mergeSettings(declared, override) {
-  const values = {};
-  for (const [key, def] of declared) {
-    values[key] = override && Object.prototype.hasOwnProperty.call(override, key) ? override[key] : def;
-  }
-  const undeclared = [];
-  if (override) {
-    for (const key of Object.keys(override)) {
-      if (!declared.has(key)) undeclared.push(key);
-    }
-  }
-  undeclared.sort();
-  return { values, undeclared };
-}
-function locateInterface(skill, roots, readFile, joinSlash2) {
-  for (const root of roots) {
-    const path = joinSlash2(root, "skills", skill, "interface.md");
-    const content = readFile(path);
-    if (content === null) continue;
-    const declared = parseSettingsDeclaration(content);
-    if (declared === null) continue;
-    return { root, path, declared };
-  }
-  return null;
-}
-
-// src/resolver/constitution-core.ts
-var CORE_ARTICLES_HEADING = "## Core articles (provenance: core)";
-var UNATTENDED_GATE_CLAUSE = "A human approves; or, where unattended mode is established independently of the agent, a resolver-issued run-evidence record does: naming the gate, binding the approved artifact by digest, filed before the next phase, valid only in its requesting run, requested by but never written by the agent it authorises. Absent, unmatched, unverifiable, foreign-run, or digest-stale, the gate is unapproved: the run halts there, reported unproven.";
-var CORE_ARTICLES_BODY = Object.freeze([
-  "",
-  "- **core.1 \u2014 Spec is the source of truth.** A derived artifact (plan, task list) never overrides the spec; conformance is judged against the spec.",
-  `- **core.2 \u2014 No phase skips its gate.** Each phase's artifact feeds the next; nothing advances past an unapproved gate. ${UNATTENDED_GATE_CLAUSE}`,
-  "- **core.3 \u2014 Write scope.** Nothing writes outside `_local/` except the designated source-mutating skills and the resolver-owned declared lifecycle artifacts under `.wf/`, admitted only when both resolver-managed and of a declared class; every other component reads `.wf/` through the resolver and writes only inside `_local/`.",
-  "- **core.4 \u2014 Model attribution.** Every artifact carries a `**Model:** <id>` line, or a verb-shaped variant, naming the model that produced it.",
-  '- **core.5 \u2014 No AI attribution in commits.** Commit messages and PR descriptions carry no `Co-Authored-By` trailer, "generated with" footer, emoji, or promotional tagline.',
-  "- **core.6 \u2014 Never commit to `main`.** All work happens on a feature branch (`feat/\u2026`, `fix/\u2026`, `chore/\u2026`); pushing to `main` is forbidden whatever is registered, and in bare-core mode a branch gate skips with a stated reason rather than permit a `main` commit.",
-  "- **core.7 \u2014 Config over hardcode.** Project-specific values are read from `_local/config.md`, never hardcoded into a skill.",
-  "- **core.8 \u2014 Core never requires a capability.** Every core extension point ships a lean default and runs inert when no capability is registered; core never names or hard-depends on a specific capability.",
-  "- **core.9 \u2014 Scratch discipline.** Scratch and temporary files live only under `_local/scratch/` \u2014 never the repo root, system temp, or beside tracked files. (a) A scratch file's consumer deletes it as its own last act in that same run, never deferring to a sweep. (b) The run-ending skill deletes that run's coordination files \u2014 state, handoff, ledger, lock, marker \u2014 as part of ending it, on success or failure. The finalize sweep is a backstop that excuses neither.",
-  ""
-]);
-
-// src/resolver/constitution-compose.ts
-var CAPABILITY_ARTICLES_HEADING = "## Capability articles (provenance: each capability)";
-var PROJECT_CLAUSES_HEADING = "## Project clauses (provenance: project)";
-var REGISTRY_LINE_PREFIX = "**Registry:** ";
-function locateHeading(lines, heading) {
-  const found = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    if (lines[index].trimEnd() === heading) found.push(index);
-  }
-  if (found.length === 0) {
-    return {
-      ok: false,
-      detail: `the composed constitution record carries no \`${heading}\` section, so its structure is not recognized; the record is not rewritten, and nothing that is there now is lost.`
-    };
-  }
-  if (found.length > 1) {
-    return {
-      ok: false,
-      detail: `the composed constitution record carries ${found.length} \`${heading}\` sections, so the section boundary is ambiguous; the record is not rewritten, and nothing that is there now is lost.`
-    };
-  }
-  return { ok: true, index: found[0] };
-}
-function nextTopLevelHeading(lines, from) {
-  for (let index = from; index < lines.length; index += 1) {
-    if (lines[index].startsWith("## ")) return index;
-  }
-  return lines.length;
-}
-function renderArticleBody(capabilities) {
-  const contributing = capabilities.filter((entry) => entry.articles.length > 0);
-  if (contributing.length === 0) {
-    return ["", "No registered capability declares a constitution article.", ""];
-  }
-  const out = [];
-  for (const entry of contributing) {
-    out.push("", `### ${entry.capability}`, "");
-    entry.articles.forEach((article, index) => {
-      out.push(`- **${entry.capability}.${index + 1} \u2014 ${article.key}:** ${article.value}`);
-    });
-  }
-  out.push("");
-  return out;
-}
-function refreshRegistryLine(preamble, registryNames) {
-  const hits = [];
-  for (let index = 0; index < preamble.length; index += 1) {
-    if (preamble[index].startsWith(REGISTRY_LINE_PREFIX)) hits.push(index);
-  }
-  if (hits.length !== 1) return [...preamble];
-  const out = [...preamble];
-  const eol = preamble[hits[0]].endsWith("\r") ? "\r" : "";
-  out[hits[0]] = `${REGISTRY_LINE_PREFIX}${registryNames.join(", ")}${eol}`;
-  return out;
-}
-function composeConstitutionRecord(input) {
-  const lines = input.current.split("\n");
-  const articles = locateHeading(lines, CAPABILITY_ARTICLES_HEADING);
-  if (!articles.ok) return articles;
-  const clauses = locateHeading(lines, PROJECT_CLAUSES_HEADING);
-  if (!clauses.ok) return clauses;
-  if (clauses.index <= articles.index) {
-    return {
-      ok: false,
-      detail: `the composed constitution record places \`${PROJECT_CLAUSES_HEADING}\` before \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`
-    };
-  }
-  const articleSectionEnd = nextTopLevelHeading(lines, articles.index + 1);
-  if (articleSectionEnd !== clauses.index) {
-    return {
-      ok: false,
-      detail: `the composed constitution record carries an unrecognized section between \`${CAPABILITY_ARTICLES_HEADING}\` and \`${PROJECT_CLAUSES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
-    };
-  }
-  const coreArticles = input.coreArticles !== void 0 && input.coreArticles !== null && input.coreArticles.length > 0 ? input.coreArticles : null;
-  let coreStart = articles.index;
-  let coreSection = [];
-  if (coreArticles !== null) {
-    const core = locateHeading(lines, CORE_ARTICLES_HEADING);
-    if (!core.ok) return core;
-    if (core.index >= articles.index) {
-      return {
-        ok: false,
-        detail: `the composed constitution record places \`${CORE_ARTICLES_HEADING}\` at or after \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`
-      };
-    }
-    if (nextTopLevelHeading(lines, core.index + 1) !== articles.index) {
-      return {
-        ok: false,
-        detail: `the composed constitution record carries an unrecognized section between \`${CORE_ARTICLES_HEADING}\` and \`${CAPABILITY_ARTICLES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
-      };
-    }
-    coreStart = core.index;
-    coreSection = [lines[core.index].trimEnd(), ...coreArticles];
-  }
-  const refreshed = refreshRegistryLine(lines.slice(0, articles.index), input.registryNames);
-  const preamble = refreshed.slice(0, coreStart);
-  const preservedClauses = lines.slice(clauses.index);
-  const crlf = /\r\n/.test(input.current) && !/(^|[^\r])\n/.test(input.current);
-  const emit = (line) => crlf ? `${line.replace(/\r$/, "")}\r` : line;
-  const content = [
-    ...preamble,
-    ...coreSection.map(emit),
-    emit(lines[articles.index].trimEnd()),
-    ...renderArticleBody(input.capabilities).map(emit),
-    ...preservedClauses
-  ].join("\n");
-  return { ok: true, content, changed: content !== input.current };
-}
-function articlesByCapability(inputs) {
-  const order = [];
-  const byCapability = /* @__PURE__ */ new Map();
-  for (const input of inputs) {
-    const bucket = byCapability.get(input.capability);
-    if (bucket === void 0) {
-      order.push(input.capability);
-      byCapability.set(input.capability, [{ key: input.key, value: input.value }]);
-      continue;
-    }
-    bucket.push({ key: input.key, value: input.value });
-  }
-  return order.map((capability) => ({
-    capability,
-    articles: byCapability.get(capability) ?? []
-  }));
-}
-
-// src/resolver/constitution-drift.ts
-var CORE_DRIFT_CODE = "constitution/core-drift";
-var CORE_UNRECOGNIZED_CODE = "constitution/core-unrecognized";
-var ARTICLE_ID = /^- \*\*([^*\s]+)\s+—\s/;
-function articleId(line) {
-  const matched = ARTICLE_ID.exec(line);
-  return matched === null ? null : matched[1];
-}
-function meaningful(lines) {
-  const out = [];
-  for (const line of lines) {
-    const trimmed = line.replace(/\r$/, "").trimEnd();
-    if (trimmed.length > 0) out.push(trimmed);
-  }
-  return out;
-}
-function sameSequence(left, right) {
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] !== right[index]) return false;
-  }
-  return true;
-}
-function attribute(observed, expected) {
-  const expectedById = /* @__PURE__ */ new Map();
-  for (const line of expected) {
-    const id = articleId(line);
-    if (id !== null) expectedById.set(id, line);
-  }
-  const observedById = /* @__PURE__ */ new Map();
-  let unattributedLines = 0;
-  for (const line of observed) {
-    const id = articleId(line);
-    if (id === null) {
-      unattributedLines += 1;
-      continue;
-    }
-    observedById.set(id, line);
-  }
-  const differences = [];
-  for (const [id, line] of expectedById) {
-    const seen = observedById.get(id);
-    if (seen === void 0) differences.push({ id, state: "absent" });
-    else if (seen !== line) differences.push({ id, state: "changed" });
-  }
-  for (const id of observedById.keys()) {
-    if (!expectedById.has(id)) differences.push({ id, state: "unexpected" });
-  }
-  return { differences, unattributedLines };
-}
-function detectCoreArticleDrift(current, coreArticles) {
-  const expected = meaningful(coreArticles);
-  if (expected.length === 0) {
-    return {
-      verdict: "unrecognized",
-      detail: "no core-article body was supplied to compare against, so neither drift nor currency is asserted; an empty body means ABSENT to the composer, never a claim that the running release defines no articles."
-    };
-  }
-  const lines = current.split("\n");
-  const core = locateHeading(lines, CORE_ARTICLES_HEADING);
-  if (!core.ok) return { verdict: "unrecognized", detail: core.detail };
-  const articles = locateHeading(lines, CAPABILITY_ARTICLES_HEADING);
-  if (!articles.ok) return { verdict: "unrecognized", detail: articles.detail };
-  const clauses = locateHeading(lines, PROJECT_CLAUSES_HEADING);
-  if (!clauses.ok) return { verdict: "unrecognized", detail: clauses.detail };
-  if (core.index >= articles.index) {
-    return {
-      verdict: "unrecognized",
-      detail: `the composed constitution record places \`${CORE_ARTICLES_HEADING}\` at or after \`${CAPABILITY_ARTICLES_HEADING}\`, so its core section cannot be located; neither drift nor currency is asserted, and the record is not modified.`
-    };
-  }
-  if (nextTopLevelHeading(lines, core.index + 1) !== articles.index) {
-    return {
-      verdict: "unrecognized",
-      detail: `the composed constitution record carries an unrecognized section between \`${CORE_ARTICLES_HEADING}\` and \`${CAPABILITY_ARTICLES_HEADING}\`, so its core section cannot be delimited; neither drift nor currency is asserted, and the record is not modified.`
-    };
-  }
-  if (clauses.index <= articles.index) {
-    return {
-      verdict: "unrecognized",
-      detail: `the composed constitution record places \`${PROJECT_CLAUSES_HEADING}\` before \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure a re-composition recognizes; neither drift nor currency is asserted, and the record is not modified.`
-    };
-  }
-  if (nextTopLevelHeading(lines, articles.index + 1) !== clauses.index) {
-    return {
-      verdict: "unrecognized",
-      detail: `the composed constitution record carries an unrecognized section between \`${CAPABILITY_ARTICLES_HEADING}\` and \`${PROJECT_CLAUSES_HEADING}\`, which is not the structure a re-composition recognizes; neither drift nor currency is asserted, and the record is not modified.`
-    };
-  }
-  const observed = meaningful(lines.slice(core.index + 1, articles.index));
-  if (sameSequence(observed, expected)) return { verdict: "current" };
-  const { differences, unattributedLines } = attribute(observed, expected);
-  return { verdict: "stale", differences, unattributedLines };
-}
-var MAX_RENDERED_IDS = 20;
-var MAX_RENDERED_ID_LENGTH = 64;
-function summarize(differences, unattributedLines) {
-  const clamp = (id) => id.length <= MAX_RENDERED_ID_LENGTH ? id : `${id.slice(0, MAX_RENDERED_ID_LENGTH)}\u2026`;
-  const parts = [];
-  for (const state of ["changed", "absent", "unexpected"]) {
-    const ids = differences.filter((entry) => entry.state === state).map((entry) => entry.id);
-    if (ids.length === 0) continue;
-    const shown = ids.slice(0, MAX_RENDERED_IDS).map(clamp).join(", ");
-    const omitted = ids.length - MAX_RENDERED_IDS;
-    parts.push(omitted > 0 ? `${shown} and ${omitted} more ${state}` : `${shown} ${state}`);
-  }
-  if (unattributedLines > 0) {
-    parts.push(`${unattributedLines} record line(s) carrying no recognized article id`);
-  }
-  if (parts.length === 0) {
-    return "the section's article order or arrangement differs, though every article the release defines is present unchanged";
-  }
-  return parts.join("; ");
-}
-function coreArticleDriftDiagnostic(report) {
-  if (report.verdict === "current") return null;
-  if (report.verdict === "unrecognized") {
-    return {
-      severity: "info",
-      code: CORE_UNRECOGNIZED_CODE,
-      message: `the composed constitution's core-article currency could not be determined: ${report.detail}`
-    };
-  }
-  return {
-    severity: "warning",
-    code: CORE_DRIFT_CODE,
-    message: `the composed constitution's core articles are behind the running release \u2014 ${summarize(report.differences, report.unattributedLines)}. This check does not modify the record; re-compose it with \`/wf:constitution\` to carry the current articles.`
-  };
-}
-
-// src/resolver/resolve.ts
-function relativize(workspaceRoot, absPath) {
-  const abs = normalizeSlashes(absPath);
-  const root = normalizeSlashes(workspaceRoot).replace(/\/+$/, "");
-  if (abs === root) return ".";
-  if (abs.startsWith(root + "/")) return abs.slice(root.length + 1);
-  return abs;
-}
-function toAbsolute3(workspaceRoot, snapshotPath2) {
-  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
-}
-function questionPackName(resolvedPath, fallback) {
-  const normalized = normalizeSlashes(resolvedPath).replace(/\/+$/, "");
-  const separator = normalized.lastIndexOf("/");
-  const name = separator >= 0 ? normalized.slice(separator + 1) : normalized;
-  return name || fallback;
-}
-function inlineDispatchRel(dispatch) {
-  const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
-  return m ? m[1].trim() : null;
-}
-function isRecord2(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function appendQuestionDiagnostics(target, questionDiagnostics) {
-  for (const issue3 of questionDiagnostics) {
-    target.push({
-      severity: "error",
-      code: issue3.code,
-      message: issue3.message,
-      category: "registry-invalid",
-      recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
-    });
-  }
-}
-function buildSnapshot(inputs, io) {
-  const { workspaceRoot } = inputs;
-  const diagnostics = [];
-  const sources = [];
-  const registryPath = normalizeSlashes(inputs.registryPathValue);
-  sources.push(fingerprint("wf-config", "wf.config.js", inputs.wfConfigContent));
-  sources.push(fingerprint("registry", registryPath, inputs.registryContent));
-  if (registryPath !== "_local/config.md") {
-    sources.push(fingerprint("core-config", "_local/config.md", inputs.coreConfigContent));
-  }
-  sources.push(
-    fingerprint(
-      "plugin-list",
-      "claude plugin list --json",
-      normalizePluginList(inputs.pluginListRaw)
-    )
-  );
-  const constitutionRecord = io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"));
-  sources.push(fingerprint("constitution", "_local/constitution.md", constitutionRecord));
-  if (constitutionRecord !== null) {
-    const drift = coreArticleDriftDiagnostic(
-      detectCoreArticleDrift(constitutionRecord, CORE_ARTICLES_BODY)
-    );
-    if (drift !== null) diagnostics.push(drift);
-  }
-  const registry2 = parseRegistry(inputs.registryContent ?? "");
-  const configMarkdown = inputs.coreConfigContent ?? inputs.registryContent ?? "";
-  const coreConfig = parseCoreConfig(configMarkdown);
-  const routing = parseRoutingConfig(configMarkdown);
-  let pluginList;
-  if (inputs.pluginListRaw === null) {
-    pluginList = { plugins: [], contractOk: true, issues: [] };
-    diagnostics.push({
-      severity: "warning",
-      code: "plugin-list/cli-unavailable",
-      message: "`claude plugin list --json` could not be run (CLI unavailable or errored); installed-pack facts are unknown for this snapshot. The plugin-list source is recorded as absent rather than an empty result \u2014 re-run once the `claude` CLI is available on PATH."
-    });
-  } else {
-    pluginList = parsePluginList(inputs.pluginListRaw);
-    for (const issue3 of pluginList.issues) {
-      diagnostics.push({ severity: "error", code: issue3.code, message: issue3.message });
-    }
-  }
-  const recordedRoots = registry2.pluginRoots.map((r) => ({
-    plugin: r.plugin,
-    root: r.root
-  }));
-  const installedRoots = pluginList.plugins.map((p) => ({
-    pluginName: p.name,
-    installPath: p.installPath
-  }));
-  const manifestExists = (p) => io.readFile(p) !== null;
-  const registeredByPlugin = /* @__PURE__ */ new Map();
-  const pluginRootProvenance = /* @__PURE__ */ new Map();
-  const capabilities = registry2.capabilities.map((row) => {
-    const anchor = /^plugin:([^/]+)\//.exec(row.path);
-    const pluginName = anchor ? anchor[1] : null;
-    const resolved = resolveCapabilityPath(row.path, {
-      workspaceRoot,
-      recordedRoots,
-      installedRoots,
-      manifestExists
-    });
-    let kind = null;
-    let fragments = [];
-    let articles = [];
-    let requires = [];
-    let conflicts = [];
-    let profileTemplatePath = null;
-    let questions = [];
-    if (resolved.manifestPath) {
-      const content = io.readFile(resolved.manifestPath);
-      if (content !== null) {
-        sources.push(
-          fingerprint("manifest", relativize(workspaceRoot, resolved.manifestPath), content)
-        );
-        const m = parseManifest(content);
-        kind = m.kind;
-        fragments = m.fragments;
-        articles = m.articles;
-        requires = m.requires;
-        conflicts = m.conflicts;
-        if (m.profileTemplate && resolved.resolvedPath) {
-          const packName = questionPackName(resolved.resolvedPath, row.name);
-          const profileTemplateAbs = resolveContainedCapabilityPath(
-            resolved.resolvedPath,
-            m.profileTemplate
-          );
-          if (profileTemplateAbs === null) {
-            appendQuestionDiagnostics(diagnostics, [
-              {
-                code: "question/template-path-invalid",
-                pack: packName,
-                question: null,
-                field: "profile-template",
-                message: `pack \`${packName}\`, field \`profile-template\`: declared template path \`${m.profileTemplate}\` must be a forward-slash relative path contained beneath its capability folder.`
-              }
-            ]);
-          } else {
-            profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
-            const templateRead = io.readContainedFile ? io.readContainedFile(
-              resolved.resolvedPath,
-              m.profileTemplate,
-              MAX_PROFILE_TEMPLATE_BYTES
-            ) : {
-              status: "unsupported",
-              path: profileTemplateAbs,
-              content: null
-            };
-            const profileTemplateRaw = templateRead.status === "ok" ? templateRead.content : null;
-            sources.push(
-              fingerprint("profile-template", profileTemplatePath, profileTemplateRaw)
-            );
-            if (templateRead.status === "missing") {
-              appendQuestionDiagnostics(diagnostics, [
-                {
-                  code: "question/template-missing",
-                  pack: packName,
-                  question: null,
-                  field: "profile-template",
-                  message: `pack \`${packName}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`
-                }
-              ]);
-            } else if (templateRead.status === "too-large") {
-              appendQuestionDiagnostics(diagnostics, [
-                {
-                  code: "question/template-too-large",
-                  pack: packName,
-                  question: null,
-                  field: "profile-template",
-                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
-                }
-              ]);
-            } else if (templateRead.status === "unsupported") {
-              appendQuestionDiagnostics(diagnostics, [
-                {
-                  code: "question/template-reader-unavailable",
-                  pack: packName,
-                  question: null,
-                  field: "profile-template",
-                  message: `pack \`${packName}\`, field \`profile-template\`: no contained-file reader is available to read the declared template.`
-                }
-              ]);
-            } else if (templateRead.status !== "ok") {
-              appendQuestionDiagnostics(diagnostics, [
-                {
-                  code: "question/template-path-invalid",
-                  pack: packName,
-                  question: null,
-                  field: "profile-template",
-                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`
-                }
-              ]);
-            } else {
-              const parsedQuestions = parseQuestionDeclarations(packName, templateRead.content);
-              if (parsedQuestions.ok) questions = parsedQuestions.questions;
-              else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
-            }
-          }
-        }
-      }
-    }
-    const validity = resolved.manifestPath !== null ? "ok" : "unrecoverable";
-    if (validity === "unrecoverable") {
-      diagnostics.push({
-        severity: "error",
-        code: "capability/unrecoverable",
-        message: `capability \`${row.name}\` (path \`${row.path}\`) has no readable manifest \u2014 unrecoverable; re-run the owning pack's init to refresh its plugin root.`
-      });
-    }
-    if (pluginName) {
-      const entry = registeredByPlugin.get(pluginName) ?? {
-        capabilities: [],
-        anyUnrecoverable: false
-      };
-      entry.capabilities.push(row.name);
-      if (validity === "unrecoverable") entry.anyUnrecoverable = true;
-      registeredByPlugin.set(pluginName, entry);
-      const prev = pluginRootProvenance.get(pluginName);
-      if (resolved.provenance !== "unrecoverable" && prev !== "self-healed") {
-        pluginRootProvenance.set(pluginName, resolved.provenance);
-      } else if (!prev) {
-        pluginRootProvenance.set(pluginName, resolved.provenance);
-      }
-    }
-    return {
-      name: row.name,
-      registryPath: row.path,
-      resolvedPath: resolved.resolvedPath ? relativize(workspaceRoot, resolved.resolvedPath) : null,
-      manifestPath: resolved.manifestPath ? relativize(workspaceRoot, resolved.manifestPath) : null,
-      provenance: resolved.provenance,
-      kind,
-      fragments,
-      articles,
-      requires,
-      conflicts,
-      profileTemplatePath,
-      questions,
-      validity
-    };
-  });
-  const pluginRoots = registry2.pluginRoots.map((r) => {
-    const provenance = pluginRootProvenance.get(r.plugin) ?? "recorded";
-    const recordedRoot = normalizeSlashes(r.root);
-    let resolvedRoot = recordedRoot;
-    if (provenance === "self-healed") {
-      const installed = installedRoots.find((ir) => ir.pluginName === r.plugin);
-      resolvedRoot = installed ? relativize(workspaceRoot, installed.installPath) : null;
-    } else if (provenance === "unrecoverable") {
-      resolvedRoot = null;
-    } else {
-      resolvedRoot = relativize(workspaceRoot, recordedRoot);
-    }
-    return {
-      plugin: r.plugin,
-      recordedRoot: relativize(workspaceRoot, recordedRoot),
-      resolvedRoot,
-      provenance
-    };
-  });
-  const packs = [];
-  const seenPlugins = /* @__PURE__ */ new Set();
-  for (const p of pluginList.plugins) {
-    seenPlugins.add(p.name);
-    const reg = registeredByPlugin.get(p.name);
-    let state;
-    if (!p.enabled) {
-      state = "installed/disabled";
-    } else if (reg && reg.capabilities.length > 0) {
-      state = reg.anyUnrecoverable ? "registered/unrecoverable" : "active";
-    } else {
-      state = "installed/inactive";
-    }
-    packs.push({
-      pluginId: p.id,
-      pluginName: p.name,
-      version: p.version,
-      scope: p.scope,
-      enablement: p.enabled ? "enabled" : "disabled",
-      installPath: relativize(workspaceRoot, p.installPath),
-      state,
-      registeredCapabilities: reg?.capabilities ?? [],
-      diagnostics: state === "registered/unrecoverable" ? "registered capability manifest is unreadable under this installed pack \u2014 refresh its plugin root (re-run the pack init)." : null
-    });
-  }
-  for (const [pluginName, reg] of registeredByPlugin) {
-    if (seenPlugins.has(pluginName)) continue;
-    packs.push({
-      pluginId: pluginName,
-      pluginName,
-      version: null,
-      scope: null,
-      enablement: "unknown",
-      installPath: null,
-      state: "registered/unrecoverable",
-      registeredCapabilities: reg.capabilities,
-      diagnostics: `registered pack \`${pluginName}\` is not installed (absent from \`claude plugin list --json\`) \u2014 install it or remove its registry rows.`
-    });
-  }
-  const providerOwnership = [];
-  for (const cap of capabilities) {
-    for (const frag of cap.fragments) {
-      if (frag.contributionKind !== "provider" || !frag.scope) continue;
-      let fragmentPath = null;
-      const rel = inlineDispatchRel(frag.dispatch);
-      if (rel && cap.resolvedPath) {
-        fragmentPath = joinSlash(cap.resolvedPath, rel);
-      }
-      providerOwnership.push({
-        surface: frag.scope,
-        owner: cap.name,
-        fragmentPath,
-        state: cap.validity === "ok" ? "ok" : "unrecoverable"
-      });
-    }
-  }
-  const trackerOwner = providerOwnership.find(
-    (o) => o.surface === "tracker" && o.state === "ok"
-  );
-  const idShape = trackerOwner ? { source: `tracker:${trackerOwner.owner}`, scheme: null } : { source: "bare-core", scheme: "T<NNN>" };
-  const profiles = {};
-  for (const cap of capabilities) {
-    const profilePath = joinSlash(workspaceRoot, capabilityProfileRelPath(cap.name));
-    const content = io.readFile(profilePath);
-    sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
-    if (content === null) continue;
-    try {
-      const parsedProfile = JSON.parse(content);
-      profiles[cap.name] = parsedProfile;
-      if (cap.questions.length > 0) {
-        const packName = cap.questions[0]?.pack ?? cap.name;
-        if (!isRecord2(parsedProfile)) {
-          cap.questions = [];
-          appendQuestionDiagnostics(diagnostics, [
-            {
-              code: "question/persisted-container-invalid",
-              pack: packName,
-              question: null,
-              field: "profile",
-              message: `pack \`${packName}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`
-            }
-          ]);
-        } else {
-          const applied = applyQuestionValues(cap.questions, { persisted: parsedProfile });
-          if (applied.ok) cap.questions = applied.questions;
-          else {
-            cap.questions = [];
-            appendQuestionDiagnostics(diagnostics, applied.diagnostics);
-          }
-        }
-      }
-    } catch {
-      if (cap.questions.length > 0) {
-        const packName = cap.questions[0]?.pack ?? cap.name;
-        cap.questions = [];
-        appendQuestionDiagnostics(diagnostics, [
-          {
-            code: "question/persisted-unparseable",
-            pack: packName,
-            question: null,
-            field: "profile",
-            message: `pack \`${packName}\`, field \`profile\`: persisted question answers must be valid JSON.`
-          }
-        ]);
-      } else {
-        diagnostics.push({
-          severity: "warning",
-          code: "profile/unparseable",
-          message: `profile for \`${cap.name}\` is not valid JSON.`
-        });
-      }
-    }
-  }
-  const interfaceRoots = [];
-  if (inputs.corePluginRoot) interfaceRoots.push(normalizeSlashes(inputs.corePluginRoot));
-  for (const r of pluginRoots) {
-    if (r.resolvedRoot) interfaceRoots.push(toAbsolute3(workspaceRoot, r.resolvedRoot));
-  }
-  const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
-  const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
-  const settingsOverrides = [];
-  for (const filename of [...settingsFiles].sort()) {
-    const skill = skillFromSettingsFilename(filename);
-    if (!skill) continue;
-    const overridePath = joinSlash(settingsDir, filename);
-    const overrideRaw = io.readFile(overridePath);
-    if (overrideRaw === null) continue;
-    sources.push(
-      fingerprint("settings-override", `${SETTINGS_STORAGE_DIR}/${filename}`, overrideRaw)
-    );
-    settingsOverrides.push(skill);
-    const parsed = parseSettingsOverride(overrideRaw);
-    if (!parsed.ok) {
-      diagnostics.push({
-        severity: "warning",
-        code: "settings/unparseable",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) is not a valid JSON object: ${parsed.error}`
-      });
-      continue;
-    }
-    const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
-    if (!located) {
-      diagnostics.push({
-        severity: "warning",
-        code: "settings/interface-unresolvable",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) has no locatable declaring \`interface.md\` \u2014 its keys cannot be validated. Install the owning pack or remove the override.`
-      });
-      continue;
-    }
-    const { undeclared } = mergeSettings(located.declared, parsed.value);
-    if (undeclared.length > 0) {
-      diagnostics.push({
-        severity: "error",
-        code: "settings/undeclared-key",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) carries ${undeclared.length === 1 ? "a key" : "keys"} its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}. Remove the undeclared ${undeclared.length === 1 ? "key" : "keys"} or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
-        category: "registry-invalid",
-        recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
-      });
-    }
-  }
-  const SLOT_RECOVERY = "The capability registry or a skill interface is invalid. Declare the missing slot in the skill's `## Slots` interface table, or remove the orphaned contribution/override, then run `/wf:resolve refresh`.";
-  const declaredSlotsCache = /* @__PURE__ */ new Map();
-  const declaredSlotsFor = (skill) => {
-    if (declaredSlotsCache.has(skill)) return declaredSlotsCache.get(skill) ?? null;
-    const located = locateSlotInterface(skill, interfaceRoots, io.readFile, joinSlash);
-    const set = located ? located.declared : null;
-    declaredSlotsCache.set(skill, set);
-    return set;
-  };
-  const isDeclared = (skillPoint, skill) => declaredSlotsFor(skill)?.has(skillPoint) ?? false;
-  const packSlots = [];
-  for (const cap of capabilities) {
-    if (cap.validity !== "ok" || !cap.resolvedPath) continue;
-    for (const frag of cap.fragments) {
-      if (frag.contributionKind !== "slot") continue;
-      const parsed = parseSlotScope(frag.scope);
-      if (!parsed) continue;
-      const rel = inlineDispatchRel(frag.dispatch);
-      if (!rel) continue;
-      const bodyAbs = joinSlash(toAbsolute3(workspaceRoot, cap.resolvedPath), rel);
-      packSlots.push({
-        capability: cap.name,
-        skillPoint: parsed.skillPoint,
-        skill: parsed.skillPoint.split(".")[0],
-        policy: parsed.policy,
-        bodyPath: bodyAbs,
-        bodyRel: relativize(workspaceRoot, bodyAbs)
-      });
-    }
-  }
-  const fingerprintedBodies = /* @__PURE__ */ new Set();
-  for (const ps of packSlots) {
-    if (!fingerprintedBodies.has(ps.bodyPath)) {
-      fingerprintedBodies.add(ps.bodyPath);
-      sources.push(fingerprint("slot-contribution", ps.bodyRel, io.readFile(ps.bodyPath)));
-    }
-    if (!isDeclared(ps.skillPoint, ps.skill)) {
-      diagnostics.push({
-        severity: "error",
-        code: "slot/orphaned-contribution",
-        message: `capability \`${ps.capability}\` contributes to slot \`${ps.skillPoint}\`, which no active skill interface declares \u2014 the contribution would silently never fire. Declare the slot in the skill's \`## Slots\` interface table or remove the capability's \`slot\` fragment row.`,
-        category: "registry-invalid",
-        recovery: SLOT_RECOVERY
-      });
-    }
-  }
-  const slotOverrideDir = joinSlash(workspaceRoot, OVERRIDE_DIR);
-  const slotOverrideFiles = io.listFiles ? io.listFiles(slotOverrideDir) : [];
-  const overridePresent = /* @__PURE__ */ new Set();
-  for (const filename of [...slotOverrideFiles].sort()) {
-    const parsedName = slotPointFromOverrideFilename(filename);
-    if (!parsedName) continue;
-    const overridePath = joinSlash(slotOverrideDir, filename);
-    const overrideRaw = io.readFile(overridePath);
-    if (overrideRaw === null) continue;
-    sources.push(
-      fingerprint("slot-override", `${OVERRIDE_DIR}/${filename}`, overrideRaw)
-    );
-    overridePresent.add(parsedName.skillPoint);
-    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
-      diagnostics.push({
-        severity: "error",
-        code: "slot/orphaned-override",
-        message: `slot override \`${OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
-        category: "registry-invalid",
-        recovery: SLOT_RECOVERY
-      });
-    }
-  }
-  const projectOverrideDir = joinSlash(workspaceRoot, PROJECT_OVERRIDE_DIR);
-  const projectOverrideFiles = io.listFiles ? io.listFiles(projectOverrideDir) : [];
-  const projectOverridePresent = /* @__PURE__ */ new Set();
-  for (const filename of [...projectOverrideFiles].sort()) {
-    const parsedName = slotPointFromOverrideFilename(filename);
-    if (!parsedName) continue;
-    const overridePath = joinSlash(projectOverrideDir, filename);
-    const overrideRaw = io.readFile(overridePath);
-    if (overrideRaw === null) continue;
-    sources.push(
-      fingerprint("slot-project-override", `${PROJECT_OVERRIDE_DIR}/${filename}`, overrideRaw)
-    );
-    projectOverridePresent.add(parsedName.skillPoint);
-    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
-      diagnostics.push({
-        severity: "error",
-        code: "slot/orphaned-project-override",
-        message: `project slot override \`${PROJECT_OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
-        category: "registry-invalid",
-        recovery: SLOT_RECOVERY
-      });
-    }
-  }
-  const slotIds = /* @__PURE__ */ new Set([
-    ...packSlots.map((p) => p.skillPoint),
-    ...overridePresent,
-    ...projectOverridePresent
-  ]);
-  const slots = [...slotIds].sort().map((skillPoint) => {
-    const contributors = packSlots.filter((p) => p.skillPoint === skillPoint).map((p) => p.capability);
-    const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
-    const hasOverride = overridePresent.has(skillPoint);
-    const hasProjectOverride = projectOverridePresent.has(skillPoint);
-    let tier;
-    let winningSource;
-    if (hasOverride) {
-      tier = "local-override";
-      winningSource = "local-override";
-    } else if (hasProjectOverride) {
-      tier = "project-override";
-      winningSource = "project-override";
-    } else if (contributors.length > 0) {
-      tier = "pack-contribution";
-      winningSource = contributors[contributors.length - 1];
-    } else {
-      tier = "unfilled";
-      winningSource = null;
-    }
-    return {
-      skillPoint,
-      policy: policyOwner ? policyOwner.policy : null,
-      overridePresent: hasOverride,
-      projectOverridePresent: hasProjectOverride,
-      contributors,
-      tier,
-      winningSource
-    };
-  });
-  const providerConfig = {};
-  if (providerOwnership.some((o) => o.surface === "tracker")) {
-    diagnostics.push({
-      severity: "info",
-      code: "provider-config/deferred",
-      message: "tracker provider config values are resolved by the provider surface at query time (WF-270); the snapshot records ownership only, never a tracker product's config section."
-    });
-  }
-  const constitutionInputs = [];
-  for (const cap of capabilities) {
-    for (const a of cap.articles) {
-      constitutionInputs.push({ capability: cap.name, key: a.key, value: a.value });
-    }
-  }
-  return {
-    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
-    generatedAt: inputs.generatedAt,
-    generator: inputs.generator,
-    workspaceRoot: normalizeSlashes(workspaceRoot),
-    registryPath,
-    coreConfig,
-    routing,
-    capabilities,
-    pluginRoots,
-    packs,
-    providerOwnership,
-    idShape,
-    profiles,
-    providerConfig,
-    constitutionInputs,
-    slots,
-    settingsOverrides,
-    sources,
-    diagnostics
-  };
-}
-
-// src/resolver/engine.ts
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readFileSync as readFileSync2,
-  readSync,
-  readdirSync,
-  realpathSync as realpathSync2,
-  statSync as statSync2
-} from "node:fs";
-import { isAbsolute as isAbsolute3, join as join2, relative, resolve as resolve2, sep } from "node:path";
-import { execFileSync as execFileSync2 } from "node:child_process";
-import { createHash as createHash3 } from "node:crypto";
-
-// src/resolver/snapshot-store.ts
-import {
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
-import { dirname, join } from "node:path";
-import { randomBytes } from "node:crypto";
-function snapshotPath(workspaceRoot) {
-  return join(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
-}
-function writeSnapshot(workspaceRoot, snapshot) {
-  const target = snapshotPath(workspaceRoot);
-  const dir = dirname(target);
-  mkdirSync(dir, { recursive: true });
-  const tmp = join(dir, `.snapshot.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
-  const json = `${JSON.stringify(snapshot, null, 2)}
-`;
-  try {
-    writeFileSync(tmp, json, { encoding: "utf8" });
-    renameSync(tmp, target);
-  } catch (err) {
-    try {
-      rmSync(tmp, { force: true });
-    } catch {
-    }
-    throw err;
-  }
-  return target;
-}
-var SnapshotSchemaError = class extends Error {
-  constructor(found, expected) {
-    super(
-      `resolver snapshot schemaVersion ${String(found)} is incompatible with this runtime (expects ${expected}); rebuild the snapshot.`
-    );
-    this.found = found;
-    this.expected = expected;
-    this.name = "SnapshotSchemaError";
-  }
-  found;
-  expected;
-};
-function readSnapshot(workspaceRoot) {
-  const target = snapshotPath(workspaceRoot);
-  let raw;
-  try {
-    raw = readFileSync(target, "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") return null;
-    throw err;
-  }
-  const parsed = JSON.parse(raw);
-  if (parsed.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
-    throw new SnapshotSchemaError(parsed.schemaVersion, SNAPSHOT_SCHEMA_VERSION);
-  }
-  return parsed;
-}
-
-// src/resolver/engine.ts
-var DEFAULT_REGISTRY_RELPATH = "_local/config.md";
-function readOrNull(absPath) {
-  try {
-    return readFileSync2(absPath, "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") return null;
-    throw err;
-  }
-}
-var noFollowFlagOverride = null;
-function hasStatIdentity(stat) {
-  return stat.dev !== 0n || stat.ino !== 0n;
-}
-function resolveNoFollowFlag() {
-  if (noFollowFlagOverride !== null) return noFollowFlagOverride;
-  return typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
-}
-function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
-  const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
-  if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
-    return { status: "unsafe", path: lexicalPath, content: null };
-  }
-  const inside = (canonicalRoot, candidate) => {
-    const fromRoot = relative(canonicalRoot, candidate);
-    return fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute3(fromRoot);
-  };
-  const comparable = (path) => {
-    const normalized = normalizeSlashes(path);
-    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
-  };
-  const sameIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
-  let fd = null;
-  let targetValidated = false;
-  try {
-    const canonicalRoot = realpathSync2(root);
-    const rootStat = statSync2(canonicalRoot, { bigint: true });
-    if (!rootStat.isDirectory()) {
-      return { status: "unsafe", path: lexicalPath, content: null };
-    }
-    const segments = selectedPath.split("/");
-    const canonicalCandidate = resolve2(canonicalRoot, ...segments);
-    if (!inside(canonicalRoot, canonicalCandidate)) {
-      return { status: "unsafe", path: lexicalPath, content: null };
-    }
-    let cursor = canonicalRoot;
-    for (const segment of segments) {
-      cursor = resolve2(cursor, segment);
-      if (lstatSync(cursor).isSymbolicLink()) {
-        return { status: "unsafe", path: lexicalPath, content: null };
-      }
-    }
-    const canonicalTarget = realpathSync2(canonicalCandidate);
-    if (!inside(canonicalRoot, canonicalTarget) || comparable(canonicalTarget) !== comparable(canonicalCandidate)) {
-      return { status: "unsafe", path: lexicalPath, content: null };
-    }
-    const expected = statSync2(canonicalTarget, { bigint: true });
-    if (!expected.isFile()) {
-      return { status: "unsafe", path: lexicalPath, content: null };
-    }
-    if (expected.size > BigInt(maxBytes)) {
-      return { status: "too-large", path: lexicalPath, content: null };
-    }
-    targetValidated = true;
-    const noFollow = resolveNoFollowFlag();
-    if (noFollow === 0 && !hasStatIdentity(expected)) {
-      return { status: "unsafe", path: lexicalPath, content: null };
-    }
-    const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
-    fd = openSync(
-      canonicalTarget,
-      noFollow === 0 ? constants.O_RDONLY | nonBlock : constants.O_RDONLY | noFollow | nonBlock
-    );
-    const opened = fstatSync(fd, { bigint: true });
-    if (!opened.isFile() || !sameIdentity(expected, opened)) {
-      return { status: "unsafe", path: lexicalPath, content: null };
-    }
-    if (opened.size > BigInt(maxBytes)) {
-      return { status: "too-large", path: lexicalPath, content: null };
-    }
-    const postOpenTarget = realpathSync2(canonicalCandidate);
-    const postOpenStat = statSync2(canonicalCandidate, { bigint: true });
-    const postOpenRoot = statSync2(canonicalRoot, { bigint: true });
-    if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity(opened, postOpenStat) || !sameIdentity(rootStat, postOpenRoot)) {
-      return { status: "unsafe", path: lexicalPath, content: null };
-    }
-    const chunks = [];
-    let total = 0;
-    while (total <= maxBytes) {
-      const remaining = maxBytes + 1 - total;
-      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
-      const bytesRead = readSync(fd, buffer, 0, buffer.length, total);
-      if (bytesRead === 0) break;
-      chunks.push(buffer.subarray(0, bytesRead));
-      total += bytesRead;
-    }
-    if (total > maxBytes) {
-      return { status: "too-large", path: lexicalPath, content: null };
-    }
-    const afterRead = fstatSync(fd, { bigint: true });
-    if (!sameIdentity(opened, afterRead) || afterRead.size !== opened.size) {
-      return { status: "unsafe", path: lexicalPath, content: null };
-    }
-    return {
-      status: "ok",
-      path: normalizeSlashes(lexicalPath),
-      content: Buffer.concat(chunks, total)
-    };
-  } catch (err) {
-    const code = err.code;
-    if (code === "ELOOP") return { status: "unsafe", path: lexicalPath, content: null };
-    if (code === "ENOENT" && !targetValidated) {
-      return { status: "missing", path: lexicalPath, content: null };
-    }
-    return {
-      status: targetValidated ? "unsafe" : "unreadable",
-      path: lexicalPath,
-      content: null
-    };
-  } finally {
-    if (fd !== null) closeSync(fd);
-  }
-}
-function readContainedCapabilityFile(root, selectedPath, maxBytes) {
-  const result = readContainedCapabilityBytes(root, selectedPath, maxBytes);
-  return result.status === "ok" ? { status: "ok", path: result.path, content: result.content.toString("utf8") } : { status: result.status, path: result.path, content: null };
-}
-function fingerprintContainedCapabilityFile(root, selectedPath, maxBytes) {
-  const result = readContainedCapabilityBytes(root, selectedPath, maxBytes);
-  return result.status === "ok" ? {
-    status: "ok",
-    path: result.path,
-    sha256: createHash3("sha256").update(result.content).digest("hex"),
-    bytes: result.content.length
-  } : { status: result.status, path: result.path, sha256: null, bytes: null };
-}
-function listFilesOrEmpty(absDir) {
-  try {
-    return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
-  } catch {
-    return [];
-  }
-}
-var fsIO = {
-  readFile: readOrNull,
-  readContainedFile: readContainedCapabilityFile,
-  listFiles: listFilesOrEmpty
-};
-function extractRegistryPathRaw(wfConfig) {
-  if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
-  const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
-  const v = m?.[1]?.trim();
-  return v && v.length > 0 ? v : DEFAULT_REGISTRY_RELPATH;
-}
-function extractRegistryPath(wfConfig) {
-  return normalizeSlashes(extractRegistryPathRaw(wfConfig));
-}
-function runPluginList() {
-  try {
-    return execFileSync2("claude", ["plugin", "list", "--json"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      maxBuffer: 16 * 1024 * 1024
-    });
-  } catch {
-    return null;
-  }
-}
-function resolveSnapshot(opts) {
-  const workspaceRoot = normalizeSlashes(opts.workspaceRoot);
-  const io = opts.io ?? fsIO;
-  const wfConfigContent = io.readFile(join2(opts.workspaceRoot, "wf.config.js"));
-  const registryPathValue = extractRegistryPath(wfConfigContent);
-  const registryAbs = join2(opts.workspaceRoot, registryPathValue);
-  const registryContent = io.readFile(registryAbs);
-  const coreConfigAbs = join2(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
-  const coreConfigContent = registryPathValue === DEFAULT_REGISTRY_RELPATH ? registryContent : io.readFile(coreConfigAbs);
-  const pluginListRaw = opts.pluginListRaw !== void 0 ? opts.pluginListRaw : runPluginList();
-  const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
-  const inputs = {
-    workspaceRoot,
-    registryPathValue,
-    registryContent,
-    wfConfigContent,
-    coreConfigContent,
-    pluginListRaw,
-    generatedAt: now.toISOString(),
-    generator: opts.generator ?? { ...RESOLVER_GENERATOR },
-    corePluginRoot: opts.corePluginRoot ?? null
-  };
-  return buildSnapshot(inputs, io);
 }
 
 // src/ports.ts
@@ -26194,12 +26612,12 @@ function resolveCorePluginRoot() {
   return normalizeSlashes(resolve3(dirname2(here), "..", ".."));
 }
 function resolveContainedRegistryWritePath(workspaceRoot, registryRelPath) {
-  const canonicalRoot = realpathSync3(workspaceRoot);
+  const canonicalRoot = realpathSync4(workspaceRoot);
   const target = resolve3(workspaceRoot, registryRelPath);
   let existing = target;
   while (true) {
     try {
-      lstatSync2(existing);
+      lstatSync3(existing);
       break;
     } catch (err) {
       if (err.code !== "ENOENT") throw err;
@@ -26208,7 +26626,7 @@ function resolveContainedRegistryWritePath(workspaceRoot, registryRelPath) {
       existing = parent;
     }
   }
-  const canonicalExisting = realpathSync3(existing);
+  const canonicalExisting = realpathSync4(existing);
   const fromRoot = relative2(canonicalRoot, canonicalExisting);
   if (fromRoot === "" || fromRoot !== ".." && !fromRoot.startsWith(`..${sep2}`) && !isAbsolute4(fromRoot)) {
     return normalizeSlashes(target);
@@ -26236,7 +26654,7 @@ function resolveContainedPayloadTarget(workspaceRoot, destination) {
   if (lexical !== null) return lexical;
   let canonicalRoot;
   try {
-    canonicalRoot = realpathSync3(workspaceRoot);
+    canonicalRoot = realpathSync4(workspaceRoot);
   } catch {
     return { ok: false, rejection: "unresolvable" };
   }
@@ -26245,7 +26663,7 @@ function resolveContainedPayloadTarget(workspaceRoot, destination) {
   const trailing = [];
   while (true) {
     try {
-      lstatSync2(existing);
+      lstatSync3(existing);
       break;
     } catch (err) {
       if (err.code !== "ENOENT") {
@@ -26259,7 +26677,7 @@ function resolveContainedPayloadTarget(workspaceRoot, destination) {
   }
   let canonicalExisting;
   try {
-    canonicalExisting = realpathSync3(existing);
+    canonicalExisting = realpathSync4(existing);
   } catch {
     return { ok: false, rejection: "symlink-escape" };
   }
@@ -26272,7 +26690,7 @@ function resolveContainedPayloadTarget(workspaceRoot, destination) {
     };
   }
   const exists = trailing.length === 0;
-  if (exists && !lstatSync2(canonicalExisting).isFile()) {
+  if (exists && !lstatSync3(canonicalExisting).isFile()) {
     return { ok: false, rejection: "target-not-a-file" };
   }
   const canonicalTarget = joinSlash(normalizeSlashes(canonicalExisting), ...trailing);
@@ -26319,13 +26737,13 @@ function createDefaultPorts(workspaceRoot) {
     resolvePayloadTarget: (admittedRoot, destination) => resolveContainedPayloadTarget(admittedRoot, destination),
     canonicalizeRoot: (root) => {
       try {
-        return normalizeSlashes(realpathSync3(root));
+        return normalizeSlashes(realpathSync4(root));
       } catch {
         return null;
       }
     },
     writeFile: (absPath, content) => {
-      mkdirSync2(dirname2(absPath), { recursive: true });
+      mkdirSync3(dirname2(absPath), { recursive: true });
       writeFileSync2(absPath, content, { encoding: "utf8" });
     },
     /** A write for a SECRET, kept separate from `writeFile` on purpose: the mode
@@ -26350,22 +26768,22 @@ function createDefaultPorts(workspaceRoot) {
      *  caller that wants the established binding reads it. `mode` applies on
      *  creation, which is now the only occasion this function writes at all. */
     writePrivateFile: (absPath, content) => {
-      mkdirSync2(dirname2(absPath), { recursive: true, mode: 448 });
-      let fd = openSync2(absPath, "wx", 384);
+      mkdirSync3(dirname2(absPath), { recursive: true, mode: 448 });
+      let fd = openSync3(absPath, "wx", 384);
       try {
         writeFileSync2(fd, content, { encoding: "utf8" });
-        fsyncSync(fd);
-        closeSync2(fd);
+        fsyncSync2(fd);
+        closeSync3(fd);
         fd = null;
       } catch (err) {
         if (fd !== null) {
           try {
-            closeSync2(fd);
+            closeSync3(fd);
           } catch {
           }
         }
         try {
-          rmSync2(absPath, { force: true });
+          rmSync3(absPath, { force: true });
         } catch {
         }
         throw err;
@@ -26432,28 +26850,41 @@ function createDefaultPorts(workspaceRoot) {
      *  project's own config value, run through the platform shell exactly as the
      *  project wrote it, in the workspace root, under a hard timeout. Output is
      *  captured and only its tail is returned; stdin is closed so a command that
-     *  prompts fails rather than hangs. */
+     *  prompts fails rather than hangs.
+     *
+     *  WF-871: the command runs inside the setup runner, which owns a process
+     *  group for it and stops that whole group on a timeout and after the
+     *  command exits — so nothing the command started outlives this call. The
+     *  runner itself is bounded by the timeout plus a margin. */
     runSetupCommand: (command, timeoutMs) => {
       const started = Date.now();
-      const result = spawnSync(command, {
+      const request = {
+        command,
         cwd: workspaceRoot,
-        shell: true,
-        timeout: timeoutMs,
+        timeoutMs,
+        tailChars: SETUP_OUTPUT_TAIL_CHARS
+      };
+      const result = spawnSync(process.execPath, ["-e", SETUP_RUNNER_SOURCE], {
+        cwd: workspaceRoot,
+        env: { ...process.env, WF_SETUP_REQUEST: JSON.stringify(request) },
+        timeout: timeoutMs + SETUP_RUNNER_MARGIN_MS,
         killSignal: "SIGKILL",
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
-        maxBuffer: 64 * 1024 * 1024
+        maxBuffer: 16 * 1024 * 1024,
+        windowsHide: true
       });
       const durationMs = Date.now() - started;
+      const report = parseSetupRunnerReport(result.stdout ?? "", durationMs);
+      if (report !== null) return report;
       const error2 = result.error;
       const timedOut = error2?.code === "ETIMEDOUT";
-      const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
       return {
-        exitCode: result.status,
+        exitCode: null,
         signal: result.signal,
         timedOut,
-        outputTail: tailOf(output),
-        error: error2 !== void 0 && !timedOut ? error2.message : null,
+        outputTail: tailOf(`${result.stdout ?? ""}${result.stderr ?? ""}`),
+        error: timedOut ? null : `the setup runner did not report a result${error2 !== void 0 ? `: ${error2.message}` : ""}`,
         durationMs
       };
     },
@@ -26520,8 +26951,8 @@ function createRecoveryPorts(workspaceRoot) {
   return {
     acquireLock: () => {
       try {
-        mkdirSync2(dirname2(lockPath), { recursive: true });
-        closeSync2(openSync2(lockPath, "wx"));
+        mkdirSync3(dirname2(lockPath), { recursive: true });
+        closeSync3(openSync3(lockPath, "wx"));
         return { ok: true };
       } catch (err) {
         if (errno(err) === "EEXIST") {
@@ -26542,7 +26973,7 @@ function createRecoveryPorts(workspaceRoot) {
     // ones where the lock may already be gone.
     releaseLock: () => {
       try {
-        rmSync2(lockPath, { force: true });
+        rmSync3(lockPath, { force: true });
       } catch {
       }
     },
@@ -26557,10 +26988,10 @@ function createRecoveryPorts(workspaceRoot) {
     observeDestination: (destination) => {
       const target = contained(destination);
       if (!target.ok) return { kind: "not-contained", rejection: target.rejection };
-      const literal2 = resolve3(realpathSync3(workspaceRoot), destination);
+      const literal2 = resolve3(realpathSync4(workspaceRoot), destination);
       let stat;
       try {
-        stat = lstatSync2(literal2);
+        stat = lstatSync3(literal2);
       } catch (err) {
         if (errno(err) === "ENOENT") return { kind: "absent" };
         return { kind: "observation-failed", diagnostic: message(err) };
@@ -26616,7 +27047,7 @@ function createRecoveryPorts(workspaceRoot) {
       }
       try {
         const bytes = readFileSync3(backup.target);
-        mkdirSync2(dirname2(targetPath.target), { recursive: true });
+        mkdirSync3(dirname2(targetPath.target), { recursive: true });
         writeFileSync2(targetPath.target, bytes);
         return { ok: true };
       } catch (err) {
@@ -26635,7 +27066,7 @@ function createRecoveryPorts(workspaceRoot) {
         };
       }
       try {
-        rmSync2(target.target, { force: true });
+        rmSync3(target.target, { force: true });
         return { ok: true };
       } catch (err) {
         return {
@@ -26653,12 +27084,12 @@ function createRecoveryPorts(workspaceRoot) {
         const backup = contained(entry.backupPath);
         if (!backup.ok) continue;
         try {
-          rmSync2(backup.target, { force: true });
+          rmSync3(backup.target, { force: true });
         } catch {
         }
       }
       try {
-        rmSync2(journalPath, { force: true });
+        rmSync3(journalPath, { force: true });
       } catch {
       }
       pruneEmptyBackupDirs(
@@ -26685,27 +27116,27 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     const dir = dirname2(absPath);
     const temp = joinSlash(
       normalizeSlashes(dir),
-      `.${basename(absPath)}.wf-apply-${randomBytes2(8).toString("hex")}.tmp`
+      `.${basename(absPath)}.wf-apply-${randomBytes4(8).toString("hex")}.tmp`
     );
     let fd = null;
     try {
-      mkdirSync2(dir, { recursive: true });
-      fd = openSync2(temp, "wx", 384);
-      writeSync(fd, bytes);
-      fsyncSync(fd);
-      closeSync2(fd);
+      mkdirSync3(dir, { recursive: true });
+      fd = openSync3(temp, "wx", 384);
+      writeSync2(fd, bytes);
+      fsyncSync2(fd);
+      closeSync3(fd);
       fd = null;
-      renameSync2(temp, absPath);
+      renameSync3(temp, absPath);
       return { ok: true };
     } catch (err) {
       if (fd !== null) {
         try {
-          closeSync2(fd);
+          closeSync3(fd);
         } catch {
         }
       }
       try {
-        rmSync2(temp, { force: true });
+        rmSync3(temp, { force: true });
       } catch {
       }
       return { ok: false, diagnostic: message(err) };
@@ -26721,11 +27152,11 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     // never steer the backup out of the backup root; containment is still
     // measured independently by `contained(...)` on every use.
     backupPathFor: (transactionId, destination) => joinSlash(LIFECYCLE_BACKUP_DIR, transactionId, backupSlug(destination)),
-    newTransactionId: () => randomBytes2(16).toString("hex"),
+    newTransactionId: () => randomBytes4(16).toString("hex"),
     now: () => (/* @__PURE__ */ new Date()).toISOString(),
     journalPresent: () => {
       try {
-        lstatSync2(journalPath);
+        lstatSync3(journalPath);
         return true;
       } catch {
         return false;
@@ -26744,7 +27175,7 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     observeDestination: (destination) => recoveryPorts.observeDestination(destination),
     destinationInode: (destination) => {
       try {
-        return lstatSync2(resolve3(realpathSync3(workspaceRoot), destination)).ino;
+        return lstatSync3(resolve3(realpathSync4(workspaceRoot), destination)).ino;
       } catch {
         return null;
       }
@@ -26816,7 +27247,7 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     // worst remaining outcome is an orphan backup, which the prune reclaims.
     discardTransaction: (entries) => {
       try {
-        rmSync2(journalPath, { force: true });
+        rmSync3(journalPath, { force: true });
       } catch {
       }
       const backupPaths = [];
@@ -26826,7 +27257,7 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
         const target = contained(entry.backupPath);
         if (target === null) continue;
         try {
-          rmSync2(target, { force: true });
+          rmSync3(target, { force: true });
         } catch {
         }
       }
@@ -27658,7 +28089,7 @@ function stripCr2(s) {
 function trimCell2(s) {
   return s.trim().replace(/^`/, "").replace(/`$/, "").trim();
 }
-function join3(...parts) {
+function join4(...parts) {
   return toPosix(parts.filter((p) => p.length > 0).join("/")).replace(
     /\/{2,}/g,
     "/"
@@ -27729,7 +28160,7 @@ function checkHeadingTypos(file, content, label2) {
 }
 function owningPluginName(fs, root) {
   if (root === null) return null;
-  const raw = fs.readFile(join3(root, ".claude-plugin", "plugin.json"));
+  const raw = fs.readFile(join4(root, ".claude-plugin", "plugin.json"));
   if (raw === null) return null;
   try {
     const name = JSON.parse(raw).name;
@@ -27755,7 +28186,7 @@ function siblingWorkspacePluginRoot(fs, owningRoot, plugin) {
   const marker = "/plugins/";
   const at = owningRoot.lastIndexOf(marker);
   if (at < 0) return null;
-  const candidate = join3(owningRoot.slice(0, at + marker.length), plugin);
+  const candidate = join4(owningRoot.slice(0, at + marker.length), plugin);
   return fs.isDirectory(candidate) ? candidate : null;
 }
 function checkSubagentTarget(fs, discovery, dispatch) {
@@ -27773,7 +28204,7 @@ function checkSubagentTarget(fs, discovery, dispatch) {
     return { valid: false, expected: null };
   }
   const root = plugin === null ? discovery.owningRoot : plugin === discovery.owningPlugin ? discovery.owningRoot : discovery.pluginRoot(plugin);
-  const expected = root === null ? null : join3(root, "agents", `${agent}.md`);
+  const expected = root === null ? null : join4(root, "agents", `${agent}.md`);
   return { valid: expected !== null && fs.isFile(expected), expected };
 }
 function readManifest(content) {
@@ -28013,7 +28444,7 @@ function checkManifest(capability, manifestPath, content, rules, fs, discovery) 
   };
 }
 function validateManifest(fs, target, opsDocPath, options = {}) {
-  const manifestPath = /manifest\.md$/i.test(target) ? toPosix(target) : join3(target, "manifest.md");
+  const manifestPath = /manifest\.md$/i.test(target) ? toPosix(target) : join4(target, "manifest.md");
   let rules;
   try {
     rules = loadRules(fs, opsDocPath);
@@ -28200,7 +28631,7 @@ function validateRegistry(fs, opts) {
   const resolvePluginRoot = (name) => {
     const row = parsed.pluginRoots.find((p) => p.plugin === name);
     if (!row) return null;
-    return /^(\/|[A-Za-z]:)/.test(row.root) ? row.root : join3(repoRoot, row.root);
+    return /^(\/|[A-Za-z]:)/.test(row.root) ? row.root : join4(repoRoot, row.root);
   };
   const healFromInstallManifest = (name) => {
     if (!opts.installManifest) return null;
@@ -28221,7 +28652,7 @@ function validateRegistry(fs, opts) {
         const p = rec?.installPath;
         if (!p) continue;
         let norm = toPosix(p);
-        if (!/^(\/|[A-Za-z]:)/.test(norm)) norm = join3(repoRoot, norm);
+        if (!/^(\/|[A-Za-z]:)/.test(norm)) norm = join4(repoRoot, norm);
         if (fs.isDirectory(norm)) return norm;
       }
     }
@@ -28262,8 +28693,8 @@ function validateRegistry(fs, opts) {
       let primaryFail = "";
       const root = resolvePluginRoot(plName);
       if (root) {
-        const folder2 = join3(root, plRel);
-        if (fs.isFile(join3(folder2, "manifest.md"))) resolved = folder2;
+        const folder2 = join4(root, plRel);
+        if (fs.isFile(join4(folder2, "manifest.md"))) resolved = folder2;
         else if (!fs.isDirectory(folder2)) {
           primaryFail = `plugin-anchored path \`${p}\` does not resolve to a directory via its recorded root (looked in \`${folder2}\` via plugin root \`${plName}\`)`;
         } else {
@@ -28274,8 +28705,8 @@ function validateRegistry(fs, opts) {
       }
       if (!resolved) {
         const healed = healFromInstallManifest(plName);
-        if (healed && fs.isFile(join3(healed, plRel, "manifest.md"))) {
-          resolved = join3(healed, plRel);
+        if (healed && fs.isFile(join4(healed, plRel, "manifest.md"))) {
+          resolved = join4(healed, plRel);
         } else {
           findings.push(
             finding(
@@ -28290,12 +28721,12 @@ function validateRegistry(fs, opts) {
       if (resolved)
         resolvedManifests.push({
           capability: cap.name,
-          path: join3(resolved, "manifest.md"),
+          path: join4(resolved, "manifest.md"),
           owningRoot: resolved.slice(0, -plRel.length).replace(/\/$/, "")
         });
       continue;
     }
-    const folder = join3(repoRoot, p);
+    const folder = join4(repoRoot, p);
     if (!fs.isDirectory(folder)) {
       findings.push(
         finding(
@@ -28305,7 +28736,7 @@ function validateRegistry(fs, opts) {
           `capability \`${cap.name}\` path does not exist: \`${p}\` (no directory at \`${folder}\`).`
         )
       );
-    } else if (!fs.isFile(join3(folder, "manifest.md"))) {
+    } else if (!fs.isFile(join4(folder, "manifest.md"))) {
       findings.push(
         finding(
           "CHECK-4",
@@ -28317,8 +28748,8 @@ function validateRegistry(fs, opts) {
     } else {
       resolvedManifests.push({
         capability: cap.name,
-        path: join3(folder, "manifest.md"),
-        owningRoot: owningPluginRoot(join3(folder, "manifest.md"))
+        path: join4(folder, "manifest.md"),
+        owningRoot: owningPluginRoot(join4(folder, "manifest.md"))
       });
     }
   }
@@ -28336,7 +28767,7 @@ function validateRegistry(fs, opts) {
       owningPlugin,
       pluginRoot: (plugin) => {
         const recordedOrHealed = resolvePluginRoot(plugin) ?? healFromInstallManifest(plugin);
-        return recordedOrHealed ?? (fs.isDirectory(join3(repoRoot, "plugins", plugin)) ? join3(repoRoot, "plugins", plugin) : null);
+        return recordedOrHealed ?? (fs.isDirectory(join4(repoRoot, "plugins", plugin)) ? join4(repoRoot, "plugins", plugin) : null);
       }
     });
     findings.push(...res.findings);
@@ -30465,7 +30896,7 @@ function renderProfileMutation(current, updates, label2) {
 }
 
 // src/resolver/run-evidence.ts
-import { createHmac, randomBytes as randomBytes3, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes as randomBytes5, timingSafeEqual } from "node:crypto";
 var RUN_EVIDENCE_FORMAT_VERSION = 2;
 var RUN_EVIDENCE_DIR = ".wf/run-evidence";
 var RUN_EVIDENCE_ISSUER_DIR = ".wf-run-evidence";
@@ -30760,17 +31191,17 @@ function serializeRunEvidenceIssuer(key) {
 `;
 }
 function mintRunEvidenceIssuerKey() {
-  return randomBytes3(32).toString("hex");
+  return randomBytes5(32).toString("hex");
 }
 
 // src/resolver/prepare-workspace.ts
 import {
-  lstatSync as lstatSync3,
-  mkdirSync as mkdirSync3,
+  lstatSync as lstatSync4,
+  mkdirSync as mkdirSync4,
   readFileSync as readFileSync4,
   readdirSync as readdirSync3,
-  renameSync as renameSync3,
-  rmSync as rmSync3,
+  renameSync as renameSync4,
+  rmSync as rmSync4,
   writeFileSync as writeFileSync3
 } from "node:fs";
 var SETUP_STATE_DIR = "_local";
@@ -30780,12 +31211,12 @@ var PROFILES_DIR_REL = "_local/profiles";
 var SLOTS_DIR_REL = "_local/slots";
 var PROFILE_SUFFIXES = [".profile.json", ".settings.json"];
 var SLOT_SUFFIX = ".md";
-function join4(root, rel) {
+function join5(root, rel) {
   return `${root.replace(/\/+$/, "")}/${rel}`;
 }
 function kindOf(abs) {
   try {
-    const stat = lstatSync3(abs);
+    const stat = lstatSync4(abs);
     if (stat.isSymbolicLink()) return "symlink";
     if (stat.isFile()) return "file";
     if (stat.isDirectory()) return "dir";
@@ -30805,7 +31236,7 @@ function ancestorsSafe(root, rel) {
   const segments = rel.split("/");
   for (let i = 1; i < segments.length; i += 1) {
     const ancestor = segments.slice(0, i).join("/");
-    const kind = kindOf(join4(root, ancestor));
+    const kind = kindOf(join5(root, ancestor));
     if (kind === "symlink" || kind === "file" || kind === "other") return ancestor;
   }
   return null;
@@ -30813,7 +31244,7 @@ function ancestorsSafe(root, rel) {
 function listClass(sourceRoot, dirRel, suffixes) {
   let names;
   try {
-    names = readdirSync3(join4(sourceRoot, dirRel));
+    names = readdirSync3(join5(sourceRoot, dirRel));
   } catch {
     return [];
   }
@@ -30829,7 +31260,7 @@ function planPreparation(input) {
       detail: `the registry location \`${registryRel}\` is not a plain path under \`${SETUP_STATE_DIR}/\`; preparation writes nowhere else.`
     };
   }
-  const registryKind = kindOf(join4(sourceRoot, registryRel));
+  const registryKind = kindOf(join5(sourceRoot, registryRel));
   if (registryKind === "symlink") {
     return {
       ok: false,
@@ -30846,9 +31277,9 @@ function planPreparation(input) {
       detail: `the source worktree has no registry at \`${registryRel}\`.`
     };
   }
-  const hasDefaultConfig = kindOf(join4(sourceRoot, CORE_CONFIG_REL)) === "file";
+  const hasDefaultConfig = kindOf(join5(sourceRoot, CORE_CONFIG_REL)) === "file";
   const configRel = hasDefaultConfig ? CORE_CONFIG_REL : registryRel;
-  const configText = readFileSync4(join4(sourceRoot, configRel), "utf8");
+  const configText = readFileSync4(join5(sourceRoot, configRel), "utf8");
   if (parseCoreConfig(configText).taskRoot === null) {
     return {
       ok: false,
@@ -30860,7 +31291,7 @@ function planPreparation(input) {
   const candidates = [
     registryRel,
     ...hasDefaultConfig ? [CORE_CONFIG_REL] : [],
-    ...kindOf(join4(sourceRoot, CONSTITUTION_REL)) === "absent" ? [] : [CONSTITUTION_REL],
+    ...kindOf(join5(sourceRoot, CONSTITUTION_REL)) === "absent" ? [] : [CONSTITUTION_REL],
     ...listClass(sourceRoot, PROFILES_DIR_REL, PROFILE_SUFFIXES),
     ...listClass(sourceRoot, SLOTS_DIR_REL, [SLOT_SUFFIX])
   ].filter((rel, index, all) => all.indexOf(rel) === index);
@@ -30881,7 +31312,7 @@ function planPreparation(input) {
         };
       }
     }
-    const sourceKind = kindOf(join4(sourceRoot, rel));
+    const sourceKind = kindOf(join5(sourceRoot, rel));
     if (sourceKind !== "file") {
       return {
         ok: false,
@@ -30890,8 +31321,8 @@ function planPreparation(input) {
         detail: `the source entry \`${rel}\` is not a regular file (${sourceKind}); only regular files are copied.`
       };
     }
-    const bytes = readFileSync4(join4(sourceRoot, rel));
-    const childKind = kindOf(join4(childRoot, rel));
+    const bytes = readFileSync4(join5(sourceRoot, rel));
+    const childKind = kindOf(join5(childRoot, rel));
     if (childKind === "absent") {
       copies.push({ rel, bytes });
       continue;
@@ -30904,7 +31335,7 @@ function planPreparation(input) {
         detail: `the child entry \`${rel}\` exists but is not a regular file (${childKind}).`
       };
     }
-    if (readFileSync4(join4(childRoot, rel)).equals(bytes)) {
+    if (readFileSync4(join5(childRoot, rel)).equals(bytes)) {
       unchanged.push(rel);
       continue;
     }
@@ -30920,127 +31351,19 @@ function planPreparation(input) {
 function applyPreparation(childRoot, copies) {
   const written = [];
   for (const { rel, bytes } of copies) {
-    const target = join4(childRoot, rel);
-    mkdirSync3(target.slice(0, target.lastIndexOf("/")), { recursive: true });
+    const target = join5(childRoot, rel);
+    mkdirSync4(target.slice(0, target.lastIndexOf("/")), { recursive: true });
     const temp = `${target}.wf-prepare-${process.pid}.tmp`;
     try {
       writeFileSync3(temp, bytes, { flag: "wx" });
-      renameSync3(temp, target);
+      renameSync4(temp, target);
     } catch (err) {
-      rmSync3(temp, { force: true });
+      rmSync4(temp, { force: true });
       throw err;
     }
     written.push(rel);
   }
   return written;
-}
-
-// src/resolver/contained-state.ts
-import { closeSync as closeSync3, fsyncSync as fsyncSync2, lstatSync as lstatSync4, mkdirSync as mkdirSync4, openSync as openSync3, realpathSync as realpathSync4, renameSync as renameSync4, rmSync as rmSync4, writeSync as writeSync2 } from "node:fs";
-import { join as join5 } from "node:path";
-import { randomBytes as randomBytes4 } from "node:crypto";
-function messageOf(err) {
-  return err instanceof Error ? err.message : String(err);
-}
-function unsafe(path, detail) {
-  return { ok: false, kind: "unsafe", path, detail };
-}
-function lexicallyPlain(rel) {
-  if (rel.length === 0 || rel.includes("\0") || rel.includes("\\")) return false;
-  if (rel.startsWith("/") || /^[A-Za-z]:/.test(rel)) return false;
-  return !rel.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
-}
-function inspectContainedStatePath(root, rel) {
-  if (!lexicallyPlain(rel)) {
-    return unsafe(rel, `\`${rel}\` is not a plain workspace-relative path.`);
-  }
-  let cursor;
-  try {
-    cursor = realpathSync4(root);
-  } catch (err) {
-    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
-  }
-  const segments = rel.split("/");
-  for (let i = 0; i < segments.length; i += 1) {
-    cursor = join5(cursor, segments[i]);
-    const shown = segments.slice(0, i + 1).join("/");
-    let stat;
-    try {
-      stat = lstatSync4(cursor);
-    } catch (err) {
-      if (err.code === "ENOENT") return { ok: true, state: "absent" };
-      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
-    }
-    if (stat.isSymbolicLink()) {
-      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
-    }
-    const terminal = i === segments.length - 1;
-    if (!terminal && !stat.isDirectory()) {
-      return unsafe(shown, `\`${shown}\` is not a real directory.`);
-    }
-    if (terminal && !stat.isFile()) {
-      return unsafe(shown, `\`${shown}\` exists but is not a regular file.`);
-    }
-  }
-  return { ok: true, state: "file" };
-}
-function writeContainedStateFile(root, rel, content) {
-  const before = inspectContainedStatePath(root, rel);
-  if (!before.ok) return before;
-  const segments = rel.split("/");
-  let dir;
-  try {
-    dir = realpathSync4(root);
-  } catch (err) {
-    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
-  }
-  for (let i = 0; i < segments.length - 1; i += 1) {
-    dir = join5(dir, segments[i]);
-    const shown = segments.slice(0, i + 1).join("/");
-    try {
-      mkdirSync4(dir);
-    } catch (err) {
-      if (err.code !== "EEXIST") {
-        return { ok: false, kind: "failed", path: shown, detail: `\`${shown}\` could not be created: ${messageOf(err)}` };
-      }
-    }
-    let stat;
-    try {
-      stat = lstatSync4(dir);
-    } catch (err) {
-      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
-    }
-    if (stat.isSymbolicLink() || !stat.isDirectory()) {
-      return unsafe(shown, `\`${shown}\` is not a real directory; resolver setup state follows no link.`);
-    }
-  }
-  const after = inspectContainedStatePath(root, rel);
-  if (!after.ok) return after;
-  const name = segments[segments.length - 1];
-  const target = join5(dir, name);
-  const temp = join5(dir, `.${name}.wf-state-${randomBytes4(8).toString("hex")}.tmp`);
-  let fd = null;
-  try {
-    fd = openSync3(temp, "wx");
-    writeSync2(fd, Buffer.from(content, "utf8"));
-    fsyncSync2(fd);
-    closeSync3(fd);
-    fd = null;
-    renameSync4(temp, target);
-    return { ok: true };
-  } catch (err) {
-    if (fd !== null) {
-      try {
-        closeSync3(fd);
-      } catch {
-      }
-    }
-    try {
-      rmSync4(temp, { force: true });
-    } catch {
-    }
-    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be written: ${messageOf(err)}` };
-  }
 }
 
 // src/resolver/counterparts.ts
@@ -31555,7 +31878,7 @@ var ResolverService = class _ResolverService {
       category: null,
       message: null
     };
-    if (!isSkillSlug2(slug)) {
+    if (!isSkillSlug(slug)) {
       return {
         ...base,
         category: "registry-invalid",
@@ -35093,24 +35416,36 @@ var ResolverService = class _ResolverService {
       outputTail: "",
       diagnostics: []
     };
-    const marker = this.readSetupState();
-    if (!marker.ok) {
+    const setupConfig = {
+      ...config2,
+      dependencySetupCommand: config2.dependencySetupCommand ?? null,
+      dependencySetupTimeout: config2.dependencySetupTimeout ?? null
+    };
+    const early = planWorkspaceSetup(setupConfig, null);
+    if (early.kind !== "run") return this.setupOutcome(base, early);
+    const lock = acquireSetupLock(
+      this.ports.workspaceRoot,
+      (early.timeoutSeconds + SETUP_LOCK_WAIT_GRACE_SECONDS) * 1e3
+    );
+    if (!lock.ok) {
       return {
         ...base,
-        command: config2.dependencySetupCommand ?? null,
+        command: early.command,
+        timeoutSeconds: early.timeoutSeconds,
+        diagnostics: early.diagnostics,
         status: "blocked",
-        reason: "unsafe-path",
-        detail: marker.detail
+        reason: lock.kind === "unsafe" ? "unsafe-path" : lock.kind === "busy" ? "timed-out" : "failed",
+        detail: lock.detail
       };
     }
-    const plan = planWorkspaceSetup(
-      {
-        ...config2,
-        dependencySetupCommand: config2.dependencySetupCommand ?? null,
-        dependencySetupTimeout: config2.dependencySetupTimeout ?? null
-      },
-      marker.text
-    );
+    try {
+      return this.runWorkspaceSetupLocked(base, setupConfig);
+    } finally {
+      releaseSetupLock(this.ports.workspaceRoot, lock.token);
+    }
+  }
+  /** Map a plan that runs nothing to its response. */
+  setupOutcome(base, plan) {
     switch (plan.kind) {
       case "unprepared":
         return {
@@ -35138,9 +35473,22 @@ var ResolverService = class _ResolverService {
           reason: null,
           detail: "this command already succeeded in this worktree; it was not re-run."
         };
-      case "run":
-        break;
     }
+  }
+  /** The check, run and marker write — called only while the setup lock is held. */
+  runWorkspaceSetupLocked(base, setupConfig) {
+    const marker = this.readSetupState();
+    if (!marker.ok) {
+      return {
+        ...base,
+        command: setupConfig.dependencySetupCommand,
+        status: "blocked",
+        reason: "unsafe-path",
+        detail: marker.detail
+      };
+    }
+    const plan = planWorkspaceSetup(setupConfig, marker.text);
+    if (plan.kind !== "run") return this.setupOutcome(base, plan);
     const running = {
       ...base,
       command: plan.command,

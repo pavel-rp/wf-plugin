@@ -23,7 +23,14 @@ import {
   writeSync,
 } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
-import { tailOf } from "./resolver/workspace-setup.js";
+import {
+  parseSetupRunnerReport,
+  SETUP_OUTPUT_TAIL_CHARS,
+  SETUP_RUNNER_MARGIN_MS,
+  SETUP_RUNNER_SOURCE,
+  tailOf,
+  type SetupRunnerRequest,
+} from "./resolver/workspace-setup.js";
 import { randomBytes } from "node:crypto";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
@@ -408,28 +415,45 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
      *  project's own config value, run through the platform shell exactly as the
      *  project wrote it, in the workspace root, under a hard timeout. Output is
      *  captured and only its tail is returned; stdin is closed so a command that
-     *  prompts fails rather than hangs. */
+     *  prompts fails rather than hangs.
+     *
+     *  WF-871: the command runs inside the setup runner, which owns a process
+     *  group for it and stops that whole group on a timeout and after the
+     *  command exits — so nothing the command started outlives this call. The
+     *  runner itself is bounded by the timeout plus a margin. */
     runSetupCommand: (command, timeoutMs) => {
       const started = Date.now();
-      const result = spawnSync(command, {
+      const request: SetupRunnerRequest = {
+        command,
         cwd: workspaceRoot,
-        shell: true,
-        timeout: timeoutMs,
+        timeoutMs,
+        tailChars: SETUP_OUTPUT_TAIL_CHARS,
+      };
+      const result = spawnSync(process.execPath, ["-e", SETUP_RUNNER_SOURCE], {
+        cwd: workspaceRoot,
+        env: { ...process.env, WF_SETUP_REQUEST: JSON.stringify(request) },
+        timeout: timeoutMs + SETUP_RUNNER_MARGIN_MS,
         killSignal: "SIGKILL",
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
-        maxBuffer: 64 * 1024 * 1024,
+        maxBuffer: 16 * 1024 * 1024,
+        windowsHide: true,
       });
       const durationMs = Date.now() - started;
+      const report = parseSetupRunnerReport(result.stdout ?? "", durationMs);
+      if (report !== null) return report;
+      // The runner itself did not report: it could not start, or it was
+      // stopped at the outer bound. Never read as success.
       const error = result.error as NodeJS.ErrnoException | undefined;
       const timedOut = error?.code === "ETIMEDOUT";
-      const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
       return {
-        exitCode: result.status,
+        exitCode: null,
         signal: result.signal,
         timedOut,
-        outputTail: tailOf(output),
-        error: error !== undefined && !timedOut ? error.message : null,
+        outputTail: tailOf(`${result.stdout ?? ""}${result.stderr ?? ""}`),
+        error: timedOut
+          ? null
+          : `the setup runner did not report a result${error !== undefined ? `: ${error.message}` : ""}`,
         durationMs,
       };
     },
