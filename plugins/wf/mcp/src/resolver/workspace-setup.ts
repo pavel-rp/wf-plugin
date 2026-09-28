@@ -153,7 +153,17 @@ export const SETUP_RUNNER_MARGIN_MS = 15_000;
  *  for its output streams to close before reporting anyway. */
 const SETUP_RUNNER_DRAIN_MS = 2_000;
 
-export type SetupRunnerRequest = { command: string; cwd: string; timeoutMs: number; tailChars: number };
+export type SetupRunnerRequest = {
+  command: string;
+  cwd: string;
+  timeoutMs: number;
+  tailChars: number;
+  /** The held setup lock (absolute path + this run's token). When present the
+   *  runner records its own pid and the command group's pid into that lock
+   *  record, so the lock stays live while either still runs — even if the
+   *  resolver that took the lock has died. */
+  lock?: { path: string; token: string };
+};
 
 export const SETUP_RUNNER_SOURCE = `
 const { spawn, spawnSync } = require("node:child_process");
@@ -187,7 +197,21 @@ try {
   out.error = err instanceof Error ? err.message : String(err);
   finish();
 }
+const reportPids = () => {
+  if (!req.lock || child === null || child.pid === undefined) return;
+  try {
+    const fs = require("node:fs");
+    const rec = JSON.parse(fs.readFileSync(req.lock.path, "utf8"));
+    if (rec === null || typeof rec !== "object" || rec.token !== req.lock.token) return;
+    rec.runnerPid = process.pid;
+    if (!win) rec.groupPid = child.pid;
+    const tmp = req.lock.path + ".runner-" + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(rec) + "\\n", { flag: "wx" });
+    fs.renameSync(tmp, req.lock.path);
+  } catch {}
+};
 if (child !== null) {
+  reportPids();
   child.stdout.on("data", keep);
   child.stderr.on("data", keep);
   const timer = setTimeout(() => {
@@ -245,8 +269,19 @@ export function parseSetupRunnerReport(
 // never both observe "not done" and both run the command. The lock is a small
 // JSON record created exclusively through the contained, no-follow state
 // helpers (WF-872). A second caller waits — bounded — and then re-checks the
-// marker, so it reports `already-done` rather than running again. A lock whose
-// recorded holder process no longer exists on this host is reclaimed.
+// marker, so it reports `already-done` rather than running again.
+//
+// LIVENESS. A lock on this host is held while ANY of these is true:
+//   (a) the resolver process that took it is alive;
+//   (b) the setup runner, or the command's process group, it records is alive
+//       (the runner writes both pids into the record once the command starts);
+//   (c) `acquiredAt + timeoutMs + SETUP_RUNNER_MARGIN_MS` has not yet passed —
+//       the latest moment the runner's own timeout can still be stopping it.
+// Only when all three are false is the lock abandoned: the recorded group is
+// then signalled (best effort) and the lock is reclaimed. A record carrying
+// this process's own pid is judged by its token: a token this process issued
+// and has finished with is abandoned outright; one it never issued (a reused
+// pid) does not count as a live holder under (a).
 
 /** The lock file; it lives beside the success marker. */
 export const SETUP_LOCK_RELPATH = "_local/resolver/setup.lock";
@@ -255,10 +290,26 @@ export const SETUP_LOCK_WAIT_GRACE_SECONDS = 30;
 export const SETUP_LOCK_POLL_MS = 100;
 const SETUP_LOCK_MAX_BYTES = 4096;
 
-export type SetupLockRecord = { pid: number; host: string; token: string; acquiredAt: string };
+export type SetupLockRecord = {
+  pid: number;
+  host: string;
+  token: string;
+  acquiredAt: string;
+  /** The command timeout the holder runs under; absent on an older record,
+   *  which is then judged against the ceiling. */
+  timeoutMs?: number;
+  /** The setup runner's pid, written by the runner once the command starts. */
+  runnerPid?: number;
+  /** The command's process-group id (POSIX), written by the runner. */
+  groupPid?: number;
+};
 
 export function renderSetupLock(record: SetupLockRecord): string {
   return `${JSON.stringify(record)}\n`;
+}
+
+function positiveInt(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
 /** The lock's holder, or `null` when the text is not a lock record. */
@@ -267,15 +318,17 @@ export function parseSetupLock(text: string | null): SetupLockRecord | null {
   try {
     const parsed = JSON.parse(text) as Partial<SetupLockRecord>;
     if (
-      typeof parsed.pid === "number" &&
-      Number.isInteger(parsed.pid) &&
-      parsed.pid > 0 &&
+      positiveInt(parsed.pid) &&
       typeof parsed.host === "string" &&
       typeof parsed.token === "string" &&
       parsed.token.length > 0 &&
       typeof parsed.acquiredAt === "string"
     ) {
-      return { pid: parsed.pid, host: parsed.host, token: parsed.token, acquiredAt: parsed.acquiredAt };
+      const record: SetupLockRecord = { pid: parsed.pid, host: parsed.host, token: parsed.token, acquiredAt: parsed.acquiredAt };
+      if (positiveInt(parsed.timeoutMs)) record.timeoutMs = parsed.timeoutMs;
+      if (positiveInt(parsed.runnerPid)) record.runnerPid = parsed.runnerPid;
+      if (positiveInt(parsed.groupPid)) record.groupPid = parsed.groupPid;
+      return record;
     }
     return null;
   } catch {
@@ -283,14 +336,25 @@ export function parseSetupLock(text: string | null): SetupLockRecord | null {
   }
 }
 
+/** Tokens this process has issued, and the subset it still holds. A record
+ *  carrying this process's pid and an issued-but-released token is abandoned. */
+const issuedSetupLockTokens = new Set<string>();
+const heldSetupLockTokens = new Set<string>();
+
 /** The environment the lock loop observes; injectable so tests stay fast. */
 export type SetupLockDeps = {
   pid: number;
   host: string;
   now(): number;
   sleepMs(ms: number): void;
-  /** Whether a process with this id exists on this host. */
+  /** Whether a process with this id exists on this host. A negative id asks
+   *  about the process group `-pid` (POSIX). */
   processAlive(pid: number): boolean;
+  /** Best-effort stop of an abandoned lock's recorded command group. */
+  killGroup?(groupPid: number): void;
+  /** The restore step of a reclaim that captured a live holder's lock;
+   *  defaults to the contained exclusive hard link. */
+  linkBack?(root: string, fromRel: string, toRel: string): boolean;
 };
 
 export const defaultSetupLockDeps: SetupLockDeps = {
@@ -309,7 +373,36 @@ export const defaultSetupLockDeps: SetupLockDeps = {
       return (err as NodeJS.ErrnoException).code === "EPERM";
     }
   },
+  killGroup: (groupPid) => {
+    if (process.platform === "win32") return;
+    try {
+      process.kill(-groupPid, "SIGKILL");
+    } catch {
+      // Already gone, or not ours to signal: nothing more to do.
+    }
+  },
 };
+
+/** Whether a lock record on this host still has a live holder — (a), (b) or
+ *  (c) in the module note above. */
+export function setupLockLive(holder: SetupLockRecord, deps: SetupLockDeps): boolean {
+  if (holder.pid === deps.pid) {
+    // This process's own pid: its tokens say whether it still holds the lock.
+    if (heldSetupLockTokens.has(holder.token)) return true;
+    // Issued here and since released — spawnSync has returned, so the runner
+    // it started has ended too.
+    if (issuedSetupLockTokens.has(holder.token)) return false;
+    // Never issued here: a reused pid, so (a) does not hold; (b)/(c) decide.
+  } else if (deps.processAlive(holder.pid)) {
+    return true;
+  }
+  if (holder.runnerPid !== undefined && deps.processAlive(holder.runnerPid)) return true;
+  if (holder.groupPid !== undefined && deps.processAlive(-holder.groupPid)) return true;
+  const acquired = Date.parse(holder.acquiredAt);
+  if (!Number.isFinite(acquired)) return true;
+  const bound = (holder.timeoutMs ?? MAX_SETUP_TIMEOUT_SECONDS * 1000) + SETUP_RUNNER_MARGIN_MS;
+  return deps.now() < acquired + bound;
+}
 
 export type SetupLockAcquisition =
   | { ok: true; token: string }
@@ -327,27 +420,38 @@ function readLock(root: string, rel: string): { status: "ok"; record: SetupLockR
 /**
  * Move a lock whose holder is gone out of the way. Returns `retry` when the
  * caller should attempt the create again (reclaimed, or the lock vanished),
- * `held` when a live — or unjudgeable — holder keeps it, or `unsafe`.
+ * `held` when a live — or unjudgeable — holder keeps it, `unsafe`, or
+ * `restore-failed` (with the path the captured lock was kept at) when a live
+ * holder's lock was moved aside and could not be put back.
  */
-function reclaimIfAbandoned(root: string, deps: SetupLockDeps): "retry" | "held" | "unsafe" {
+function reclaimIfAbandoned(
+  root: string,
+  deps: SetupLockDeps,
+): "retry" | "held" | "unsafe" | { restoreFailed: string } {
   const current = readLock(root, SETUP_LOCK_RELPATH);
   if (current.status === "missing") return "retry";
   if (current.status === "unsafe") return "unsafe";
   const holder = current.record;
   // An unreadable record, a holder on another host, or a live holder is never
   // taken over: waiting is the safe side.
-  if (holder === null || holder.host !== deps.host || deps.processAlive(holder.pid)) return "held";
+  if (holder === null || holder.host !== deps.host || setupLockLive(holder, deps)) return "held";
+
+  // Abandoned: stop whatever the recorded command group left behind before the
+  // next run starts beside it.
+  if (holder.groupPid !== undefined) deps.killGroup?.(holder.groupPid);
 
   // Rename the stale lock aside first — an atomic step only one reclaimer can
   // win — then confirm what was moved is the record judged abandoned. If a
-  // live holder's fresh lock was captured instead, put it back.
+  // live holder's fresh lock was captured instead, put it back; if that
+  // fails, keep the captured copy and never run beside its holder.
   const aside = `${SETUP_LOCK_RELPATH}.stale-${randomBytes(6).toString("hex")}`;
   const moved = renameContainedStateFile(root, SETUP_LOCK_RELPATH, aside);
   if (!moved.ok) return moved.kind === "unsafe" ? "unsafe" : "held";
   if (!moved.moved) return "retry";
   const captured = readLock(root, aside);
   if (captured.status === "ok" && captured.record?.token !== holder.token) {
-    linkContainedStateFileExclusive(root, aside, SETUP_LOCK_RELPATH);
+    const linkBack = deps.linkBack ?? linkContainedStateFileExclusive;
+    if (!linkBack(root, aside, SETUP_LOCK_RELPATH)) return { restoreFailed: aside };
   }
   removeContainedStateFile(root, aside);
   return "retry";
@@ -356,14 +460,31 @@ function reclaimIfAbandoned(root: string, deps: SetupLockDeps): "retry" | "held"
 /**
  * Take the setup lock for `root`, waiting up to `waitMs` for a live holder.
  * `busy` names the lock when the wait runs out; the command is then not run.
+ * `timeoutMs` is the command timeout the holder will run under; it is recorded
+ * so another caller can judge liveness (c) against it.
  */
-export function acquireSetupLock(root: string, waitMs: number, deps: SetupLockDeps = defaultSetupLockDeps): SetupLockAcquisition {
+export function acquireSetupLock(
+  root: string,
+  waitMs: number,
+  deps: SetupLockDeps = defaultSetupLockDeps,
+  timeoutMs: number = MAX_SETUP_TIMEOUT_SECONDS * 1000,
+): SetupLockAcquisition {
   const token = randomBytes(16).toString("hex");
-  const content = renderSetupLock({ pid: deps.pid, host: deps.host, token, acquiredAt: new Date(deps.now()).toISOString() });
+  const content = renderSetupLock({
+    pid: deps.pid,
+    host: deps.host,
+    token,
+    acquiredAt: new Date(deps.now()).toISOString(),
+    timeoutMs,
+  });
   const deadline = deps.now() + waitMs;
   for (;;) {
     const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, content);
-    if (created.ok) return { ok: true, token };
+    if (created.ok) {
+      issuedSetupLockTokens.add(token);
+      heldSetupLockTokens.add(token);
+      return { ok: true, token };
+    }
     if (created.kind !== "exists") return { ok: false, kind: created.kind, detail: created.detail };
     const reclaim = reclaimIfAbandoned(root, deps);
     if (reclaim === "unsafe") {
@@ -371,6 +492,13 @@ export function acquireSetupLock(root: string, waitMs: number, deps: SetupLockDe
         ok: false,
         kind: "unsafe",
         detail: `\`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`,
+      };
+    }
+    if (typeof reclaim === "object") {
+      return {
+        ok: false,
+        kind: "failed",
+        detail: `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could not be restored; it is kept at \`${reclaim.restoreFailed}\` and the command was not run.`,
       };
     }
     if (reclaim === "retry") continue;
@@ -385,12 +513,18 @@ export function acquireSetupLock(root: string, waitMs: number, deps: SetupLockDe
   }
 }
 
-/** Release the lock only while it still carries this run's token. */
-export function releaseSetupLock(root: string, token: string): void {
+/** Release the lock only while it still carries this run's token. A removal
+ *  that fails is reported, so the caller can surface it in `diagnostics`. */
+export function releaseSetupLock(root: string, token: string): { ok: true } | { ok: false; detail: string } {
+  heldSetupLockTokens.delete(token);
   const current = readLock(root, SETUP_LOCK_RELPATH);
   if (current.status === "ok" && current.record?.token === token) {
-    removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+    const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+    if (!removed.ok) {
+      return { ok: false, detail: `the setup lock was not released: ${removed.detail}` };
+    }
   }
+  return { ok: true };
 }
 
 /** Keep only the tail, so a noisy command never floods the caller. */

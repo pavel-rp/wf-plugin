@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -26,8 +27,11 @@ import {
   acquireSetupLock,
   DEFAULT_SETUP_TIMEOUT_SECONDS,
   MAX_SETUP_TIMEOUT_SECONDS,
+  parseSetupLock,
   parseSetupTimeout,
+  releaseSetupLock,
   renderSetupLock,
+  SETUP_RUNNER_MARGIN_MS,
   renderSetupState,
   SETUP_LOCK_RELPATH,
   setupCommandDigest,
@@ -329,6 +333,15 @@ test("config cells: a pipe inside a code span or written as \\| stays in the val
   assert.equal(verbatim.dependencySetupCommand, "grep -E 'a\\|b' x || true", "a code span is taken verbatim");
 });
 
+test("config cells: a wrapping code span is unwrapped only when its first exact-N closer ends the value", () => {
+  const cmd = (value: string) => parseCoreConfig(config({ "Dependency Setup Command": value })).dependencySetupCommand;
+  assert.equal(cmd("``a`b``"), "a`b");
+  assert.equal(cmd("`` `x` ``"), "`x`");
+  assert.equal(cmd("`a` && `b`"), "`a` && `b`", "two spans are not one wrapping span");
+  assert.equal(cmd("``a`"), "``a`", "an unclosed run is literal");
+  assert.equal(cmd("```a``"), "```a``", "a shorter closing run does not close");
+});
+
 test("config cells: existing rows keep their meaning, a third column included", () => {
   const cfg = parseCoreConfig(
     "| Key | Value | Note |\n|---|---|---|\n| **Task Root** | `_local` | where tasks live |\n| **Verify Command** | `(cd x && npm run build)` | build |\n| **Context Ceiling** | `<none>` | |\n",
@@ -448,6 +461,174 @@ test("a live holder past the wait bound is busy, and its lock is left alone", ()
     assert.equal(!result.ok && result.kind, "busy");
     assert.match(!result.ok ? result.detail : "", /setup\.lock/);
     assert.equal(readFileSync(lockPath(ws.root), "utf8"), held, "a live holder's lock is never taken over");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+// WF-871 lock liveness: held while (a) the holder resolver, (b) the recorded
+// runner or command group is alive, or (c) acquiredAt + timeout + margin has
+// not yet passed.
+const DEAD_RESOLVER = 999_001;
+const RUNNER = 999_002;
+const GROUP = 999_003;
+
+function lockDeps(alive: (pid: number) => boolean, start = 0): SetupLockDeps & { clock: () => number; killed: number[] } {
+  let clock = start;
+  const killed: number[] = [];
+  return {
+    pid: process.pid,
+    host: hostname(),
+    now: () => clock,
+    sleepMs: (ms) => {
+      clock += ms;
+    },
+    processAlive: alive,
+    killGroup: (g) => {
+      killed.push(g);
+    },
+    clock: () => clock,
+    killed,
+  };
+}
+
+test("lock liveness (b): a live recorded runner keeps the lock after its resolver died", () => {
+  const ws = workspace(config({}));
+  try {
+    const held = renderSetupLock({
+      pid: DEAD_RESOLVER,
+      host: hostname(),
+      token: "runner-live",
+      acquiredAt: "2026-01-01T00:00:00.000Z",
+      timeoutMs: 1_000,
+      runnerPid: RUNNER,
+    });
+    write(lockPath(ws.root), held);
+    const result = acquireSetupLock(ws.root, 1_000, lockDeps((pid) => pid === RUNNER, Date.parse("2026-06-01T00:00:00Z")));
+    assert.equal(!result.ok && result.kind, "busy");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), held);
+
+    const group = renderSetupLock({ ...parseSetupLock(held)!, runnerPid: undefined, groupPid: GROUP });
+    write(lockPath(ws.root), group);
+    const byGroup = acquireSetupLock(ws.root, 1_000, lockDeps((pid) => pid === -GROUP, Date.parse("2026-06-01T00:00:00Z")));
+    assert.equal(!byGroup.ok && byGroup.kind, "busy", "a live command group keeps the lock too");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("lock liveness (c): a dead holder's lock is kept until acquiredAt + timeout + margin, then reclaimed", () => {
+  const ws = workspace(config({}));
+  try {
+    const acquiredAt = Date.parse("2026-06-01T00:00:00Z");
+    write(
+      lockPath(ws.root),
+      renderSetupLock({
+        pid: DEAD_RESOLVER,
+        host: hostname(),
+        token: "window",
+        acquiredAt: new Date(acquiredAt).toISOString(),
+        timeoutMs: 5_000,
+        runnerPid: RUNNER,
+        groupPid: GROUP,
+      }),
+    );
+    const early = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, acquiredAt));
+    assert.equal(!early.ok && early.kind, "busy", "inside the window the lock is still held");
+
+    const deps = lockDeps(() => false, acquiredAt + 1_000);
+    const late = acquireSetupLock(ws.root, 5_000 + SETUP_RUNNER_MARGIN_MS, deps);
+    assert.equal(late.ok, true, JSON.stringify(late));
+    assert.ok(deps.clock() >= acquiredAt + 5_000 + SETUP_RUNNER_MARGIN_MS, "reclaimed only after the window closed");
+    assert.deepEqual(deps.killed, [GROUP], "the recorded command group is stopped before the reclaim");
+    if (late.ok) releaseSetupLock(ws.root, late.token);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("lock liveness: this process's own pid with a token it is not using is abandoned", () => {
+  const ws = workspace(config({}));
+  try {
+    const now = Date.parse("2026-06-01T00:00:00Z");
+    // A token this process issued and has released: abandoned at once, even
+    // inside the time window.
+    const first = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, now));
+    assert.equal(first.ok, true);
+    if (!first.ok) return;
+    assert.equal(releaseSetupLock(ws.root, first.token).ok, true);
+    write(
+      lockPath(ws.root),
+      renderSetupLock({ pid: process.pid, host: hostname(), token: first.token, acquiredAt: new Date(now).toISOString(), timeoutMs: 60_000 }),
+    );
+    const again = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, now));
+    assert.equal(again.ok, true, JSON.stringify(again));
+    if (again.ok) releaseSetupLock(ws.root, again.token);
+
+    // A token this process never issued (a reused pid) is not a live holder
+    // under (a); with no runner and the window passed it is reclaimed.
+    write(
+      lockPath(ws.root),
+      renderSetupLock({ pid: process.pid, host: hostname(), token: "reused-pid", acquiredAt: "2026-01-01T00:00:00.000Z", timeoutMs: 1_000 }),
+    );
+    const reused = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, now));
+    assert.equal(reused.ok, true, JSON.stringify(reused));
+    if (reused.ok) releaseSetupLock(ws.root, reused.token);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("reclaim: a captured live lock that cannot be restored is kept aside and nothing runs", () => {
+  const ws = workspace(config({}));
+  try {
+    write(
+      lockPath(ws.root),
+      renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "stale", acquiredAt: "2026-01-01T00:00:00.000Z", groupPid: GROUP }),
+    );
+    const fresh = renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "fresh", acquiredAt: "2026-06-01T00:00:00.000Z" });
+    const deps = lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z"));
+    // Between the judgement and the rename, a new holder replaces the lock.
+    deps.killGroup = () => write(lockPath(ws.root), fresh);
+    deps.linkBack = () => false;
+    const result = acquireSetupLock(ws.root, 1_000, deps);
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.kind, "failed");
+    const aside = !result.ok ? /`(_local\/resolver\/setup\.lock\.stale-[0-9a-f]+)`/.exec(result.detail)?.[1] : undefined;
+    assert.ok(aside, !result.ok ? result.detail : "");
+    assert.equal(readFileSync(`${ws.root}/${aside}`, "utf8"), fresh, "the captured live lock is never deleted");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("the runner records its own and the command group's pid in the held lock", () => {
+  const ws = workspace(config({ "Dependency Setup Command": "`sleep 0.5; cat _local/resolver/setup.lock > seen.json`" }));
+  try {
+    const result = ws.service().runWorkspaceSetup();
+    assert.equal(result.status, "succeeded", JSON.stringify(result));
+    const seen = parseSetupLock(readFileSync(`${ws.root}/seen.json`, "utf8"));
+    assert.ok(seen !== null);
+    assert.equal(seen.pid, process.pid);
+    assert.ok(typeof seen.runnerPid === "number" && seen.runnerPid !== process.pid);
+    if (process.platform !== "win32") assert.ok(typeof seen.groupPid === "number");
+    assert.equal(existsSync(lockPath(ws.root)), false, "the rewritten lock is still released by its token");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("a failed lock release is reported, not dropped", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
+  const ws = workspace(config({}));
+  try {
+    const acquired = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z")));
+    assert.equal(acquired.ok, true);
+    if (!acquired.ok) return;
+    chmodSync(`${ws.root}/_local/resolver`, 0o555);
+    const released = releaseSetupLock(ws.root, acquired.token);
+    chmodSync(`${ws.root}/_local/resolver`, 0o755);
+    assert.equal(released.ok, false);
+    assert.match(!released.ok ? released.detail : "", /setup lock was not released/);
   } finally {
     ws.cleanup();
   }

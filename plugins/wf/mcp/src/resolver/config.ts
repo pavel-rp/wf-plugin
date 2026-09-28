@@ -95,21 +95,45 @@ function extractKeyValues(markdown: string): Map<string, string> {
   return map;
 }
 
+/**
+ * The content of a code span that wraps the whole of `v`, or `null` when `v`
+ * is not exactly one code span. Uses `splitTableRow`'s span rule: the opening
+ * run is the full leading run of N backticks, and it closes at the first later
+ * run of exactly N.
+ */
+function wrappingSpanContent(v: string): string | null {
+  const n = backtickRun(v, 0);
+  if (n === 0) return null;
+  let j = n;
+  while (j < v.length) {
+    if (v[j] === "`") {
+      const m = backtickRun(v, j);
+      if (m === n) return j + n === v.length ? v.slice(n, j) : null;
+      j += m;
+    } else {
+      j += 1;
+    }
+  }
+  return null;
+}
+
 /** Unwrap a backticked value and treat placeholders/`<none>` as unset. */
 function normalizeValue(raw: string | undefined): string | null {
   if (raw === undefined) return null;
   let v = raw.trim();
-  // Strip one wrapping code span: an opening run of N backticks closed by a
-  // run of exactly N (the same rule `splitTableRow` keeps a span by), plus the
-  // single padding space either side that lets a span start or end with a
-  // backtick.
-  const bt = /^(`+)([\s\S]*[^`])\1$/.exec(v) ?? /^(`+)()\1$/.exec(v);
-  if (bt) {
-    let inner = bt[2];
-    if (inner.length >= 2 && inner.startsWith(" ") && inner.endsWith(" ") && inner.trim() !== "") {
-      inner = inner.slice(1, -1);
+  // Strip one wrapping code span under `splitTableRow`'s rule: the full
+  // leading run of N backticks is closed by the FIRST later run of exactly N.
+  // The value is unwrapped only when that closing run ends the value; any
+  // other shape (no closing run, or text after it) is kept verbatim. The single
+  // padding space either side that lets a span start or end with a backtick is
+  // dropped.
+  const inner = wrappingSpanContent(v);
+  if (inner !== null) {
+    let body = inner;
+    if (body.length >= 2 && body.startsWith(" ") && body.endsWith(" ") && body.trim() !== "") {
+      body = body.slice(1, -1);
     }
-    v = inner.trim();
+    v = body.trim();
   }
   if (v === "" || v === "—") return null;
   // Any angle-bracketed placeholder (e.g. <none>, <auto-detect>, <FILL: …>).

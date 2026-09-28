@@ -24447,16 +24447,31 @@ function extractKeyValues(markdown) {
   }
   return map;
 }
+function wrappingSpanContent(v) {
+  const n = backtickRun(v, 0);
+  if (n === 0) return null;
+  let j = n;
+  while (j < v.length) {
+    if (v[j] === "`") {
+      const m = backtickRun(v, j);
+      if (m === n) return j + n === v.length ? v.slice(n, j) : null;
+      j += m;
+    } else {
+      j += 1;
+    }
+  }
+  return null;
+}
 function normalizeValue(raw) {
   if (raw === void 0) return null;
   let v = raw.trim();
-  const bt = /^(`+)([\s\S]*[^`])\1$/.exec(v) ?? /^(`+)()\1$/.exec(v);
-  if (bt) {
-    let inner = bt[2];
-    if (inner.length >= 2 && inner.startsWith(" ") && inner.endsWith(" ") && inner.trim() !== "") {
-      inner = inner.slice(1, -1);
+  const inner = wrappingSpanContent(v);
+  if (inner !== null) {
+    let body = inner;
+    if (body.length >= 2 && body.startsWith(" ") && body.endsWith(" ") && body.trim() !== "") {
+      body = body.slice(1, -1);
     }
-    v = inner.trim();
+    v = body.trim();
   }
   if (v === "" || v === "\u2014") return null;
   if (/^<.*>$/.test(v)) return null;
@@ -25808,7 +25823,21 @@ try {
   out.error = err instanceof Error ? err.message : String(err);
   finish();
 }
+const reportPids = () => {
+  if (!req.lock || child === null || child.pid === undefined) return;
+  try {
+    const fs = require("node:fs");
+    const rec = JSON.parse(fs.readFileSync(req.lock.path, "utf8"));
+    if (rec === null || typeof rec !== "object" || rec.token !== req.lock.token) return;
+    rec.runnerPid = process.pid;
+    if (!win) rec.groupPid = child.pid;
+    const tmp = req.lock.path + ".runner-" + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(rec) + "\\n", { flag: "wx" });
+    fs.renameSync(tmp, req.lock.path);
+  } catch {}
+};
 if (child !== null) {
+  reportPids();
   child.stdout.on("data", keep);
   child.stderr.on("data", keep);
   const timer = setTimeout(() => {
@@ -25855,18 +25884,27 @@ function renderSetupLock(record2) {
   return `${JSON.stringify(record2)}
 `;
 }
+function positiveInt(value) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
 function parseSetupLock(text) {
   if (text === null) return null;
   try {
     const parsed = JSON.parse(text);
-    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0 && typeof parsed.host === "string" && typeof parsed.token === "string" && parsed.token.length > 0 && typeof parsed.acquiredAt === "string") {
-      return { pid: parsed.pid, host: parsed.host, token: parsed.token, acquiredAt: parsed.acquiredAt };
+    if (positiveInt(parsed.pid) && typeof parsed.host === "string" && typeof parsed.token === "string" && parsed.token.length > 0 && typeof parsed.acquiredAt === "string") {
+      const record2 = { pid: parsed.pid, host: parsed.host, token: parsed.token, acquiredAt: parsed.acquiredAt };
+      if (positiveInt(parsed.timeoutMs)) record2.timeoutMs = parsed.timeoutMs;
+      if (positiveInt(parsed.runnerPid)) record2.runnerPid = parsed.runnerPid;
+      if (positiveInt(parsed.groupPid)) record2.groupPid = parsed.groupPid;
+      return record2;
     }
     return null;
   } catch {
     return null;
   }
 }
+var issuedSetupLockTokens = /* @__PURE__ */ new Set();
+var heldSetupLockTokens = /* @__PURE__ */ new Set();
 var defaultSetupLockDeps = {
   pid: process.pid,
   host: hostname(),
@@ -25881,8 +25919,29 @@ var defaultSetupLockDeps = {
     } catch (err) {
       return err.code === "EPERM";
     }
+  },
+  killGroup: (groupPid) => {
+    if (process.platform === "win32") return;
+    try {
+      process.kill(-groupPid, "SIGKILL");
+    } catch {
+    }
   }
 };
+function setupLockLive(holder, deps) {
+  if (holder.pid === deps.pid) {
+    if (heldSetupLockTokens.has(holder.token)) return true;
+    if (issuedSetupLockTokens.has(holder.token)) return false;
+  } else if (deps.processAlive(holder.pid)) {
+    return true;
+  }
+  if (holder.runnerPid !== void 0 && deps.processAlive(holder.runnerPid)) return true;
+  if (holder.groupPid !== void 0 && deps.processAlive(-holder.groupPid)) return true;
+  const acquired = Date.parse(holder.acquiredAt);
+  if (!Number.isFinite(acquired)) return true;
+  const bound = (holder.timeoutMs ?? MAX_SETUP_TIMEOUT_SECONDS * 1e3) + SETUP_RUNNER_MARGIN_MS;
+  return deps.now() < acquired + bound;
+}
 function readLock(root, rel) {
   const read = readContainedCapabilityFile(root, rel, SETUP_LOCK_MAX_BYTES);
   if (read.status === "ok") return { status: "ok", record: parseSetupLock(read.content) };
@@ -25895,25 +25954,37 @@ function reclaimIfAbandoned(root, deps) {
   if (current.status === "missing") return "retry";
   if (current.status === "unsafe") return "unsafe";
   const holder = current.record;
-  if (holder === null || holder.host !== deps.host || deps.processAlive(holder.pid)) return "held";
+  if (holder === null || holder.host !== deps.host || setupLockLive(holder, deps)) return "held";
+  if (holder.groupPid !== void 0) deps.killGroup?.(holder.groupPid);
   const aside = `${SETUP_LOCK_RELPATH}.stale-${randomBytes3(6).toString("hex")}`;
   const moved = renameContainedStateFile(root, SETUP_LOCK_RELPATH, aside);
   if (!moved.ok) return moved.kind === "unsafe" ? "unsafe" : "held";
   if (!moved.moved) return "retry";
   const captured = readLock(root, aside);
   if (captured.status === "ok" && captured.record?.token !== holder.token) {
-    linkContainedStateFileExclusive(root, aside, SETUP_LOCK_RELPATH);
+    const linkBack = deps.linkBack ?? linkContainedStateFileExclusive;
+    if (!linkBack(root, aside, SETUP_LOCK_RELPATH)) return { restoreFailed: aside };
   }
   removeContainedStateFile(root, aside);
   return "retry";
 }
-function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps) {
+function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs = MAX_SETUP_TIMEOUT_SECONDS * 1e3) {
   const token2 = randomBytes3(16).toString("hex");
-  const content = renderSetupLock({ pid: deps.pid, host: deps.host, token: token2, acquiredAt: new Date(deps.now()).toISOString() });
+  const content = renderSetupLock({
+    pid: deps.pid,
+    host: deps.host,
+    token: token2,
+    acquiredAt: new Date(deps.now()).toISOString(),
+    timeoutMs
+  });
   const deadline = deps.now() + waitMs;
   for (; ; ) {
     const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, content);
-    if (created.ok) return { ok: true, token: token2 };
+    if (created.ok) {
+      issuedSetupLockTokens.add(token2);
+      heldSetupLockTokens.add(token2);
+      return { ok: true, token: token2 };
+    }
     if (created.kind !== "exists") return { ok: false, kind: created.kind, detail: created.detail };
     const reclaim = reclaimIfAbandoned(root, deps);
     if (reclaim === "unsafe") {
@@ -25921,6 +25992,13 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps) {
         ok: false,
         kind: "unsafe",
         detail: `\`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
+      };
+    }
+    if (typeof reclaim === "object") {
+      return {
+        ok: false,
+        kind: "failed",
+        detail: `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could not be restored; it is kept at \`${reclaim.restoreFailed}\` and the command was not run.`
       };
     }
     if (reclaim === "retry") continue;
@@ -25935,10 +26013,15 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps) {
   }
 }
 function releaseSetupLock(root, token2) {
+  heldSetupLockTokens.delete(token2);
   const current = readLock(root, SETUP_LOCK_RELPATH);
   if (current.status === "ok" && current.record?.token === token2) {
-    removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+    const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+    if (!removed.ok) {
+      return { ok: false, detail: `the setup lock was not released: ${removed.detail}` };
+    }
   }
+  return { ok: true };
 }
 function tailOf(output) {
   return output.length <= SETUP_OUTPUT_TAIL_CHARS ? output : output.slice(output.length - SETUP_OUTPUT_TAIL_CHARS);
@@ -26862,7 +26945,7 @@ function createDefaultPorts(workspaceRoot) {
      *  group for it and stops that whole group on a timeout and after the
      *  command exits — so nothing the command started outlives this call. The
      *  runner itself is bounded by the timeout plus a margin. */
-    runSetupCommand: (command, timeoutMs) => {
+    runSetupCommand: (command, timeoutMs, lock) => {
       const started = Date.now();
       const request = {
         command,
@@ -26870,6 +26953,12 @@ function createDefaultPorts(workspaceRoot) {
         timeoutMs,
         tailChars: SETUP_OUTPUT_TAIL_CHARS
       };
+      if (lock !== void 0) {
+        try {
+          request.lock = { path: resolve3(realpathSync4(workspaceRoot), ...lock.rel.split("/")), token: lock.token };
+        } catch {
+        }
+      }
       const result = spawnSync(process.execPath, ["-e", SETUP_RUNNER_SOURCE], {
         cwd: workspaceRoot,
         env: { ...process.env, WF_SETUP_REQUEST: JSON.stringify(request) },
@@ -35431,7 +35520,9 @@ var ResolverService = class _ResolverService {
     if (early.kind !== "run") return this.setupOutcome(base, early);
     const lock = acquireSetupLock(
       this.ports.workspaceRoot,
-      (early.timeoutSeconds + SETUP_LOCK_WAIT_GRACE_SECONDS) * 1e3
+      (early.timeoutSeconds + SETUP_LOCK_WAIT_GRACE_SECONDS) * 1e3,
+      defaultSetupLockDeps,
+      early.timeoutSeconds * 1e3
     );
     if (!lock.ok) {
       return {
@@ -35444,11 +35535,23 @@ var ResolverService = class _ResolverService {
         detail: lock.detail
       };
     }
+    return this.runWorkspaceSetupLockedReleasing(base, setupConfig, lock.token);
+  }
+  /** Run under the held lock, then release it; a failed release is surfaced in
+   *  the response's `diagnostics` rather than dropped. */
+  runWorkspaceSetupLockedReleasing(base, setupConfig, token2) {
+    let response;
     try {
-      return this.runWorkspaceSetupLocked(base, setupConfig);
-    } finally {
-      releaseSetupLock(this.ports.workspaceRoot, lock.token);
+      response = this.runWorkspaceSetupLocked(base, setupConfig, token2);
+    } catch (err) {
+      releaseSetupLock(this.ports.workspaceRoot, token2);
+      throw err;
     }
+    const released = releaseSetupLock(this.ports.workspaceRoot, token2);
+    if (!released.ok) {
+      response = { ...response, diagnostics: [...response.diagnostics, released.detail] };
+    }
+    return response;
   }
   /** Map a plan that runs nothing to its response. */
   setupOutcome(base, plan) {
@@ -35482,7 +35585,7 @@ var ResolverService = class _ResolverService {
     }
   }
   /** The check, run and marker write — called only while the setup lock is held. */
-  runWorkspaceSetupLocked(base, setupConfig) {
+  runWorkspaceSetupLocked(base, setupConfig, lockToken) {
     const marker = this.readSetupState();
     if (!marker.ok) {
       return {
@@ -35509,7 +35612,10 @@ var ResolverService = class _ResolverService {
         detail: "this runtime cannot run a setup command."
       };
     }
-    const result = this.ports.runSetupCommand(plan.command, plan.timeoutSeconds * 1e3);
+    const result = this.ports.runSetupCommand(plan.command, plan.timeoutSeconds * 1e3, {
+      rel: SETUP_LOCK_RELPATH,
+      token: lockToken
+    });
     const observed = {
       ...running,
       exitCode: result.exitCode,

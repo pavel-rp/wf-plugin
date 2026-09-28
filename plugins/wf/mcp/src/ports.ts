@@ -421,7 +421,7 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
      *  group for it and stops that whole group on a timeout and after the
      *  command exits — so nothing the command started outlives this call. The
      *  runner itself is bounded by the timeout plus a margin. */
-    runSetupCommand: (command, timeoutMs) => {
+    runSetupCommand: (command, timeoutMs, lock) => {
       const started = Date.now();
       const request: SetupRunnerRequest = {
         command,
@@ -429,6 +429,15 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
         timeoutMs,
         tailChars: SETUP_OUTPUT_TAIL_CHARS,
       };
+      // The held lock's absolute path: the runner records its own and the
+      // command group's pid there, keeping the lock live while they run.
+      if (lock !== undefined) {
+        try {
+          request.lock = { path: resolve(realpathSync(workspaceRoot), ...lock.rel.split("/")), token: lock.token };
+        } catch {
+          // No resolvable root: the lock stays judged by holder pid and time.
+        }
+      }
       const result = spawnSync(process.execPath, ["-e", SETUP_RUNNER_SOURCE], {
         cwd: workspaceRoot,
         env: { ...process.env, WF_SETUP_REQUEST: JSON.stringify(request) },

@@ -510,16 +510,31 @@ function extractKeyValues(markdown) {
   }
   return map;
 }
+function wrappingSpanContent(v) {
+  const n = backtickRun(v, 0);
+  if (n === 0) return null;
+  let j = n;
+  while (j < v.length) {
+    if (v[j] === "`") {
+      const m = backtickRun(v, j);
+      if (m === n) return j + n === v.length ? v.slice(n, j) : null;
+      j += m;
+    } else {
+      j += 1;
+    }
+  }
+  return null;
+}
 function normalizeValue(raw) {
   if (raw === void 0) return null;
   let v = raw.trim();
-  const bt = /^(`+)([\s\S]*[^`])\1$/.exec(v) ?? /^(`+)()\1$/.exec(v);
-  if (bt) {
-    let inner = bt[2];
-    if (inner.length >= 2 && inner.startsWith(" ") && inner.endsWith(" ") && inner.trim() !== "") {
-      inner = inner.slice(1, -1);
+  const inner = wrappingSpanContent(v);
+  if (inner !== null) {
+    let body = inner;
+    if (body.length >= 2 && body.startsWith(" ") && body.endsWith(" ") && body.trim() !== "") {
+      body = body.slice(1, -1);
     }
-    v = inner.trim();
+    v = body.trim();
   }
   if (v === "" || v === "\u2014") return null;
   if (/^<.*>$/.test(v)) return null;
