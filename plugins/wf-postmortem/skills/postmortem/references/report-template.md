@@ -356,12 +356,16 @@ is reconstructed from memory of an earlier run.
       never match it in dedup: its draw may recur once, now under a complete key.
    5. Record every change in this follow-up's Continuation entry, one line each under
       `Legacy state normalized:` — `<mechanism, one line> — assigned H<n> (no id | invalid id
-      "<value>" | duplicate of H<m>)`; `highest minted id derived from visible ids (H<n>) — an id
-      retired before this report recorded its high-water cannot be recovered` when the line was
-      absent; `recorded high-water <H<m> | none> raised to H<n>` when a valid recorded value was
+      "<value>" | duplicate of H<m>)`; `highest minted id derived from visible ids (<H<n> | none>)
+      — an id retired before this report recorded its high-water cannot be recovered` when the line
+      was absent; `recorded high-water <H<m> | none> raised to H<n>` when a valid recorded value was
       below a kept id; `invalid recorded high-water "<value>" ignored — highest minted id derived
-      from visible ids (H<n>) — an id retired before this report recorded its high-water cannot be
-      recovered` when the recorded value was not valid; `H<n>` in these three high-water forms is the step-2 high-water;
+      from visible ids (<H<n> | none>) — an id retired before this report recorded its high-water
+      cannot be recovered` when the recorded value was not valid; `H<n>` in these three high-water
+      forms is the step-2 high-water, and a step-2 high-water of `0` is written `none`, never `H0`
+      (only the two derived forms can carry it — a raise is always to a kept id); a valid recorded
+      value at or above every kept id writes none of these three forms, even when step 3 then
+      raises the high-water;
       `fallback entry without draw key kept: <locator>` per keyless entry. A duplicate id is
       the one ambiguity this cannot resolve silently, so it is always logged, never merged. Nothing
       normalized → `none`.

@@ -226,7 +226,7 @@ normalize() {
       hw=rec+0
       for (i=1;i<=n;i++) if (valid(cand[i]) && !(cand[i] in kept)) { kept[cand[i]]=1; out[i]=cand[i]; k=substr(cand[i],2)+0; if (k>hw) hw=k }
       hw2=hw   # the step-2 high-water, before step 3 assigns anything
-      derived="highest minted id derived from visible ids (H" hw2 ")"
+      derived="highest minted id derived from visible ids (" (hw2 ? "H" hw2 : "none") ")"   # zero is none, never H0
       if (!seen) hwlog=derived
       else if (!ok) hwlog="invalid recorded high-water \"" raw "\" ignored — " derived
       else if (hw2>rec) hwlog="recorded high-water " raw " raised to H" hw2
@@ -260,7 +260,9 @@ for b in "$CORPUS"/legacy/before.md "$CORPUS"/legacy/*-before.md; do
     || err "legacy $pair: the normalized report still triggers a high-water log line"
   # the high-water change is logged in exactly the form step 5 names, and only that form
   exp_log=$(printf '%s\n' "$exp" | awk -F'\t' '$1=="LOG"{print $2}')
-  entry=$(grep -F -- '- Legacy state normalized:' "$a")
+  entry=$(grep -F -- '- Legacy state normalized:' "$a" || true)
+  [ -n "$entry" ] || err "legacy $pair: Continuation has no 'Legacy state normalized:' line"
+  grep -qF -- '(H0)' "$a" && err "legacy $pair: renders a zero high-water as H0 instead of none"
   if [ "$exp_log" = "-" ]; then
     printf '%s\n' "$entry" | grep -qE 'derived from visible ids|raised to H|invalid recorded high-water' \
       && err "legacy $pair: logs a high-water change the model says is silent"
@@ -268,7 +270,7 @@ for b in "$CORPUS"/legacy/before.md "$CORPUS"/legacy/*-before.md; do
     printf '%s\n' "$entry" | grep -qF -- "$exp_log" || err "legacy $pair: Continuation does not log: $exp_log"
   fi
 done
-[ "$npairs" -ge 4 ] || err "legacy corpus has $npairs pairs, expected at least 4 (absent, stale, invalid, none)"
+[ "$npairs" -ge 8 ] || err "legacy corpus has $npairs pairs, expected at least 8 (absent, stale, invalid, none, zero-absent, zero-invalid, current, equal)"
 # already-valid ids are never renumbered
 grep -qF -- '- **H2** retry counter resets' "$CORPUS/legacy/after.md" || err "legacy: valid H2 was renumbered"
 for tok in 'assigned H3 (no id)' 'assigned H5 (duplicate of H2)' 'assigned H6 (invalid id "H07")' \
@@ -281,6 +283,22 @@ grep -qF -- 'invalid recorded high-water "H0x" ignored' "$CORPUS/legacy/invalid-
   || err "legacy: invalid pair does not log the ignored high-water"
 grep -qF -- 'recorded high-water none raised to H2' "$CORPUS/legacy/none-after.md" \
   || err "legacy: none pair does not treat a recorded none as valid and raise it"
+# a zero step-2 high-water is written none, whether the recorded line was absent or invalid
+grep -qF -- 'highest minted id derived from visible ids (none)' "$CORPUS/legacy/zero-absent-after.md" \
+  || err "legacy: zero-absent pair does not log the derived high-water as none"
+grep -qF -- 'invalid recorded high-water "H0" ignored — highest minted id derived from visible ids (none)' \
+  "$CORPUS/legacy/zero-invalid-after.md" || err "legacy: zero-invalid pair does not log the derived high-water as none"
+# a valid recorded high-water at or above every kept id logs no high-water change
+for p in current equal; do
+  e=$(grep -F -- '- Legacy state normalized:' "$CORPUS/legacy/$p-after.md" || true)
+  [ -n "$e" ] || err "legacy: $p pair has no 'Legacy state normalized:' line"
+  printf '%s\n' "$e" | grep -qE 'high-water|derived from visible ids' \
+    && err "legacy: $p pair logs a high-water change for a current recorded value"
+done
+grep -qF -- 'retry budget shared across runs — assigned H6 (no id)' "$CORPUS/legacy/current-after.md" \
+  || err "legacy: current pair does not assign past the recorded high-water"
+grep -qxF -- '- Legacy state normalized: none' "$CORPUS/legacy/equal-after.md" \
+  || err "legacy: equal pair does not log 'none' when nothing was normalized"
 [ "$fail" -eq "$before" ] && ok "legacy normalization ($npairs pairs)"
 
 # --- 5. Grouping ------------------------------------------------------------------------
