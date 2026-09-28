@@ -81,9 +81,11 @@ blocks against the item, so the item's `**Lenses:**` count reflects them.
 - The lens dispatches in both runs were foreground and returned; the log also carries
   `task_started`/`task_notification` system events for them. A host that makes child dispatch
   background-only would change A and B alike and needs re-measuring.
-- The item was trivial (a clean change: all ten lens blocks were `clean`). Lens run time grows with
-  diff size; the relative cost of A and B does not depend on it, because both run the same five
-  dispatches.
+- The item was trivial (a clean change: all ten lens blocks were `clean`), and it is the only diff
+  size measured. How lens run time, and the relative wall-clock cost of A and B, vary with diff size
+  is **unmeasured**: both variants run the same five lens dispatches, but their fixed hand-back and
+  polling overheads differ, so the 49 s against 57 s gap above is not shown to hold for larger
+  changes. Re-check on a representative, non-trivial item before generalizing the relative cost.
 - Harness defect, recorded rather than hidden: the B shipper's own `OBSERVED <n>/5` self-count
   tested each result file's first line for `AUDIT-`, and every file opens with a code fence, so it
   printed `OBSERVED 0/5`. The completed count above is read from the result files' content
