@@ -284,27 +284,67 @@ def selftest():
             "wrong-count": (doc([alpha, gamma], "4 templates | 2 consumers (3 template reads)"), 1, None),
         }
         failed = 0
-        for name, (body, want, remove) in cases.items():
-            put(f"{name}.md", body)
-            moved = None
-            if remove:
-                moved = os.path.join(tmp, remove) + ".away"
-                os.rename(os.path.join(tmp, remove), moved)
-            try:
-                got = evaluate(tmp, os.path.join(tmp, f"{name}.md"), quiet=True)
-            except Harness as e:
-                got = f"harness error ({e})"
-            if moved:
-                os.rename(moved, os.path.join(tmp, remove))
-            if got != want:
-                print(f"SELFTEST FAIL — '{name}' returned {got}, expected {want}", file=sys.stderr)
-                failed += 1
+
+        def run(cases):
+            nonlocal failed
+            for name, (body, want, remove) in cases.items():
+                put(f"{name}.md", body)
+                moved = None
+                if remove:
+                    moved = os.path.join(tmp, remove) + ".away"
+                    os.rename(os.path.join(tmp, remove), moved)
+                try:
+                    got = evaluate(tmp, os.path.join(tmp, f"{name}.md"), quiet=True)
+                except Harness as e:
+                    got = f"harness error ({e})"
+                if moved:
+                    os.rename(moved, os.path.join(tmp, remove))
+                if got != want:
+                    print(f"SELFTEST FAIL — '{name}' returned {got}, expected {want}", file=sys.stderr)
+                    failed += 1
+
+        run(cases)
+
+        # Nested refs (WF-897): a skill reading its own template one level down
+        # (backtick form), a pack agent reading another skill's template two levels
+        # down (wrapped object literal, owner-suffixed row), and two refs the
+        # resolver refuses — a `..` escape and an absolute path — which must not
+        # count as reads.
+        put("plugins/wf/skills/epsilon/SKILL.md",
+            "Obtain it via (`class: references-template`, `skill: epsilon`, `ref: sub/nested.md`).\n"
+            "Never (`class: references-template`, `skill: epsilon`, `ref: ../escape.md`).\n"
+            "Nor (`class: references-template`, `skill: epsilon`, `ref: /abs/x.md`).\n")
+        put("plugins/wf/skills/epsilon/references/sub/nested.md", "t\n")
+        put("plugins/wf-x/agents/zeta.md",
+            "resolve_content({ workspaceRoot, class: \"references-template\", plugin: \"wf-x\",\nskill: \"delta\", ref: \"deep/er/z.md\" })\n")
+        put("plugins/wf-x/skills/delta/references/deep/er/z.md", "t\n")
+
+        tree, _ = scan(tmp)
+        if ("wf/skills/epsilon", "epsilon", "sub/nested.md") not in tree \
+                or ("wf-x/agents/zeta", "delta", "deep/er/z.md") not in tree \
+                or any(not safe_ref(r) for _, _, r in tree):
+            print(f"SELFTEST FAIL — nested scan derived {sorted(tree)}", file=sys.stderr)
+            failed += 1
+
+        eps = "| `wf/skills/epsilon` | `sub/nested.md` |"
+        zeta = "| `wf-x/agents/zeta` | `deep/er/z.md` (delta) |"
+        run({
+            "nested-sound": (doc([alpha, gamma, eps, zeta], "5 templates | 4 consumers (5 template reads)"), 0, None),
+            "nested-missing-row": (doc([alpha, gamma, zeta], "4 templates | 3 consumers (4 template reads)"), 1, None),
+            "nested-mismatched-row": (doc([alpha, gamma, zeta, "| `wf/skills/epsilon` | `sub/other.md` |"],
+                                          "5 templates | 4 consumers (5 template reads)"), 1, None),
+            "nested-absent-template": (doc([alpha, gamma, eps, zeta], "5 templates | 4 consumers (5 template reads)"), 1,
+                                       "plugins/wf-x/skills/delta/references/deep/er/z.md"),
+            "unsafe-row": (doc([alpha, gamma, "| `wf/skills/epsilon` | `sub/nested.md`, `../escape.md` |", zeta],
+                               "5 templates | 4 consumers (5 template reads)"), 1, None),
+        })
         if failed:
             print(f"content-read-references-inventory-guard: self-test FAILED ({failed} case(s))", file=sys.stderr)
             return 1
         print("content-read-references-inventory-guard: self-test passed — four planted drifts rejected "
               "(missing row, stale row, absent template, wrong §5 count), the sound fixture accepted, "
-              "and the ref-less pointer ignored.")
+              "and the ref-less pointer ignored; nested refs derived whole, a nested row's absence, "
+              "mismatch or missing template rejected, an unsafe row rejected, and unsafe refs ignored.")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
