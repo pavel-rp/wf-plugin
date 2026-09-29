@@ -43,6 +43,8 @@ ship-pr	included	plugins/wf/skills/ship/SKILL.md	/wf:pr	pr	model=true;effort=tru
 ship-finalize	included	plugins/wf/skills/ship/SKILL.md	/wf:tf	finalize	model=true;effort=true	shipper-path-complexity-route	ship
 fleet-agent-initial	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	fleet-cardinality-route	fleet
 fleet-skill-initial	included	plugins/wf/skills/fleet/SKILL.md	/wf:ship <ID>	shipper	model=true;effort=true	shipper-path-complexity-route	shipper
+fleet-branch	included	plugins/wf/skills/fleet/SKILL.md	/wf:branch <ID>	branch	model=true;effort=true	shipper-path-complexity-route	shipper
+fleet-commit	included	plugins/wf/skills/fleet/SKILL.md	/wf:commit <ID> --push	commit	model=true;effort=true	shipper-path-complexity-route	shipper
 fleet-run-initial	included	plugins/wf/skills/fleet/SKILL.md	initial `/wf:run	phase-runner	model=true;effort=true	shipper-path-complexity-route	shipper
 fleet-run-resume	included	plugins/wf/skills/fleet/SKILL.md	before `/wf:run	phase-runner	model=true;effort=true	shipper-path-complexity-route	shipper
 fleet-gated-phase	included	plugins/wf/skills/fleet/SKILL.md	exact `/wf:<phase>	phase-runner	model=true;effort=true	shipper-path-complexity-route	shipper
