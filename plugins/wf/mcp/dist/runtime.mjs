@@ -25827,6 +25827,101 @@ function planWorkspaceSetup(config2, stateText) {
 }
 var SETUP_RUNNER_MARGIN_MS = 15e3;
 var SETUP_RUNNER_DRAIN_MS = 2e3;
+function writeBackSetupRunnerPids(fs, path, lock, pids) {
+  const rel = lock.rel;
+  const segments = rel.split("/");
+  if (rel.length === 0 || rel.includes("\0") || rel.includes("\\") || rel.startsWith("/") || /^[A-Za-z]:/.test(rel) || segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+    return "unsafe";
+  }
+  let base;
+  try {
+    base = fs.realpathSync(lock.root);
+  } catch {
+    return "unsafe";
+  }
+  const idOf = (stat) => `${stat.dev}:${stat.ino}`;
+  const walk = () => {
+    let cursor = base;
+    let dirId = idOf(fs.lstatSync(base));
+    for (let i = 0; i < segments.length; i += 1) {
+      cursor = path.join(cursor, segments[i]);
+      let stat;
+      try {
+        stat = fs.lstatSync(cursor);
+      } catch {
+        return null;
+      }
+      if (stat.isSymbolicLink()) return null;
+      if (i < segments.length - 1) {
+        if (!stat.isDirectory()) return null;
+        dirId = idOf(stat);
+      } else {
+        if (!stat.isFile()) return null;
+        return { dir: path.dirname(cursor), dirId, fileId: idOf(stat) };
+      }
+    }
+    return null;
+  };
+  const noFollow = fs.constants.O_NOFOLLOW ?? 0;
+  const read = (target, fileId) => {
+    const fd = fs.openSync(target, fs.constants.O_RDONLY | noFollow);
+    try {
+      const stat = fs.fstatSync(fd);
+      if (!stat.isFile() || idOf(stat) !== fileId || stat.size > 4096) return null;
+      const buffer = Buffer.alloc(stat.size);
+      let offset = 0;
+      while (offset < stat.size) {
+        const count = fs.readSync(fd, buffer, offset, stat.size - offset, offset);
+        if (count === 0) break;
+        offset += count;
+      }
+      const parsed = JSON.parse(buffer.toString("utf8", 0, offset));
+      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+  let temp = null;
+  try {
+    const first = walk();
+    if (first === null) return "unsafe";
+    const name = segments[segments.length - 1];
+    const target = path.join(first.dir, name);
+    const record2 = read(target, first.fileId);
+    if (record2 === null) return "unsafe";
+    if (record2.token !== lock.token) return "token-mismatch";
+    record2.runnerPid = pids.runnerPid;
+    if (pids.groupPid !== void 0) record2.groupPid = pids.groupPid;
+    temp = path.join(first.dir, `.${name}.runner-${pids.runnerPid}-${Math.random().toString(16).slice(2)}.tmp`);
+    const fd = fs.openSync(temp, "wx");
+    try {
+      fs.writeFileSync(fd, `${JSON.stringify(record2)}
+`, { encoding: "utf8" });
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    const second = walk();
+    if (second === null || second.dir !== first.dir || second.dirId !== first.dirId || second.fileId !== first.fileId) {
+      return "unsafe";
+    }
+    const current = read(target, second.fileId);
+    if (current === null) return "unsafe";
+    if (current.token !== lock.token) return "token-mismatch";
+    fs.renameSync(temp, target);
+    temp = null;
+    return "written";
+  } catch {
+    return "failed";
+  } finally {
+    if (temp !== null) {
+      try {
+        fs.rmSync(temp, { force: true });
+      } catch {
+      }
+    }
+  }
+}
 var SETUP_RUNNER_SOURCE = `
 const { spawn, spawnSync } = require("node:child_process");
 const req = JSON.parse(process.env.WF_SETUP_REQUEST);
@@ -25859,17 +25954,12 @@ try {
   out.error = err instanceof Error ? err.message : String(err);
   finish();
 }
+const writeBackSetupRunnerPids = ${writeBackSetupRunnerPids.toString()};
 const reportPids = () => {
   if (!req.lock || child === null || child.pid === undefined) return;
   try {
-    const fs = require("node:fs");
-    const rec = JSON.parse(fs.readFileSync(req.lock.path, "utf8"));
-    if (rec === null || typeof rec !== "object" || rec.token !== req.lock.token) return;
-    rec.runnerPid = process.pid;
-    if (!win) rec.groupPid = child.pid;
-    const tmp = req.lock.path + ".runner-" + process.pid;
-    fs.writeFileSync(tmp, JSON.stringify(rec) + "\\n", { flag: "wx" });
-    fs.renameSync(tmp, req.lock.path);
+    writeBackSetupRunnerPids(require("node:fs"), require("node:path"), req.lock,
+      win ? { runnerPid: process.pid } : { runnerPid: process.pid, groupPid: child.pid });
   } catch {}
 };
 if (child !== null) {
@@ -26991,7 +27081,7 @@ function createDefaultPorts(workspaceRoot) {
       };
       if (lock !== void 0) {
         try {
-          request.lock = { path: resolve3(realpathSync4(workspaceRoot), ...lock.rel.split("/")), token: lock.token };
+          request.lock = { root: realpathSync4(workspaceRoot), rel: lock.rel, token: lock.token };
         } catch {
         }
       }
