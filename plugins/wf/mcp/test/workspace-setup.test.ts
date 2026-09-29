@@ -3,12 +3,15 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as nodeFs from "node:fs";
+import * as nodePath from "node:path";
 import {
   chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -34,7 +37,9 @@ import {
   SETUP_RUNNER_MARGIN_MS,
   renderSetupState,
   SETUP_LOCK_RELPATH,
+  SETUP_RUNNER_SOURCE,
   setupCommandDigest,
+  writeBackSetupRunnerPids,
   type SetupLockDeps,
   type WorkspaceSetupResponse,
 } from "../src/resolver/workspace-setup.js";
@@ -616,6 +621,96 @@ test("the runner records its own and the command group's pid in the held lock", 
   } finally {
     ws.cleanup();
   }
+});
+
+// WF-925 — the runner's pid write-back follows the contained, no-follow rule.
+function heldLock(root: string): { token: string; text: string } {
+  const token = "a".repeat(32);
+  const text = renderSetupLock({ pid: 4242, host: hostname(), token, acquiredAt: "2026-06-01T00:00:00.000Z", timeoutMs: 1_000 });
+  write(lockPath(root), text);
+  return { token, text };
+}
+
+test("pid write-back: the ordinary path records both pids and keeps the token", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token } = heldLock(ws.root);
+    const outcome = writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777, groupPid: 778 });
+    assert.equal(outcome, "written");
+    const record = parseSetupLock(readFileSync(lockPath(ws.root), "utf8"));
+    assert.equal(record?.token, token);
+    assert.equal(record?.runnerPid, 777);
+    assert.equal(record?.groupPid, 778);
+    assert.deepEqual(readdirSync(`${ws.root}/_local/resolver`), ["setup.lock"], "no temp file is left behind");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("pid write-back: a symlinked `_local/resolver` is neither read nor written through", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    // An outside directory holding a lock-shaped record that carries the SAME token.
+    const { token, text } = heldLock(`${outside}/ws`);
+    const outsideResolver = `${outside}/ws/_local/resolver`;
+    rmSync(`${ws.root}/_local/resolver`, { recursive: true, force: true });
+    symlinkSync(outsideResolver, `${ws.root}/_local/resolver`);
+    const outcome = writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777, groupPid: 778 });
+    assert.equal(outcome, "unsafe");
+    assert.equal(readFileSync(`${outsideResolver}/setup.lock`, "utf8"), text, "the outside file is byte-identical");
+    assert.deepEqual(readdirSync(outsideResolver), ["setup.lock"], "no temp file lands outside");
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("pid write-back: a symlinked lock file is refused and its target left alone", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    const { token, text } = heldLock(`${outside}/ws`);
+    mkdirSync(`${ws.root}/_local/resolver`, { recursive: true });
+    symlinkSync(`${outside}/ws/${SETUP_LOCK_RELPATH}`, lockPath(ws.root));
+    const outcome = writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777 });
+    assert.equal(outcome, "unsafe");
+    assert.equal(readFileSync(`${outside}/ws/${SETUP_LOCK_RELPATH}`, "utf8"), text);
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("pid write-back: a lock whose token moved is left byte-identical", () => {
+  const ws = workspace(config({}));
+  try {
+    const { text } = heldLock(ws.root);
+    const outcome = writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token: "b".repeat(32) }, { runnerPid: 777 });
+    assert.equal(outcome, "token-mismatch");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), text);
+    assert.deepEqual(readdirSync(`${ws.root}/_local/resolver`), ["setup.lock"]);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("pid write-back: a path that is not plain and relative is refused", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token, text } = heldLock(ws.root);
+    for (const rel of ["../x/setup.lock", "/etc/setup.lock", "_local/./resolver/setup.lock", ""]) {
+      assert.equal(writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel, token }, { runnerPid: 777 }), "unsafe", rel);
+    }
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), text);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("the runner embeds the contained write-back and no raw lock-path access", () => {
+  assert.match(SETUP_RUNNER_SOURCE, /const writeBackSetupRunnerPids = function/);
+  assert.doesNotMatch(SETUP_RUNNER_SOURCE, /req\.lock\.path/);
 });
 
 test("a failed lock release is reported, not dropped", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {

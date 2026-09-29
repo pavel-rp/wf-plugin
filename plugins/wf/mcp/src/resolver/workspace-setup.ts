@@ -158,12 +158,151 @@ export type SetupRunnerRequest = {
   cwd: string;
   timeoutMs: number;
   tailChars: number;
-  /** The held setup lock (absolute path + this run's token). When present the
-   *  runner records its own pid and the command group's pid into that lock
-   *  record, so the lock stays live while either still runs — even if the
-   *  resolver that took the lock has died. */
-  lock?: { path: string; token: string };
+  /** The held setup lock (canonical workspace root, workspace-relative lock
+   *  path, and this run's token). When present the runner records its own pid
+   *  and the command group's pid into that lock record, so the lock stays live
+   *  while either still runs — even if the resolver that took the lock has
+   *  died. */
+  lock?: SetupRunnerLock;
 };
+
+/** The lock the runner writes its pids back into (WF-925). */
+export type SetupRunnerLock = { root: string; rel: string; token: string };
+
+/** What the runner's pid write-back did: `written`, or why the lock was left
+ *  exactly as it was. */
+export type SetupLockWriteBack = "written" | "unsafe" | "token-mismatch" | "failed";
+
+/**
+ * The setup runner's pid write-back (WF-925), on the same contained rule as
+ * every other setup-state access (`contained-state.ts`, WF-872): the lock is
+ * reached from the canonical workspace root by an `lstat` walk that refuses a
+ * link or a non-directory anywhere on the way and a non-regular terminal; it is
+ * read through an `O_NOFOLLOW` descriptor whose identity must match the walked
+ * file; the rewrite goes to a create-exclusive temp file beside it; and
+ * immediately before the rename the walk, the directory and file identities and
+ * the token are all checked again, so a lock swapped, relinked or re-taken in
+ * between is never replaced. Anything short of that leaves the lock untouched
+ * and removes the temp file.
+ *
+ * SELF-CONTAINED ON PURPOSE: the runner is a separate `node -e` program that
+ * cannot import this module, so it embeds this function's own source text.
+ * It must reference nothing but its parameters and runtime globals.
+ */
+export function writeBackSetupRunnerPids(
+  fs: typeof import("node:fs"),
+  path: typeof import("node:path"),
+  lock: SetupRunnerLock,
+  pids: { runnerPid: number; groupPid?: number },
+): SetupLockWriteBack {
+  const rel = lock.rel;
+  const segments = rel.split("/");
+  if (
+    rel.length === 0 ||
+    rel.includes("\0") ||
+    rel.includes("\\") ||
+    rel.startsWith("/") ||
+    /^[A-Za-z]:/.test(rel) ||
+    segments.some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    return "unsafe";
+  }
+  let base: string;
+  try {
+    base = fs.realpathSync(lock.root);
+  } catch {
+    return "unsafe";
+  }
+  const idOf = (stat: { dev: number; ino: number }): string => `${stat.dev}:${stat.ino}`;
+  // Every ancestor a real directory, the terminal a regular file, no link anywhere.
+  const walk = (): { dir: string; dirId: string; fileId: string } | null => {
+    let cursor = base;
+    let dirId = idOf(fs.lstatSync(base));
+    for (let i = 0; i < segments.length; i += 1) {
+      cursor = path.join(cursor, segments[i]);
+      let stat;
+      try {
+        stat = fs.lstatSync(cursor);
+      } catch {
+        return null;
+      }
+      if (stat.isSymbolicLink()) return null;
+      if (i < segments.length - 1) {
+        if (!stat.isDirectory()) return null;
+        dirId = idOf(stat);
+      } else {
+        if (!stat.isFile()) return null;
+        return { dir: path.dirname(cursor), dirId, fileId: idOf(stat) };
+      }
+    }
+    return null;
+  };
+  const noFollow = fs.constants.O_NOFOLLOW ?? 0;
+  // The record behind a no-follow descriptor, only when it is the walked file.
+  const read = (target: string, fileId: string): Record<string, unknown> | null => {
+    const fd = fs.openSync(target, fs.constants.O_RDONLY | noFollow);
+    try {
+      const stat = fs.fstatSync(fd);
+      if (!stat.isFile() || idOf(stat) !== fileId || stat.size > 4096) return null;
+      const buffer = Buffer.alloc(stat.size);
+      let offset = 0;
+      while (offset < stat.size) {
+        const count = fs.readSync(fd, buffer, offset, stat.size - offset, offset);
+        if (count === 0) break;
+        offset += count;
+      }
+      const parsed: unknown = JSON.parse(buffer.toString("utf8", 0, offset));
+      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+  let temp: string | null = null;
+  try {
+    const first = walk();
+    if (first === null) return "unsafe";
+    const name = segments[segments.length - 1];
+    const target = path.join(first.dir, name);
+    const record = read(target, first.fileId);
+    if (record === null) return "unsafe";
+    if (record.token !== lock.token) return "token-mismatch";
+    record.runnerPid = pids.runnerPid;
+    if (pids.groupPid !== undefined) record.groupPid = pids.groupPid;
+    temp = path.join(first.dir, `.${name}.runner-${pids.runnerPid}-${Math.random().toString(16).slice(2)}.tmp`);
+    // `wx` is O_CREAT|O_EXCL: created fresh, never through a planted link.
+    const fd = fs.openSync(temp, "wx");
+    try {
+      fs.writeFileSync(fd, `${JSON.stringify(record)}\n`, { encoding: "utf8" });
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    // Revalidate immediately before the rename: same contained path, same
+    // directory, same lock file, and the lock still carries this run's token.
+    const second = walk();
+    if (second === null || second.dir !== first.dir || second.dirId !== first.dirId || second.fileId !== first.fileId) {
+      return "unsafe";
+    }
+    const current = read(target, second.fileId);
+    if (current === null) return "unsafe";
+    if (current.token !== lock.token) return "token-mismatch";
+    fs.renameSync(temp, target);
+    temp = null;
+    return "written";
+  } catch {
+    return "failed";
+  } finally {
+    if (temp !== null) {
+      try {
+        fs.rmSync(temp, { force: true });
+      } catch {
+        // A stranded temp file is inert and uniquely named.
+      }
+    }
+  }
+}
 
 export const SETUP_RUNNER_SOURCE = `
 const { spawn, spawnSync } = require("node:child_process");
@@ -197,17 +336,12 @@ try {
   out.error = err instanceof Error ? err.message : String(err);
   finish();
 }
+const writeBackSetupRunnerPids = ${writeBackSetupRunnerPids.toString()};
 const reportPids = () => {
   if (!req.lock || child === null || child.pid === undefined) return;
   try {
-    const fs = require("node:fs");
-    const rec = JSON.parse(fs.readFileSync(req.lock.path, "utf8"));
-    if (rec === null || typeof rec !== "object" || rec.token !== req.lock.token) return;
-    rec.runnerPid = process.pid;
-    if (!win) rec.groupPid = child.pid;
-    const tmp = req.lock.path + ".runner-" + process.pid;
-    fs.writeFileSync(tmp, JSON.stringify(rec) + "\\n", { flag: "wx" });
-    fs.renameSync(tmp, req.lock.path);
+    writeBackSetupRunnerPids(require("node:fs"), require("node:path"), req.lock,
+      win ? { runnerPid: process.pid } : { runnerPid: process.pid, groupPid: child.pid });
   } catch {}
 };
 if (child !== null) {
