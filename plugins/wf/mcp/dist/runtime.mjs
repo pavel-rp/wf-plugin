@@ -23863,8 +23863,8 @@ import {
   rmSync as rmSync3,
   rmdirSync,
   unlinkSync,
-  writeFileSync as writeFileSync2,
-  writeSync as writeSync2
+  writeFileSync as writeFileSync3,
+  writeSync
 } from "node:fs";
 import { execFileSync as execFileSync3, spawnSync } from "node:child_process";
 
@@ -23883,7 +23883,7 @@ import {
   realpathSync as realpathSync2,
   renameSync,
   rmSync,
-  writeSync
+  writeFileSync
 } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -23971,7 +23971,7 @@ function writeTempBeside(dir, name, content) {
   let fd = null;
   try {
     fd = openSync(temp, "wx");
-    writeSync(fd, Buffer.from(content, "utf8"));
+    writeFileSync(fd, content, { encoding: "utf8" });
     fsyncSync(fd);
     closeSync(fd);
     fd = null;
@@ -25524,7 +25524,7 @@ import {
   readFileSync,
   renameSync as renameSync2,
   rmSync as rmSync2,
-  writeFileSync
+  writeFileSync as writeFileSync2
 } from "node:fs";
 import { dirname, join as join2 } from "node:path";
 import { randomBytes as randomBytes2 } from "node:crypto";
@@ -25539,7 +25539,7 @@ function writeSnapshot(workspaceRoot, snapshot) {
   const json = `${JSON.stringify(snapshot, null, 2)}
 `;
   try {
-    writeFileSync(tmp, json, { encoding: "utf8" });
+    writeFileSync2(tmp, json, { encoding: "utf8" });
     renameSync2(tmp, target);
   } catch (err) {
     try {
@@ -26869,7 +26869,7 @@ function createDefaultPorts(workspaceRoot) {
     },
     writeFile: (absPath, content) => {
       mkdirSync3(dirname2(absPath), { recursive: true });
-      writeFileSync2(absPath, content, { encoding: "utf8" });
+      writeFileSync3(absPath, content, { encoding: "utf8" });
     },
     /** A write for a SECRET, kept separate from `writeFile` on purpose: the mode
      *  belongs to this one caller (WF-490's run-evidence issuer binding, whose
@@ -26896,7 +26896,7 @@ function createDefaultPorts(workspaceRoot) {
       mkdirSync3(dirname2(absPath), { recursive: true, mode: 448 });
       let fd = openSync3(absPath, "wx", 384);
       try {
-        writeFileSync2(fd, content, { encoding: "utf8" });
+        writeFileSync3(fd, content, { encoding: "utf8" });
         fsyncSync2(fd);
         closeSync3(fd);
         fd = null;
@@ -27179,7 +27179,7 @@ function createRecoveryPorts(workspaceRoot) {
       try {
         const bytes = readFileSync3(backup.target);
         mkdirSync3(dirname2(targetPath.target), { recursive: true });
-        writeFileSync2(targetPath.target, bytes);
+        writeFileSync3(targetPath.target, bytes);
         return { ok: true };
       } catch (err) {
         return {
@@ -27253,7 +27253,7 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     try {
       mkdirSync3(dir, { recursive: true });
       fd = openSync3(temp, "wx", 384);
-      writeSync2(fd, bytes);
+      writeSync(fd, bytes);
       fsyncSync2(fd);
       closeSync3(fd);
       fd = null;
@@ -31333,7 +31333,7 @@ import {
   readdirSync as readdirSync3,
   renameSync as renameSync4,
   rmSync as rmSync4,
-  writeFileSync as writeFileSync3
+  writeFileSync as writeFileSync4
 } from "node:fs";
 var SETUP_STATE_DIR = "_local";
 var CORE_CONFIG_REL = "_local/config.md";
@@ -31486,7 +31486,7 @@ function applyPreparation(childRoot, copies) {
     mkdirSync4(target.slice(0, target.lastIndexOf("/")), { recursive: true });
     const temp = `${target}.wf-prepare-${process.pid}.tmp`;
     try {
-      writeFileSync3(temp, bytes, { flag: "wx" });
+      writeFileSync4(temp, bytes, { flag: "wx" });
       renameSync4(temp, target);
     } catch (err) {
       rmSync4(temp, { force: true });
