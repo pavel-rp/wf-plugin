@@ -103,6 +103,7 @@ test("parseCoreConfig reads values and treats placeholders as unset", () => {
 | **Architecture Doc** | \`<ARCHITECTURE_DOC: path>\` |
 | **Context Ceiling** | \`150000\` |
 | **Version Declaration** | \`plugins/unit/manifest.json\` |
+| **Review Wait Minutes** | \`45\` |
 `);
   assert.equal(cfg.taskRoot, "_local");
   assert.equal(cfg.verifyCommand, "npm run typecheck");
@@ -110,6 +111,16 @@ test("parseCoreConfig reads values and treats placeholders as unset", () => {
   assert.equal(cfg.seedArchitectureDoc, null);
   assert.equal(cfg.contextCeiling, "150000");
   assert.equal(cfg.versionDeclaration, "plugins/unit/manifest.json");
+  assert.equal(cfg.reviewWaitMinutes, "45");
+});
+
+test("parseCoreConfig leaves an absent or <none> review wait null for fleet's own fallback", () => {
+  // A repo initialized before the key existed, and an explicit `<none>`, both reach
+  // `/wf:fleet` as `null`, which it reads as its shipped default — never as `0`,
+  // which would mean "no wait is possible".
+  assert.equal(parseCoreConfig("| **Task Root** | `_local` |\n").reviewWaitMinutes, null);
+  assert.equal(parseCoreConfig("| **Review Wait Minutes** | `<none>` |\n").reviewWaitMinutes, null);
+  assert.equal(parseCoreConfig("| **Review Wait Minutes** | `0` |\n").reviewWaitMinutes, "0");
 });
 
 test("parseCoreConfig leaves an unset version declaration null rather than guessing", () => {

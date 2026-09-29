@@ -38,6 +38,14 @@ Must exit 0 when the project typechecks (including framework-level checks: templ
 
 The stated context bound for a single `/wf:ship` run, in approximate accumulated tokens per shipper. `/wf:ship` checks it at each inter-phase boundary (after a phase's output is committed and pushed); when the run's estimated accumulated context would cross the ceiling, ship flushes and **hands off to a fresh `/wf:ship <id>`** that resumes detect-first — so a long ship stays bounded and still reaches a merged PR with no lost state. **Lower it to force an earlier hand-off** (useful for exercising the crossing); raise it to let a run grow further before handing off. An absent or `<none>` value falls back to the shipped default (`150000`), so a repo initialized before this key existed degrades gracefully. Consumed only by `/wf:ship`.
 
+## Fleet
+
+| Key | Value |
+|-----|-------|
+| **Review Wait Minutes** | `30` |
+
+How long `/wf:fleet` waits for a requested pull-request review, in whole minutes, measured from the moment it first observes a shipper hand back `awaiting review`. The orchestrator owns this deadline: it records it in the item's scoreboard row, wakes once it has passed, and continues the shipper exactly once, so a shipper never polls for a review itself. `0` means no wait is possible — the item is recorded `review not awaited`, never a pass, and nothing merges. An absent, `<none>`, or unparseable value falls back to the shipped default (`30`), so a repo initialized before this key existed degrades gracefully. Consumed only by `/wf:fleet`.
+
 ## Worktree Setup
 
 | Key | Value |
