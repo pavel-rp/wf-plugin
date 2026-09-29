@@ -584,24 +584,62 @@ test("lock liveness: this process's own pid with a token it is not using is aban
   }
 });
 
-test("reclaim: a captured live lock that cannot be restored is kept aside and nothing runs", () => {
+// WF-926 — a reclaim that captures a live holder's lock and cannot link it
+// back never leaves the lock path empty: a second acquire must still wait.
+function staleLockReplacedByLiveHolder(root: string): { fresh: string; deps: ReturnType<typeof lockDeps> } {
+  write(
+    lockPath(root),
+    renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "stale", acquiredAt: "2026-01-01T00:00:00.000Z", groupPid: GROUP }),
+  );
+  const fresh = renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "fresh", acquiredAt: "2026-06-01T00:00:00.000Z" });
+  const deps = lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z"));
+  // Between the judgement and the rename, a new holder replaces the lock.
+  deps.killGroup = () => write(lockPath(root), fresh);
+  return { fresh, deps };
+}
+
+function staleCopies(root: string): string[] {
+  return readdirSync(join(root, "_local", "resolver")).filter((name) => name.startsWith("setup.lock.stale-"));
+}
+
+test("reclaim: a captured live lock whose link-back fails re-blocks the lock path and a second acquire cannot succeed", () => {
   const ws = workspace(config({}));
   try {
-    write(
-      lockPath(ws.root),
-      renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "stale", acquiredAt: "2026-01-01T00:00:00.000Z", groupPid: GROUP }),
-    );
-    const fresh = renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "fresh", acquiredAt: "2026-06-01T00:00:00.000Z" });
-    const deps = lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z"));
-    // Between the judgement and the rename, a new holder replaces the lock.
-    deps.killGroup = () => write(lockPath(ws.root), fresh);
+    const { fresh, deps } = staleLockReplacedByLiveHolder(ws.root);
     deps.linkBack = () => false;
+    const first = acquireSetupLock(ws.root, 1_000, deps);
+    assert.equal(first.ok, false, JSON.stringify(first));
+    assert.equal(!first.ok && first.kind, "busy", "the re-blocked lock is waited on like any live holder");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), fresh, "the lock path carries the live holder's own record");
+    assert.deepEqual(staleCopies(ws.root), [], "the captured copy is removed only once the lock path is blocked again");
+
+    const second = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z")));
+    assert.equal(second.ok, false, "a second acquire cannot take the lock beside the live holder");
+    assert.equal(!second.ok && second.kind, "busy");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), fresh);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("reclaim: a captured live lock is kept aside when another record already holds the lock path", () => {
+  const ws = workspace(config({}));
+  try {
+    const { fresh, deps } = staleLockReplacedByLiveHolder(ws.root);
+    const other = renderSetupLock({ pid: DEAD_RESOLVER + 20, host: hostname(), token: "other", acquiredAt: "2026-06-01T00:00:00.000Z" });
+    // The link-back loses to a caller that took the free lock path first.
+    deps.linkBack = (root) => {
+      write(lockPath(root), other);
+      return false;
+    };
     const result = acquireSetupLock(ws.root, 1_000, deps);
     assert.equal(result.ok, false);
     assert.equal(!result.ok && result.kind, "failed");
+    assert.match(!result.ok ? result.detail : "", /another record now holds the lock path/);
     const aside = !result.ok ? /`(_local\/resolver\/setup\.lock\.stale-[0-9a-f]+)`/.exec(result.detail)?.[1] : undefined;
     assert.ok(aside, !result.ok ? result.detail : "");
     assert.equal(readFileSync(`${ws.root}/${aside}`, "utf8"), fresh, "the captured live lock is never deleted");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), other, "the record holding the lock path is left alone");
   } finally {
     ws.cleanup();
   }
