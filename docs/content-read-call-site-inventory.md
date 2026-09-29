@@ -257,7 +257,9 @@ or the raw read must be routed through the resolver content surface.
 **`capability-registry.ops.md`** — read for the self-heal algorithm, surface operation
 sets, and resolver-failure/diagnosis semantics:
 `wf/skills/{spec, implement, verify-spec, verify-fix, qa-gen, qa-run, qa-auto, qa-followup,
-tt, tf, triage, lite, pr, index, classify, standup}`; `wf/agents/{pr, commit, branch}`;
+tt, tf, triage, lite, pr, index, classify, standup, branch}` (the `pr`, `commit`, and `branch` cites
+now live in those skills' `references/procedure.md`, which the thin `wf/agents/{pr, commit, branch}`
+loaders obtain, WF-943);
 `wf-review/skills/{review-pr, address-pr}`; `wf-browser-qa/skills/qa-engine`;
 `wf-angular/skills/{qa-host, test-page}`; `wf-audit/skills/init`;
 `wf-browser-qa/skills/init`. Fragment-internal cites (nested reads): the provider fragments
@@ -265,7 +267,9 @@ tt, tf, triage, lite, pr, index, classify, standup}`; `wf/agents/{pr, commit, br
 `retrospective.md`/`sr` `self-review.md`.
 
 **`invocation-runtime.ops.md`** — read for the phase-fire / direct-provider-resolution
-procedure: `wf/skills/{spec, implement, tf, lite, pr, commit}`; `wf/agents/{pr, commit}`.
+procedure: `wf/skills/{spec, implement, tf, lite, pr, commit, fleet}` — `fleet` reads it
+explicitly for the shipper's caller-cannot-await rule, and the former `wf/agents/{pr, commit}`
+cites moved into the `pr`/`commit` skill-served procedures (WF-943).
 
 **`pack-onboarding.ops.md`** — **no live runtime consumer.** Only its `.contract.md` pair
 and a non-runtime `wf-ado/.../references/onboarding.md` reference it; current init flows
@@ -295,26 +299,29 @@ reads.
 | `wf/agents/branch` | `procedure.md` (branch) |
 | `wf/agents/classify` | `rubric.md` (classify) |
 | `wf/agents/commit` | `procedure.md` (commit) |
+| `wf/agents/context-distiller` | `distiller-procedure.md` (ship) |
+| `wf/agents/critic` | `critic-procedure.md` (verify-spec) |
 | `wf/agents/pr` | `procedure.md` (pr) |
 | `wf/skills/branch` | `procedure.md` |
 | `wf/skills/classify` | `rubric.md` |
 | `wf/skills/commit` | `procedure.md`, `procedure.md` (branch) |
 | `wf/skills/constitution` | `clause-style.md`, `constitution-template.md`, `obligation-inventory.md` |
 | `wf/skills/fleet` | `review-boundary.md` (verify-spec) |
+| `wf/skills/implement` | `procedure.md` (branch) |
 | `wf/skills/init` | `alias-route.md`, `config-template.md`, `core-question.md`, `envelope-relay.md`, `local-readme-template.md`, `reconcile-mode.md`, `registry-location.md`, `settle-registry.md`, `verify-command-detection.md` |
-| `wf/skills/lite` | `lite-template.md`, `rubric.md` (classify) |
-| `wf/skills/plan` | `plan-template.md`, `rubric.md` (classify) |
-| `wf/skills/pr` | `procedure.md`, `procedure.md` (commit) |
+| `wf/skills/lite` | `lite-template.md`, `procedure.md` (branch), `rubric.md` (classify) |
+| `wf/skills/plan` | `plan-template.md`, `procedure.md` (branch), `rubric.md` (classify) |
+| `wf/skills/pr` | `procedure.md`, `procedure.md` (branch), `procedure.md` (commit) |
 | `wf/skills/qa-auto` | `report-format.md` (qa-gen) |
 | `wf/skills/qa-followup` | `qa-fix-template.md`, `report-format.md` (qa-gen) |
 | `wf/skills/qa-gen` | `api-scenarios.md`, `qa-template.md`, `report-format.md` |
 | `wf/skills/qa-run` | `report-format.md` (qa-gen) |
 | `wf/skills/run` | `finding-ledger.md` (verify-spec) |
-| `wf/skills/ship` | `context-ceiling.md`, `attempt-ledger.md` (verify-fix), `finding-ledger.md` (verify-spec) |
-| `wf/skills/spec` | `spec-template.md`, `rubric.md` (classify) |
+| `wf/skills/ship` | `context-ceiling.md`, `distiller-procedure.md`, `attempt-ledger.md` (verify-fix), `finding-ledger.md` (verify-spec) |
+| `wf/skills/spec` | `spec-template.md`, `procedure.md` (branch), `rubric.md` (classify) |
 | `wf/skills/triage` | `triage-template.md` |
 | `wf/skills/verify-fix` | `attempt-ledger.md`, `verify-fix-template.md`, `finding-disposition.md` (verify-spec) |
-| `wf/skills/verify-spec` | `chat-summary.md`, `critic-verdict.md`, `finding-disposition.md`, `finding-ledger.md`, `review-boundary.md`, `verify-template.md` |
+| `wf/skills/verify-spec` | `chat-summary.md`, `critic-procedure.md`, `critic-verdict.md`, `finding-disposition.md`, `finding-ledger.md`, `review-boundary.md`, `verify-template.md` |
 | `wf-angular/skills/qa-host` | `backend-host.md`, `scaffold-templates.md` |
 | `wf-angular/skills/test-page` | `backend-smoke.md`, `bootstrap.md`, `component-injection.md`, `harness.md`, `page-test-template.md` |
 | `wf-author-caps/skills/authoring-guide` | `subagents-and-vocabulary.md` |
@@ -364,8 +371,8 @@ Init reads the capability's `profile.template.json` **body** to seed a downstrea
 |---|---|---:|---:|
 | fragment | SUB-3 / WF-304 | 11 | 32 delivery + 8 tracker + 4 inline phase/pre-commit + 6 subagent self-boot |
 | shared | SUB-4 / WF-305 | 1 | 6 |
-| contract-ops | SUB-5 / WF-306 | 3 | 20 (registry-ops) + 8 (invocation-runtime) + 0 (pack-onboarding) |
-| references | SUB-6 / WF-307 | 56 templates | 37 consumers (81 template reads) |
+| contract-ops | SUB-5 / WF-306 | 3 | 18 (registry-ops) + 7 (invocation-runtime) + 0 (pack-onboarding) |
+| references | SUB-6 / WF-307 | 58 templates | 40 consumers (90 template reads) |
 | profile | SUB-7 / WF-308 | 3 | 3 |
 
 Every content-read call site above has exactly one class and one named owning slice; there
