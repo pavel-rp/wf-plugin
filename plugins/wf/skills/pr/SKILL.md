@@ -136,6 +136,8 @@ Invoke the **Task** tool with `subagent_type: wf:pr`, passing:
 
 Emit the subagent's `PR —` block verbatim as this skill's final output.
 
+**When the caller cannot await children.** If the running agent's own dispatch brief declares that it cannot await its children, obey each `isolated` answer in Phases 2 and 3 per `invocation-runtime.ops.md` §"Resolver call root" (its **Caller cannot await children** paragraph) instead of the dispatches above: both are writing units, so each runs in this context through the same `delivery` and `tracker` operations its subagent would reach, is recorded `inline — caller cannot await`, and the gating and the final `PR —` block are unchanged.
+
 ---
 
 ## Edge Cases

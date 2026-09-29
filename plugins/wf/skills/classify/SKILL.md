@@ -90,6 +90,8 @@ Branch inference above reaches `current-branch-query` by resolving the `delivery
 
 Use the subagent's `CLASSIFY — Complete` block as this skill's output verbatim. Do **not** read or execute the Procedure section below — that's the subagent's job.
 
+**When the caller cannot await children.** If the running agent's own dispatch brief declares that it cannot await its children, obey the `isolated` answer per `invocation-runtime.ops.md` §"Resolver call root" (its **Caller cannot await children** paragraph) instead of the dispatch above: classification is a read-only unit with no declared hand-back boundary, so it runs in this context — apply the rubric the Procedure section names, obtained the same way — is recorded `inline — caller cannot await`, and emits the same `CLASSIFY —` block. This applies identically to every consumer's dispatch below.
+
 ---
 
 ## Type vocabulary (for callers)

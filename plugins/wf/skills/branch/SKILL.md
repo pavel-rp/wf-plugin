@@ -34,6 +34,8 @@ For the selected `isolated` shape, invoke the **Task** tool with `subagent_type:
 
 This is a **direct invocation** — the top of its own delivery chain — so **no forwarded resolution record is passed**; the `wf:branch` subagent self-resolves the `delivery` surface once via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query. When another `wf:*` skill invokes `wf:branch` via the **Task** tool as part of a larger run (e.g. `wf:commit`'s branch gate), that parent forwards its resolved `delivery` record and the subagent consumes it instead of re-resolving.
 
+**When the caller cannot await children.** If the running agent's own dispatch brief declares that it cannot await its children, obey the `isolated` answer per `invocation-runtime.ops.md` §"Resolver call root" (its **Caller cannot await children** paragraph) instead of the dispatch above: this is a writing unit, so it runs in this context through the same `delivery` operations the subagent would reach, is recorded `inline — caller cannot await`, and this skill emits the same Final Output block itself.
+
 Emit the subagent's Final Output block (`BRANCH — created`, `BRANCH — switched`, `BRANCH — already-active`, or `BRANCH — Error`) verbatim. **No narrative before or after the block** — the subagent already owns the user-facing output.
 
 ---
