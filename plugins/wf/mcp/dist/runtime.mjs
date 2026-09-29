@@ -26075,6 +26075,13 @@ function readLock(root, rel) {
   if (read.status === "unsafe") return { status: "unsafe" };
   return { status: "ok", record: null };
 }
+function reblockFromCaptured(root, aside) {
+  const captured = readContainedCapabilityFile(root, aside, SETUP_LOCK_MAX_BYTES);
+  if (captured.status !== "ok") return "open";
+  const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, captured.content);
+  if (created.ok) return "restored";
+  return created.kind === "exists" ? "occupied" : "open";
+}
 function reclaimIfAbandoned(root, deps) {
   const current = readLock(root, SETUP_LOCK_RELPATH);
   if (current.status === "missing") return "retry";
@@ -26089,7 +26096,10 @@ function reclaimIfAbandoned(root, deps) {
   const captured = readLock(root, aside);
   if (captured.status === "ok" && captured.record?.token !== holder.token) {
     const linkBack = deps.linkBack ?? linkContainedStateFileExclusive;
-    if (!linkBack(root, aside, SETUP_LOCK_RELPATH)) return { restoreFailed: aside };
+    if (!linkBack(root, aside, SETUP_LOCK_RELPATH)) {
+      const reblocked = reblockFromCaptured(root, aside);
+      if (reblocked !== "restored") return { restoreFailed: aside, canonicalBlocked: reblocked === "occupied" };
+    }
   }
   removeContainedStateFile(root, aside);
   return "retry";
@@ -26124,7 +26134,7 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
       return {
         ok: false,
         kind: "failed",
-        detail: `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could not be restored; it is kept at \`${reclaim.restoreFailed}\` and the command was not run.`
+        detail: reclaim.canonicalBlocked ? `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could not be restored because another record now holds the lock path; the captured lock is kept at \`${reclaim.restoreFailed}\` and the command was not run.` : `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could neither be restored nor re-blocked at the lock path; it is kept at \`${reclaim.restoreFailed}\` and the command was not run.`
       };
     }
     if (reclaim === "retry") continue;
