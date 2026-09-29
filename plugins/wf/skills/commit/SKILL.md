@@ -6,7 +6,7 @@ allowed-tools: [Task, Bash]
 
 # /wf:commit — Brief commit, authored in isolation
 
-User-facing slash command for committing the current task changes with a concise, auto-generated message. The implementation lives entirely in the `wf:commit` subagent (`agents/commit.md`), which loads its procedure from this skill's `references/procedure.md`; this skill body is a thin entry point that exists only for direct user invocation.
+User-facing slash command for committing the current task changes with a concise, auto-generated message. The implementation lives entirely in the `wf:commit` subagent (`agents/commit.md`), which loads its procedure from a reference this skill serves through `resolve_content`; this skill body is a thin entry point that exists only for direct user invocation.
 
 **Other wf:* skills that need to commit MUST invoke the **Task** tool with `subagent_type: wf:commit` — never the `/wf:commit` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern avoids. The subagent is self-sufficient: it resolves config, gates the branch, reads the diff, authors the message, commits through the active delivery provider, optionally pushes, and updates `index.md` — all in its own isolated context, so the (potentially large) diff never reaches the caller.
 

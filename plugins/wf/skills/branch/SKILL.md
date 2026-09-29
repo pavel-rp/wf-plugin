@@ -6,7 +6,7 @@ allowed-tools: [Task, Bash]
 
 # /wf:branch — Task branch from a plan or spec
 
-User-facing slash command for creating and switching to a task branch. The implementation lives entirely in the `wf:branch` subagent (`agents/branch.md`), which loads its procedure from this skill's `references/procedure.md`; this skill body is a thin entry point that exists only for direct user invocation.
+User-facing slash command for creating and switching to a task branch. The implementation lives entirely in the `wf:branch` subagent (`agents/branch.md`), which loads its procedure from a reference this skill serves through `resolve_content`; this skill body is a thin entry point that exists only for direct user invocation.
 
 **Other wf:* skills that need a branch gate MUST invoke the **Task** tool with `subagent_type: wf:branch` — never the `/wf:branch` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern is designed to avoid. The subagent is self-sufficient: it resolves config, derives the branch name, invokes the delivery provider to create or switch the branch, and updates `index.md` (via an inline `wf:index` write) all in its own isolated context.
 
