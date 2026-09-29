@@ -1,7 +1,7 @@
 ---
 name: implement
 description: Executes a task's implementation plan (02_plan.md) step by step, recording each step's completion in its own progress artifact (02_progress.md) so the approved plan stays byte-identical, and stopping immediately on anything unexpected. Does not commit — hands off to the user. Use after /wf:plan to actually make the code changes.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task, Skill]
 ---
 
 # /wf:implement — Execute a plan step by step
