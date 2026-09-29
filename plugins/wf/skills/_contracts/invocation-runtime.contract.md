@@ -13,6 +13,20 @@
 
 Before calling a resolver MCP tool, run `pwd -P` in the current Agent/session and explicitly pass its absolute current workspace directory as `workspaceRoot`. Each Agent derives its own value; a linked-worktree Agent never reuses its parent's root. Omission is a hard schema error — resolver MCP calls have no default or fallback root.
 
+### Caller cannot await children (WF-943)
+
+> **Normative runtime text:** `invocation-runtime.ops.md` §"Resolver call root" — the **Caller cannot await children** paragraph. This subsection is rationale only; every skill and pack points at that paragraph and restates none of it.
+
+**The problem.** A dispatched agent — a fan-out orchestrator's per-item worker is the motivating case — can spawn children whose completion notices the host routes to the *orchestrator*, not back to the agent that spawned them. Such an agent that dispatches an `isolated` child and ends its turn to wait is never re-invoked: the work is either lost or, worse, redone by a second copy while the first still runs. Before this rule the only defence was to pin the worker's edges to caller-context evidence so the resolver always answered `inline`. That hid the truth twice over: read-only units that deserved isolation lost it, and writing units ran inline with no record that isolation had been wanted and was unavailable.
+
+**Why the condition is declared, not probed.** Whether a completion reaches a caller depends on the host and on the moment; a probe that observed one delivery proves nothing about the next. The fact is therefore carried by the one party that knows it — the dispatcher that wrote the caller's brief — and a caller never infers it from silence, from a runtime's shape, or from a failed wait.
+
+**Why writing units are never handed back.** A hand-back moves execution to another context while the caller's worktree stays put. A unit that mutates that worktree, a branch, a task artifact, or a delivery or tracker surface would then act on state the caller no longer controls, and the caller could not confirm the side effect from durable state before continuing. Running it in the caller context keeps every side effect on the caller's own timeline; the `inline — caller cannot await` record keeps the lost isolation visible instead of silent.
+
+**Why a hand-back needs a declared boundary.** Yielding mid-phase is only safe where the calling skill has a resumable seam — a request artifact it writes, a `Handed-off` outcome it returns, and a detect-first consume on re-invocation. The verify phase's review boundary is the first such seam, and its lens rows the first hand-back users; the fan-out orchestrator's lens-specific procedure is the generic mechanism with the lens as its current instance. A read-only unit with no seam runs in the caller context rather than inventing one. The classifier is the deliberate example: one cheap verdict consumed mid-phase, where a whole turn's round trip would cost more than the context it saves — so it routes in the caller context, and the first non-lens hand-back user is the verify critic, whose boundary is its own sub-task.
+
+**Why the orchestrator checks the manifest first.** Completion notices can be duplicated or dropped. The exchange manifest, written last, is the one durable fact that the requested units ran; checking it before dispatch makes the orchestrator's side of the hand-back idempotent, so a repeated or missing notice never runs a unit twice and never strands the caller.
+
 ---
 
 ## Purpose
