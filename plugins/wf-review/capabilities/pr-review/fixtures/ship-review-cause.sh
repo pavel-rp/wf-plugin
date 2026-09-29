@@ -66,16 +66,17 @@ lenses_complete() {  # $1 = the **Lenses:** value, or empty when unreadable
 
 # The fill's decision for "no review present at HEAD_SHA".
 #   $1 read-performed (true|false)  $2 pending  $3 request-events  $4 reviews
-#   $5 poll lands within the cap (yes|no)  $6 switch (on|off)  $7 lenses value
+#   $5 who owns the wait (owned = --review-boundary without --review-lapsed | lapsed | none)
+#   $6 switch (on|off)  $7 lenses value
 # Prints: <decision> <cause>   where decision is one of
-#   resume  (a review landed during the capped poll — back to Step 2 classification)
-#   block   (timeout block, unchanged by the switch)
+#   await   (request outstanding, the caller owns the wait — Handed-off, awaiting review; WF-944)
+#   block   (deadline lapsed or not awaited — unknown, unchanged by the switch)
 #   pass    (capped merge)
 #   handback
 decide() {
-  local rp="$1" pending="$2" events="$3" reviews="$4" lands="$5" sw="$6" lenses="$7" cause
+  local rp="$1" pending="$2" events="$3" reviews="$4" wait="$5" sw="$6" lenses="$7" cause
   if [ "$rp" = true ] && [ "$pending" -gt 0 ]; then
-    if [ "$lands" = yes ]; then echo "resume -"; return; fi
+    if [ "$wait" = owned ]; then echo "await -"; return; fi
     echo "block no-post"; return
   fi
   # <requested> = any of pending, request-events or reviews above zero (review-request-read).
@@ -97,9 +98,14 @@ check_fill_text() {  # $1 = fill path; prints FAIL lines, returns count via glob
   for tok in 'review-request-read' '`no-post`' '`request-failed`' 'never unknown' \
              '<request-events>' '<pending>' 'Step 2b' '**Require Completed Review**' '## Review' \
              'exactly `on`' 'The shipped default is off' 'hand back' 'Review: capped — <cause>' \
-             'did not land within the capped polls (no-post)' '**Lenses:**' '<lc>` = `<le>`'; do
+             "did not land by the caller's deadline (no-post)" 'not awaited — no caller-owned wait (no-post)' \
+             'Built: awaiting review' '--review-lapsed' 'Never poll for it here' \
+             '**Lenses:**' '<lc>` = `<le>`'; do
     grep -qF -- "$tok" "$f" || err "fill never states '$tok'"
   done
+  if grep -qiE 'capped at a small number of attempts|within the capped polls' "$f"; then
+    err "fill still polls a pending request a counted number of times — the wait is the caller's (WF-944)"
+  fi
   grep -qF -- '| capped, switch on, no completed review | hand back' "$f" \
     || err "fill outcome table has no hand-back row for switch on without a completed review"
   grep -qF -- '| capped (`no-post` / `request-failed`), switch off | pass' "$f" \
@@ -129,28 +135,35 @@ expect() {  # label, expected, actual
 check_decision_table() {
   local L='5/5 completed, 0 inline' P='1/5 completed, 4 inline' Z='0/0 completed, 0 inline'
   # switch off — today's decisions, cause recorded
-  expect "off: pending, review lands"            "resume -"               "$(decide true 1 1 0 yes off "$P")"
-  expect "off: pending, cap lapses"              "block no-post"          "$(decide true 1 1 0 no  off "$P")"
-  expect "off: withdrawn request, nothing posted" "pass no-post"          "$(decide true 0 2 0 no  off "$P")"
-  expect "off: never requested"                  "pass request-failed"    "$(decide true 0 0 0 no  off "$P")"
-  expect "off: reviewed only on an earlier commit" "pass no-post"         "$(decide true 0 0 1 no  off "$P")"
-  expect "off: read not performed"               "pass request-failed"    "$(decide false 0 0 0 no off "")"
+  expect "off: pending, caller owns the wait"    "await -"                "$(decide true 1 1 0 owned  off "$P")"
+  expect "off: pending, deadline lapsed"         "block no-post"          "$(decide true 1 1 0 lapsed off "$P")"
+  expect "off: pending, nobody can wait"         "block no-post"          "$(decide true 1 1 0 none   off "$P")"
+  expect "off: withdrawn request, nothing posted" "pass no-post"          "$(decide true 0 2 0 none   off "$P")"
+  expect "off: withdrawn, caller owns a wait"    "pass no-post"           "$(decide true 0 2 0 owned  off "$P")"
+  expect "off: never requested"                  "pass request-failed"    "$(decide true 0 0 0 none   off "$P")"
+  expect "off: reviewed only on an earlier commit" "pass no-post"         "$(decide true 0 0 1 none   off "$P")"
+  expect "off: read not performed"               "pass request-failed"    "$(decide false 0 0 0 none off "")"
   # switch on — a capped outcome needs complete in-run lens coverage
-  expect "on: pending, cap lapses (unchanged)"   "block no-post"          "$(decide true 1 1 0 no  on "$L")"
-  expect "on: withdrawn, lenses complete"        "pass no-post"           "$(decide true 0 1 0 no  on "$L")"
-  expect "on: withdrawn, lenses partial"         "handback no-post"       "$(decide true 0 1 0 no  on "$P")"
-  expect "on: never requested, lenses partial"   "handback request-failed" "$(decide true 0 0 0 no on "$P")"
-  expect "on: never requested, zero expected"    "handback request-failed" "$(decide true 0 0 0 no on "$Z")"
-  expect "on: read not performed, no report"     "handback request-failed" "$(decide false 0 0 0 no on "")"
-  # every capped cause is one of the two tokens — never unknown
-  local rp p e sw out
-  for rp in true false; do for p in 0 1; do for e in 0 1; do for sw in on off; do
-    out=$(decide "$rp" "$p" "$e" 0 no "$sw" "$P")
+  expect "on: pending, caller owns the wait"     "await -"                "$(decide true 1 1 0 owned  on "$L")"
+  expect "on: pending, deadline lapsed (unchanged)" "block no-post"       "$(decide true 1 1 0 lapsed on "$L")"
+  expect "on: withdrawn, lenses complete"        "pass no-post"           "$(decide true 0 1 0 none   on "$L")"
+  expect "on: withdrawn, lenses partial"         "handback no-post"       "$(decide true 0 1 0 none   on "$P")"
+  expect "on: never requested, lenses partial"   "handback request-failed" "$(decide true 0 0 0 none on "$P")"
+  expect "on: never requested, zero expected"    "handback request-failed" "$(decide true 0 0 0 none on "$Z")"
+  expect "on: read not performed, no report"     "handback request-failed" "$(decide false 0 0 0 none on "")"
+  # every outcome is a hand-back to the waiting caller or carries one of the two cause tokens —
+  # never unknown, and an outstanding request is never a pass whoever owns the wait
+  local rp p e sw w out
+  for rp in true false; do for p in 0 1; do for e in 0 1; do for sw in on off; do for w in owned lapsed none; do
+    out=$(decide "$rp" "$p" "$e" 0 "$w" "$sw" "$P")
     case "$out" in
-      "block no-post"|"pass no-post"|"pass request-failed"|"handback no-post"|"handback request-failed") ;;
-      *) err "decide $rp $p $e 0 no $sw → '$out' carries no closed cause" ;;
+      "await -"|"block no-post"|"pass no-post"|"pass request-failed"|"handback no-post"|"handback request-failed") ;;
+      *) err "decide $rp $p $e 0 $w $sw → '$out' carries no closed cause" ;;
     esac
-  done; done; done; done
+    if [ "$rp" = true ] && [ "$p" -gt 0 ]; then
+      case "$out" in pass*) err "decide $rp $p $e 0 $w $sw → an outstanding request passed" ;; esac
+    fi
+  done; done; done; done; done
   # the switch parser
   expect "switch: absent section"  off "$(switch_state $'# x\n## Other\n| **Require Completed Review** | `on` |')"
   expect "switch: off"             off "$(switch_state $'## Review\n| Key | Value |\n| **Require Completed Review** | `off` |')"
@@ -186,6 +199,10 @@ if [ "${1:-}" = "--selftest" ]; then
   [ "$(run_text "$tmp/no-cause.md")" != 0 ] || { echo "selftest FAIL: a fill without the no-post cause passed"; st=1; }
   sed 's/exactly `on`/`on` or `yes`/' "$FILL" > "$tmp/loose-switch.md"
   [ "$(run_text "$tmp/loose-switch.md")" != 0 ] || { echo "selftest FAIL: a fill with a loosened switch passed"; st=1; }
+  { cat "$FILL"; echo 'Re-read the review, capped at a small number of attempts (2).'; } > "$tmp/polls.md"
+  [ "$(run_text "$tmp/polls.md")" != 0 ] || { echo "selftest FAIL: a fill reintroducing the counted poll passed"; st=1; }
+  sed 's/--review-lapsed/--review-done/g' "$FILL" > "$tmp/no-lapse.md"
+  [ "$(run_text "$tmp/no-lapse.md")" != 0 ] || { echo "selftest FAIL: a fill without the lapsed-deadline branch passed"; st=1; }
   { cat "$FILL"; echo 'This is an honest reviewer-absent pass.'; } > "$tmp/absent.md"
   [ "$(run_text "$tmp/absent.md")" != 0 ] || { echo "selftest FAIL: a fill reintroducing the reviewer-absent pass passed"; st=1; }
   # the decision table must reject a planted wrong decision

@@ -8,7 +8,8 @@ Phase 5 merges. Because this is a `replace` fill it **supersedes** `ship`'s inli
 (the no-op "drive no reviewer") wholesale, and `ship` follows this prose in its own context.
 
 **Role framing.** This gate never mutates source and never merges. Its only outputs are
-(a) replies posted on review threads and (b) a single **pass** or **block** decision. On any
+(a) replies posted on review threads and (b) a single **pass** or **block** decision — or, only
+while a requested review is outstanding and the caller owns the wait, a **hand-back** (Step 2). On any
 block it emits `SHIP — Blocked` (with a `Reason:` and a `Next:`) and **stops** — it does not
 fall through to Phase 5. On a pass it returns quietly and `ship` proceeds to Phase 5.
 `ship`'s never-merge-red invariant and `/wf:tf`'s detect-first `pr-merge` stay the final guard.
@@ -74,12 +75,23 @@ made against:
   Every branch below records a **cause** from the closed pair `no-post` | `request-failed` —
   never unknown, never omitted:
   - **`<read-performed>` = true and `<pending>` > 0** → a request registered and is still
-    outstanding; it has not landed yet. Re-read `review-threads-read` + `pr-comments-read`,
-    **capped** at a small number of attempts (2). If a review appears within the cap → resume
-    this step's classification. If the cap is hit with still no review at HEAD_SHA → the poll
-    **timed out**; the state is **unknown**, never clean, and the cause is `no-post`.
-    **Block:** reason `review requested but did not land within the capped polls (no-post) —
-    state unknown, not clean`. Stop. *(WF-313 req 2 — a timeout is unknown, never clean.)*
+    outstanding; it has not landed yet. **Never poll for it here** — a count of re-reads in one
+    run spans seconds, not the minutes a reviewer takes, so it can only override the wait. The
+    wait is owned by the caller, and `ship`'s own flags say whether one exists:
+    - **`--review-boundary` present, `--review-lapsed` absent** (the caller owns the wait and its
+      deadline has not passed) → **hand back, do not block and do not merge.** End the run
+      `SHIP — Handed-off` with `Built: awaiting review` and the summary
+      `Review: awaiting — request outstanding (no-post so far)`, per `ship` Phase 4.5's
+      caller-owned review wait. Stop. The caller re-invokes after its deadline; a review that
+      landed meanwhile is found by Step 1 on that run.
+    - **`--review-lapsed` present** (the caller waited and its deadline passed) → the state is
+      **unknown**, never clean, and the cause is `no-post`. **Block:** reason `review requested
+      but did not land by the caller's deadline (no-post) — state unknown, not clean`. Stop.
+    - **No `--review-boundary`** (an attended run — nobody owns a wait) → the review is **not
+      awaited**; the state is **unknown**, never clean, and the cause is `no-post`. **Block:**
+      reason `review requested, not awaited — no caller-owned wait (no-post) — state unknown, not
+      clean`. Stop; re-run once the review lands. *(WF-313 req 2 — an unanswered request is
+      unknown, never clean.)*
   - **`<read-performed>` = true, `<pending>` = 0, `<requested>` = true** → a request
     registered (or a reviewer posted on an earlier commit) and nothing is outstanding or posted
     at HEAD_SHA — typically a request the host withdrew. Cause **`no-post`** → Step 2b.
@@ -154,7 +166,8 @@ block (e.g. `Review: clean at HEAD_SHA` / `Review: 3 threads — 2 fixed in code
 
 | Gate outcome | `ship` action |
 |--------------|---------------|
-| unknown (no read-back / poll timeout — cause `no-post`) | `SHIP — Blocked` — stop before merge |
+| request outstanding, caller owns the wait (`--review-boundary`, not `--review-lapsed`) | `SHIP — Handed-off`, `Built: awaiting review` — stop, nothing merged |
+| unknown (no read-back / deadline lapsed / not awaited — cause `no-post`) | `SHIP — Blocked` — stop before merge |
 | zero-files-reviewed failure | `SHIP — Blocked` — stop before merge |
 | confirmed unaddressed finding(s) | reply on every thread, then `SHIP — Blocked` — stop |
 | reviewed-clean (read-back performed) | pass → Phase 5 |
