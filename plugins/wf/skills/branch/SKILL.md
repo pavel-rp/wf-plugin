@@ -6,7 +6,7 @@ allowed-tools: [Task, Bash]
 
 # /wf:branch — Task branch from a plan or spec
 
-User-facing slash command for creating and switching to a task branch. The implementation lives entirely in the `wf:branch` subagent (`agents/branch.md`); this skill body is a thin entry point that exists only for direct user invocation.
+User-facing slash command for creating and switching to a task branch. The implementation lives entirely in the `wf:branch` subagent (`agents/branch.md`), which loads its procedure from this skill's `references/procedure.md`; this skill body is a thin entry point that exists only for direct user invocation.
 
 **Other wf:* skills that need a branch gate MUST invoke the **Task** tool with `subagent_type: wf:branch` — never the `/wf:branch` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern is designed to avoid. The subagent is self-sufficient: it resolves config, derives the branch name, invokes the delivery provider to create or switch the branch, and updates `index.md` (via an inline `wf:index` write) all in its own isolated context.
 
@@ -34,7 +34,7 @@ For the selected `isolated` shape, invoke the **Task** tool with `subagent_type:
 
 This is a **direct invocation** — the top of its own delivery chain — so **no forwarded resolution record is passed**; the `wf:branch` subagent self-resolves the `delivery` surface once via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query. When another `wf:*` skill invokes `wf:branch` via the **Task** tool as part of a larger run (e.g. `wf:commit`'s branch gate), that parent forwards its resolved `delivery` record and the subagent consumes it instead of re-resolving.
 
-**When the caller cannot await children.** If the running agent's own dispatch brief declares that it cannot await its children, obey the `isolated` answer per `invocation-runtime.ops.md` §"Resolver call root" (its **Caller cannot await children** paragraph) instead of the dispatch above: this is a writing unit, so it runs in this context through the same `delivery` operations the subagent would reach, is recorded `inline — caller cannot await`, and this skill emits the same Final Output block itself.
+**When the caller cannot await children.** If the running agent's own dispatch brief declares that it cannot await its children, obey the `isolated` answer per `invocation-runtime.ops.md` §"Resolver call root" (its **Caller cannot await children** paragraph) instead of the dispatch above. This is a writing unit, so it runs in this context, recorded `inline — caller cannot await`. Follow the same procedure the subagent loads, obtained via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: branch`, `ref: procedure.md`), with the `id` above, and emit its Final Output block. For its index loader step, invoke `/wf:index {task-id} branch "<branch-name>"` through the Skill tool yourself.
 
 Emit the subagent's Final Output block (`BRANCH — created`, `BRANCH — switched`, `BRANCH — already-active`, or `BRANCH — Error`) verbatim. **No narrative before or after the block** — the subagent already owns the user-facing output.
 

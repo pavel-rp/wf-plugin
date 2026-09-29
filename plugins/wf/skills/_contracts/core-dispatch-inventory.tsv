@@ -19,6 +19,9 @@ pr-agent	included	plugins/wf/skills/pr/SKILL.md	wf:pr	pr	model=true;effort=false
 branch-index	included	plugins/wf/agents/branch.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 commit-index	included	plugins/wf/agents/commit.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 pr-index	included	plugins/wf/agents/pr.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+branch-inline-index	included	plugins/wf/skills/branch/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+commit-inline-index	included	plugins/wf/skills/commit/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+pr-inline-index	included	plugins/wf/skills/pr/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 tf-index	included	plugins/wf/skills/tf/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 qa-auto-branch	included	plugins/wf/skills/qa-auto/SKILL.md	wf:branch	branch	mixed	shared-branch-gate	parent
 qa-auto-index	included	plugins/wf/skills/qa-auto/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent

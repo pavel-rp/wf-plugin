@@ -56,7 +56,7 @@ test("authoritative dispatch inventory is normalized and bidirectional", () => {
   assert.equal(new Set(inventory.map((row) => row.id)).size, inventory.length, "inventory ids must be unique");
   assert.equal(inventory.filter((row) => row.classification === "excluded").length, 5, "only the revised-spec structural exclusions are allowed");
   const included = inventory.filter((row) => row.classification === "included");
-  assert.equal(included.length, 72, "fixed core dispatch inventory changed; review and guard update required");
+  assert.equal(included.length, 75,"fixed core dispatch inventory changed; review and guard update required");
   for (const row of included) {
     const source = readFileSync(join(repoRoot, row.file), "utf8");
     assert.ok(exactInventoryTargetIsPresent(source, row.target), `${row.id} exact target is stale`);
@@ -301,8 +301,10 @@ test("singleton shipper wave uses valid atomic isolated evidence", () => {
 // is `null`/`inheritance`. Before this fixture existed the gate returned
 // `invalid-stop` here, which made the escalation gate unreachable for the entire
 // single-task ceremony path — `ship:branch`, `ship:run-initial`, `ship:run-resume`,
-// `ship:phase`, `ship:ci-commit`, `ship:pr` and `ship:finalize` in `ship/SKILL.md`,
-// and the same fixed edges repeated in `fleet/SKILL.md`'s dispatch brief.
+// `ship:phase`, `ship:ci-commit`, `ship:pr` and `ship:finalize` in `ship/SKILL.md`.
+// (Since WF-943 the fleet dispatch brief routes the same unit ids with honest
+// `contextIsolation: "useful"` evidence, which selects `isolated`, and records them
+// `inline — caller cannot await`; this fixture covers `ship/SKILL.md`'s edges only.)
 test("the gate opens for a shipper-path edge that cannot honor a model selector", () => {
   const first = resolveRouting({}, {
     role: "shipper",
