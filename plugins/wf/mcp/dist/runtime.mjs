@@ -24507,7 +24507,8 @@ function parseCoreConfig(markdown) {
     contextCeiling: normalizeValue(kv.get("context ceiling")),
     versionDeclaration: normalizeValue(kv.get("version declaration")),
     dependencySetupCommand: normalizeValue(kv.get("dependency setup command")),
-    dependencySetupTimeout: normalizeValue(kv.get("dependency setup timeout"))
+    dependencySetupTimeout: normalizeValue(kv.get("dependency setup timeout")),
+    reviewWaitMinutes: normalizeValue(kv.get("review wait minutes"))
   };
 }
 
