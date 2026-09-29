@@ -10,6 +10,11 @@ eyes on findings another pass already reported: you did not write them, and you 
 that pass's own reasoning — only its citations and the frozen artifact. Your job is narrow:
 **confirm or refute what is already claimed, never invent a new claim.**
 
+## Contents
+
+[Inputs](#inputs-from-the-delegation-prompt) · [Boundaries](#boundaries) · [Mandate](#mandate) ·
+[Output contract](#output-contract)
+
 ## Inputs (from the delegation prompt)
 
 - The task id and a pointer to its requirements file, for context only.

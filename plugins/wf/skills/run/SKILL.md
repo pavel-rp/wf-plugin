@@ -1,7 +1,7 @@
 ---
 name: run
 description: Drives a task through the wf:* pipeline by detecting the current phase from the task folder's artifacts, deciding the next phase, enforcing the inter-phase gate, and by default walking the safe front of the chain hands-off via the wf:phase-runner subagent — halting before any source-writing or gated phase — with a --step mode that instead names one command at a time. Resumable from any point after a context reset. wf:run writes nothing in its own context — each phase runs isolated, in its own subagent (default) or as its own native invocation (--step), so phase exploration never bleeds into the orchestrator. Use to walk spec→plan→implement→verify→qa as one tracked flow instead of remembering which slash command comes next.
-allowed-tools: [Read, Glob, Grep, Bash, Task, AskUserQuestion]
+allowed-tools: [Read, Glob, Grep, Bash, Task, Skill, AskUserQuestion]
 ---
 
 # /wf:run — Pipeline driver for the wf:* chain
@@ -68,7 +68,7 @@ Disambiguation: the leading non-`--`-prefixed token is the `<id>` argument — p
 
 - Write or edit **any** file in your own context — artifacts, source, or config. `wf:run` is a pure dispatcher; if a phase needs to write, the phase (in `--step`) or its `wf:phase-runner` subagent (in `--auto`) writes — never `wf:run` directly.
 - Run builds, tests, installs, or any delivery-surface operation that mutates state.
-- Execute a phase's logic **inline in your own context** (e.g. do `wf:spec`'s own fetch/exploration yourself). Inlining defeats the per-phase context isolation that is the whole point. In `--step` you name the command and stop; in `--auto` you dispatch the phase to the `wf:phase-runner` subagent — never run it inline either way.
+- Execute a phase's logic **inline in your own context** (e.g. do `wf:spec`'s own fetch/exploration yourself). Inlining defeats the per-phase context isolation that is the whole point. In `--step` you name the command and stop; in `--auto` you dispatch the phase to the `wf:phase-runner` subagent — never run it inline either way. The one exception is a caller that declares it cannot await children: it invokes the phase skill through the Skill tool, per Phase 4 step 2. That is the phase's own invocation, not its logic re-done here.
 - **"Rescue" a failed phase subagent by doing its work yourself.** If the `wf:phase-runner` **Task** call returns an error (e.g. it reports a missing tool), do **not** fetch the tracker item / explore the codebase / build the artifact in your own context and feed it into a retry. That re-imports the exact heavy context the isolation exists to keep out, and "wf:run didn't write the file, the subagent did" is not a loophole — it is still inlining. The subagent inherits every tool you have (it declares no `tools:` allowlist), so a genuine tool gap is a bug to fix in the agent, not to route around. Halt and surface (Phase 4); a human or a fixed subagent retries.
 
 ---
@@ -189,7 +189,7 @@ The orchestrator's context grows by only one small status block per phase; every
 
 Print the resolved next command and the run status block (Final Output) — the same Phase-3-resolved command the `--auto` gate check above emits, so a `verify-fix` reached via a stop-gate `extend` choice prints the same `--attempt <K>`-or-bare form here too, not only in `--auto`; and when the companion pin was already reached, this prints `/wf:verify-spec {task-id}` instead of a `verify-fix` command, exactly as `--auto` would dispatch it. A `verify-spec` command carries `--review-boundary <dir>` when this invocation received it. Do **not** execute the phase — naming the command and stopping is the whole job. The human runs the phase, then `/clear`s and re-invokes `/wf:run <id>` (`--resume`, or `--step` again for another single phase; bare `/wf:run <id>` resumes the hands-off walk), which re-derives state from the artifacts and advances. Use `--step` when you want to review each phase's output before the next one runs.
 
-Do **not**, in either mode, execute a phase inline in your own context (Safety Rules). The default walk dispatches to the `wf:phase-runner` subagent; `--step` names the command.
+Do **not**, in either mode, execute a phase inline in your own context (Safety Rules). The default walk dispatches to the `wf:phase-runner` subagent, or invokes the phase skill under a caller that cannot await children; `--step` names the command.
 
 ---
 

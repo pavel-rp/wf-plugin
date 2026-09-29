@@ -50,7 +50,7 @@ Confirm the project is initialized by querying the bundled `wf-resolver` MCP ser
 
 - Modify any source file — this skill only orchestrates; the subagents invoke the delivery provider.
 - Run any destructive delivery operation.
-- Author commits or PR bodies inline — that is the subagents' job, and keeps the diff and artifacts out of this context.
+- Author commits or PR bodies inline — that is the subagents' job, and keeps the diff and artifacts out of this context. The one exception is a caller that declares it cannot await children, which follows the skill-served procedures in this context per its **When the caller cannot await children** paragraph below.
 - Create a pull request after a `refuse` drift-check outcome, or run a second re-verify for the same drift event.
 
 ---

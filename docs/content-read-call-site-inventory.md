@@ -257,7 +257,7 @@ or the raw read must be routed through the resolver content surface.
 **`capability-registry.ops.md`** — read for the self-heal algorithm, surface operation
 sets, and resolver-failure/diagnosis semantics:
 `wf/skills/{spec, implement, verify-spec, verify-fix, qa-gen, qa-run, qa-auto, qa-followup,
-tt, tf, triage, lite, pr, index, classify, standup, branch}` (the `pr`, `commit`, and `branch` cites
+tt, tf, triage, lite, pr, index, classify, standup, branch, commit}` (the `pr`, `commit`, and `branch` cites
 now live in those skills' `references/procedure.md`, which the thin `wf/agents/{pr, commit, branch}`
 loaders obtain, WF-943);
 `wf-review/skills/{review-pr, address-pr}`; `wf-browser-qa/skills/qa-engine`;
@@ -371,7 +371,7 @@ Init reads the capability's `profile.template.json` **body** to seed a downstrea
 |---|---|---:|---:|
 | fragment | SUB-3 / WF-304 | 11 | 32 delivery + 8 tracker + 4 inline phase/pre-commit + 6 subagent self-boot |
 | shared | SUB-4 / WF-305 | 1 | 6 |
-| contract-ops | SUB-5 / WF-306 | 3 | 18 (registry-ops) + 7 (invocation-runtime) + 0 (pack-onboarding) |
+| contract-ops | SUB-5 / WF-306 | 3 | 19 (registry-ops) + 7 (invocation-runtime) + 0 (pack-onboarding) |
 | references | SUB-6 / WF-307 | 58 templates | 40 consumers (90 template reads) |
 | profile | SUB-7 / WF-308 | 3 | 3 |
 

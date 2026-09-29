@@ -60,7 +60,7 @@ Branch inference above reaches `current-branch-query` by resolving the `delivery
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference.
-- Invoke the **Task** tool to delegate to the `wf:classify` subagent. **The subagent is the only place the rubric runs** — this skill never classifies inline.
+- Invoke the **Task** tool to delegate to the `wf:classify` subagent. **The subagent is the only place the rubric runs** — this skill never classifies inline, except under a caller that declares it cannot await children (the one exception its **When the caller cannot await children** paragraph names).
 
 **Forbidden:**
 
@@ -68,7 +68,7 @@ Branch inference above reaches `current-branch-query` by resolving the `delivery
 - Modify source files.
 - Run builds, tests, or installs.
 - Fetch from a tracker directly. Use already-resolved `00_reqs.md`/`01_spec.md` only — fetching is `/wf:spec` Phase 0's job.
-- Implement the rubric inline. If subagent invocation is unavailable, stop and report — see Phase 2.
+- Implement the rubric inline, outside the declared cannot-await exception. If subagent invocation is unavailable, stop and report — see Phase 2.
 
 ---
 
