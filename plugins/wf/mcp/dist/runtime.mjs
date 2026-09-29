@@ -26151,6 +26151,12 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
 function releaseSetupLock(root, token2) {
   heldSetupLockTokens.delete(token2);
   const current = readLock(root, SETUP_LOCK_RELPATH);
+  if (current.status === "unsafe") {
+    return {
+      ok: false,
+      detail: `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
+    };
+  }
   if (current.status === "ok" && current.record?.token === token2) {
     const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
     if (!removed.ok) {
