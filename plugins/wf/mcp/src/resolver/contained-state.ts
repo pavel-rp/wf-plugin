@@ -38,7 +38,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
-  writeSync,
+  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -161,7 +161,11 @@ function writeTempBeside(dir: string, name: string, content: string): string {
   let fd: number | null = null;
   try {
     fd = openSync(temp, "wx");
-    writeSync(fd, Buffer.from(content, "utf8"));
+    // Write in full, not with a bare `writeSync`: that returns a byte count
+    // and does not retry, so a short write would fsync and rename a TRUNCATED
+    // ledger or marker into place while this reported success. A descriptor
+    // `writeFileSync` loops until every byte is written, or throws.
+    writeFileSync(fd, content, { encoding: "utf8" });
     fsyncSync(fd);
     closeSync(fd);
     fd = null;
