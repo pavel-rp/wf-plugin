@@ -183,6 +183,69 @@ test("resolveCapabilityPath: self-heals from installPath when recorded root dang
   assert.equal(r.manifestPath, "/cache/wf-git/capabilities/git/manifest.md");
 });
 
+test("resolveCapabilityPath: an installed sibling version supersedes a readable older recorded root", () => {
+  const r = resolveCapabilityPath("plugin:wf-pm/capabilities/pm", {
+    workspaceRoot: "/ws",
+    recordedRoots: [{ plugin: "wf-pm", root: "/cache/mk/wf-pm/0.8.1" }],
+    installedRoots: [{ pluginName: "wf-pm", installPath: "/cache/mk/wf-pm/0.9.9" }],
+    manifestExists: (p) =>
+      p === "/cache/mk/wf-pm/0.8.1/capabilities/pm/manifest.md" ||
+      p === "/cache/mk/wf-pm/0.9.9/capabilities/pm/manifest.md",
+  });
+  assert.equal(r.provenance, "self-healed");
+  assert.equal(r.resolvedPath, "/cache/mk/wf-pm/0.9.9/capabilities/pm");
+  assert.equal(r.manifestPath, "/cache/mk/wf-pm/0.9.9/capabilities/pm/manifest.md");
+  assert.equal(r.supersededRoot, "/cache/mk/wf-pm/0.8.1");
+});
+
+test("resolveCapabilityPath: a non-sibling recorded root still wins over a readable installed copy", () => {
+  const r = resolveCapabilityPath("plugin:wf-pm/capabilities/pm", {
+    workspaceRoot: "/ws",
+    recordedRoots: [{ plugin: "wf-pm", root: "/src/checkout/plugins/wf-pm" }],
+    installedRoots: [{ pluginName: "wf-pm", installPath: "/cache/mk/wf-pm/0.9.9" }],
+    manifestExists: (p) =>
+      p === "/src/checkout/plugins/wf-pm/capabilities/pm/manifest.md" ||
+      p === "/cache/mk/wf-pm/0.9.9/capabilities/pm/manifest.md",
+  });
+  assert.equal(r.provenance, "recorded");
+  assert.equal(r.manifestPath, "/src/checkout/plugins/wf-pm/capabilities/pm/manifest.md");
+  assert.equal(r.supersededRoot, null);
+});
+
+test("resolveCapabilityPath: a readable sibling recorded root is kept when the installed manifest is unreadable", () => {
+  const r = resolveCapabilityPath("plugin:wf-pm/capabilities/pm", {
+    workspaceRoot: "/ws",
+    recordedRoots: [{ plugin: "wf-pm", root: "/cache/mk/wf-pm/0.8.1" }],
+    installedRoots: [{ pluginName: "wf-pm", installPath: "/cache/mk/wf-pm/0.9.9" }],
+    manifestExists: (p) => p === "/cache/mk/wf-pm/0.8.1/capabilities/pm/manifest.md",
+  });
+  assert.equal(r.provenance, "recorded");
+  assert.equal(r.manifestPath, "/cache/mk/wf-pm/0.8.1/capabilities/pm/manifest.md");
+  assert.equal(r.supersededRoot, null);
+});
+
+test("resolveCapabilityPath: a recorded root equal to the installed root resolves as recorded", () => {
+  const r = resolveCapabilityPath("plugin:wf-pm/capabilities/pm", {
+    workspaceRoot: "/ws",
+    recordedRoots: [{ plugin: "wf-pm", root: "/cache/mk/wf-pm/0.9.9/" }],
+    installedRoots: [{ pluginName: "wf-pm", installPath: "/cache/mk/wf-pm/0.9.9" }],
+    manifestExists: (p) => p === "/cache/mk/wf-pm/0.9.9/capabilities/pm/manifest.md",
+  });
+  assert.equal(r.provenance, "recorded");
+  assert.equal(r.supersededRoot, null);
+});
+
+test("resolveCapabilityPath: the dangling-root self-heal reports no superseded root", () => {
+  const r = resolveCapabilityPath("plugin:wf-git/capabilities/git", {
+    workspaceRoot: "/ws",
+    recordedRoots: [{ plugin: "wf-git", root: "/cache/mk/wf-git/0.7.0" }],
+    installedRoots: [{ pluginName: "wf-git", installPath: "/cache/mk/wf-git/0.12.0" }],
+    manifestExists: (p) => p === "/cache/mk/wf-git/0.12.0/capabilities/git/manifest.md",
+  });
+  assert.equal(r.provenance, "self-healed");
+  assert.equal(r.supersededRoot, null);
+});
+
 test("resolveCapabilityPath: unrecoverable when neither route has a manifest", () => {
   const r = resolveCapabilityPath("plugin:wf-ghost/capabilities/ghost", {
     workspaceRoot: "/ws",
