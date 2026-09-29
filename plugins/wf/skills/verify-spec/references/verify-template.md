@@ -57,7 +57,8 @@ clause when the fragment carries none.
 
 This section carries the `fail`-severity aggregated findings that made the **blocking set** —
 anchored candidates the critic confirmed (`AGREE`), plus every candidate when a critic dispatch
-itself failed or was malformed (fail-closed, unconfirmed). A `fail` or `warn` that did not make
+itself failed or was malformed (fail-closed, unconfirmed), plus every candidate an inline critic
+(caller cannot await) returned `DISAGREE` or `UNVERIFIABLE` (held, unconfirmed). A `fail` or `warn` that did not make
 it is recorded in exactly one of the two non-gating sections below instead of here, so every
 aggregated finding appears exactly once in the report and none is ever dropped. A `[PASS]`
 assertion row carries no severity, is not a finding, and is never routed — it always stays here.
@@ -66,8 +67,10 @@ when the routing leaves it with no entry at all, render the single line `- none`
 
 A confirmed bullet appends the critic's own confirmation, `` — critic: AGREE at `path/to/file:L`
 — "<quoted evidence>"``; a bullet standing here because the critic dispatch failed or was
-malformed appends `` — critic: not confirmed — dispatch <failed | malformed>`` instead, so a
-reader can tell a grounded confirmation from a fail-closed default at a glance.
+malformed appends `` — critic: not confirmed — dispatch <failed | malformed>`` instead, and one
+an inline critic held appends `` — critic: not confirmed — inline, not independent`` (an inline
+`AGREE` keeps the confirmed form with ` (critic run inline)` after it), so a reader can tell a
+grounded confirmation from a fail-closed default at a glance.
 
 Every finding bullet in this report — here, under `## Pre-existing`, and under
 `## Accepted warnings`, collapsed or not — is keyed by its fingerprint
