@@ -552,16 +552,32 @@ function readLock(root: string, rel: string): { status: "ok"; record: SetupLockR
 }
 
 /**
+ * Put a captured live lock back at the canonical path when the hard-link
+ * restore failed, by exclusively creating the canonical lock with the captured
+ * record's own bytes. `restored` — the canonical path again carries the live
+ * holder's record (same token, so its release still removes it); `occupied` —
+ * another record already blocks the path; `open` — nothing could be put there.
+ */
+function reblockFromCaptured(root: string, aside: string): "restored" | "occupied" | "open" {
+  const captured = readContainedCapabilityFile(root, aside, SETUP_LOCK_MAX_BYTES);
+  if (captured.status !== "ok") return "open";
+  const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, captured.content);
+  if (created.ok) return "restored";
+  return created.kind === "exists" ? "occupied" : "open";
+}
+
+/**
  * Move a lock whose holder is gone out of the way. Returns `retry` when the
- * caller should attempt the create again (reclaimed, or the lock vanished),
- * `held` when a live — or unjudgeable — holder keeps it, `unsafe`, or
- * `restore-failed` (with the path the captured lock was kept at) when a live
- * holder's lock was moved aside and could not be put back.
+ * caller should attempt the create again (reclaimed, the lock vanished, or a
+ * captured live lock was put back), `held` when a live — or unjudgeable —
+ * holder keeps it, `unsafe`, or `restoreFailed` (with the path the captured
+ * lock was kept at, and whether the canonical path is still blocked) when a
+ * live holder's lock was moved aside and could not be put back.
  */
 function reclaimIfAbandoned(
   root: string,
   deps: SetupLockDeps,
-): "retry" | "held" | "unsafe" | { restoreFailed: string } {
+): "retry" | "held" | "unsafe" | { restoreFailed: string; canonicalBlocked: boolean } {
   const current = readLock(root, SETUP_LOCK_RELPATH);
   if (current.status === "missing") return "retry";
   if (current.status === "unsafe") return "unsafe";
@@ -576,8 +592,10 @@ function reclaimIfAbandoned(
 
   // Rename the stale lock aside first — an atomic step only one reclaimer can
   // win — then confirm what was moved is the record judged abandoned. If a
-  // live holder's fresh lock was captured instead, put it back; if that
-  // fails, keep the captured copy and never run beside its holder.
+  // live holder's fresh lock was captured instead, put it back. If the link
+  // back fails, re-block the canonical path with a copy of the captured record
+  // so no other caller can take the lock beside its live holder; the captured
+  // copy is only removed once that record is in place.
   const aside = `${SETUP_LOCK_RELPATH}.stale-${randomBytes(6).toString("hex")}`;
   const moved = renameContainedStateFile(root, SETUP_LOCK_RELPATH, aside);
   if (!moved.ok) return moved.kind === "unsafe" ? "unsafe" : "held";
@@ -585,7 +603,10 @@ function reclaimIfAbandoned(
   const captured = readLock(root, aside);
   if (captured.status === "ok" && captured.record?.token !== holder.token) {
     const linkBack = deps.linkBack ?? linkContainedStateFileExclusive;
-    if (!linkBack(root, aside, SETUP_LOCK_RELPATH)) return { restoreFailed: aside };
+    if (!linkBack(root, aside, SETUP_LOCK_RELPATH)) {
+      const reblocked = reblockFromCaptured(root, aside);
+      if (reblocked !== "restored") return { restoreFailed: aside, canonicalBlocked: reblocked === "occupied" };
+    }
   }
   removeContainedStateFile(root, aside);
   return "retry";
@@ -632,7 +653,9 @@ export function acquireSetupLock(
       return {
         ok: false,
         kind: "failed",
-        detail: `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could not be restored; it is kept at \`${reclaim.restoreFailed}\` and the command was not run.`,
+        detail: reclaim.canonicalBlocked
+          ? `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could not be restored because another record now holds the lock path; the captured lock is kept at \`${reclaim.restoreFailed}\` and the command was not run.`
+          : `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could neither be restored nor re-blocked at the lock path; it is kept at \`${reclaim.restoreFailed}\` and the command was not run.`,
       };
     }
     if (reclaim === "retry") continue;
