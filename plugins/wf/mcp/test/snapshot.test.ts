@@ -324,6 +324,46 @@ test("readSnapshot returns null when no cache exists", () => {
   }
 });
 
+test("a recorded root that is an older sibling version of the installed pack resolves from the installed pack", () => {
+  const cache = "C:/Users/dev/.claude/plugins/cache/wf-marketplace/wf-git";
+  const staleRoot = `${cache}/1.3.0`;
+  const installedRoot = `${cache}/1.4.1`;
+  const registry = REGISTRY.replace("| wf-git | /ws/vendor/wf-git |", `| wf-git | ${staleRoot} |`);
+  const files = new Map<string, string>([
+    [normalizeSlashes("/ws/_local/config.md"), registry],
+    [`${staleRoot}/capabilities/git/manifest.md`, GIT_MANIFEST],
+    [`${installedRoot}/capabilities/git/manifest.md`, GIT_MANIFEST],
+  ]);
+  const snap = resolveSnapshot({
+    workspaceRoot: "/ws",
+    io: { readFile: (p: string) => files.get(normalizeSlashes(p)) ?? null },
+    pluginListRaw,
+    now: () => new Date("2026-07-15T00:00:00.000Z"),
+    generator: { name: "wf-resolver", version: "0.1.0" },
+  });
+
+  const git = snap.capabilities.find((c) => c.name === "git");
+  assert.equal(git?.provenance, "self-healed");
+  assert.equal(git?.manifestPath, `${installedRoot}/capabilities/git/manifest.md`);
+
+  const root = snap.pluginRoots.find((r) => r.plugin === "wf-git");
+  assert.equal(root?.provenance, "self-healed");
+  assert.equal(root?.resolvedRoot, installedRoot);
+
+  const stale = snap.diagnostics.filter((d) => d.code === "capability/stale-plugin-root");
+  assert.equal(stale.length, 1);
+  assert.equal(stale[0].severity, "warning");
+  assert.ok(stale[0].message.includes(staleRoot));
+  assert.ok(stale[0].message.includes(installedRoot));
+});
+
+test("a recorded root outside the install cache keeps winning with no stale-root diagnostic", () => {
+  const snap = buildForTest();
+  const git = snap.capabilities.find((c) => c.name === "git");
+  assert.equal(git?.provenance, "recorded");
+  assert.ok(!snap.diagnostics.some((d) => d.code === "capability/stale-plugin-root"));
+});
+
 test("readSnapshot rejects an incompatible schema version", () => {
   const ws = mkdtempSync(join(tmpdir(), "wf-resolver-schema-"));
   try {

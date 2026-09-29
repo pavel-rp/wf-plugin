@@ -20,6 +20,13 @@ function joinSlash(...segments) {
     return seg;
   }).filter((s) => s.length > 0).join("/");
 }
+function dirnameSlash(p) {
+  const normalized = normalizeSlashes(p).replace(/\/+$/, "");
+  const cut = normalized.lastIndexOf("/");
+  if (cut < 0) return normalized;
+  if (cut === 0) return "/";
+  return normalized.slice(0, cut);
+}
 function resolveContainedCapabilityPath(root, relative2) {
   if (relative2.length === 0 || relative2.includes("\0") || relative2.includes("\\") || isAbsoluteRoot(relative2)) {
     return null;
@@ -41,35 +48,60 @@ function parsePluginAnchor(registryPath) {
   if (!m) return null;
   return { pluginName: m[1], relPath: m[2] };
 }
+function isSiblingRoot(a, b) {
+  const left = a.replace(/\/+$/, "");
+  const right = b.replace(/\/+$/, "");
+  if (left === right) return false;
+  const parent = dirnameSlash(left);
+  return parent !== left && parent === dirnameSlash(right);
+}
 function resolveCapabilityPath(registryPath, opts) {
   const anchor = parsePluginAnchor(registryPath);
   if (!anchor) {
     const folder = joinSlash(opts.workspaceRoot, registryPath);
     const manifest = joinSlash(folder, "manifest.md");
     if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded", supersededRoot: null };
     }
-    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
+    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable", supersededRoot: null };
   }
   const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
-  if (recorded) {
-    const root = isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root);
-    const folder = joinSlash(root, anchor.relPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
-    }
-  }
+  const recordedRoot = recorded ? isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root) : null;
   const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
-  if (installed) {
-    const root = normalizeSlashes(installed.installPath);
-    const folder = joinSlash(root, anchor.relPath);
+  const installedRoot = installed ? normalizeSlashes(installed.installPath) : null;
+  const installedFolder = installedRoot ? joinSlash(installedRoot, anchor.relPath) : null;
+  const installedManifest = installedFolder ? joinSlash(installedFolder, "manifest.md") : null;
+  if (recordedRoot !== null) {
+    const folder = joinSlash(recordedRoot, anchor.relPath);
     const manifest = joinSlash(folder, "manifest.md");
     if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
+      if (installedRoot !== null && installedFolder !== null && installedManifest !== null && isSiblingRoot(recordedRoot, installedRoot) && opts.manifestExists(installedManifest)) {
+        return {
+          resolvedPath: installedFolder,
+          manifestPath: installedManifest,
+          provenance: "self-healed",
+          supersededRoot: recordedRoot.replace(/\/+$/, "")
+        };
+      }
+      return {
+        resolvedPath: folder,
+        manifestPath: manifest,
+        provenance: "recorded",
+        supersededRoot: null
+      };
     }
   }
-  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
+  if (installedFolder !== null && installedManifest !== null) {
+    if (opts.manifestExists(installedManifest)) {
+      return {
+        resolvedPath: installedFolder,
+        manifestPath: installedManifest,
+        provenance: "self-healed",
+        supersededRoot: null
+      };
+    }
+  }
+  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable", supersededRoot: null };
 }
 function isAbsoluteRoot(root) {
   const n = normalizeSlashes(root);
@@ -1908,6 +1940,7 @@ function buildSnapshot(inputs, io) {
   const manifestExists = (p) => io.readFile(p) !== null;
   const registeredByPlugin = /* @__PURE__ */ new Map();
   const pluginRootProvenance = /* @__PURE__ */ new Map();
+  const supersededPlugins = /* @__PURE__ */ new Set();
   const capabilities = registry.capabilities.map((row) => {
     const anchor = /^plugin:([^/]+)\//.exec(row.path);
     const pluginName = anchor ? anchor[1] : null;
@@ -1917,6 +1950,15 @@ function buildSnapshot(inputs, io) {
       installedRoots,
       manifestExists
     });
+    if (pluginName && resolved.supersededRoot && !supersededPlugins.has(pluginName)) {
+      supersededPlugins.add(pluginName);
+      const installedRoot = resolved.resolvedPath ? relativize(workspaceRoot, resolved.resolvedPath) : "unknown";
+      diagnostics.push({
+        severity: "warning",
+        code: "capability/stale-plugin-root",
+        message: `plugin \`${pluginName}\`: the recorded root \`${relativize(workspaceRoot, resolved.supersededRoot)}\` is an older version folder of the installed pack; resolving from the installed pack instead (capability \`${row.name}\` \u2192 \`${installedRoot}\`). Re-run the owning pack's init to refresh its \`## Plugin Roots\` row.`
+      });
+    }
     let kind = null;
     let fragments = [];
     let articles = [];
