@@ -219,7 +219,10 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /authoritative runtime state correlates that token to an active agent/);
   assert.match(fleet, /mark it `awaiting-confirmation`, keep it occupying capacity/);
   assert.match(fleet, /never spawn the item again until absence or termination is conclusively proved/);
-  assert.match(fleet, /status \(queued\|dispatched\|in-flight\|awaiting-confirmation\|merged\|blocked\)/);
+  assert.match(fleet, /status \(queued\|dispatched\|in-flight\|awaiting-confirmation\|awaiting-review\|merged\|blocked\)/);
+  // WF-944: awaiting-review is a live, nonterminal activation wherever the live states are listed.
+  assert.match(fleet, /`awaiting-review` is nonterminal in exactly the same way/);
+  assert.match(fleet, /Wherever this skill lists the live activation states .* `awaiting-review` is one of them/);
   assert.match(fleet, /activationIntent \| routingAttempt \| agentId \| worktree \| branch \| PR/);
   assert.match(fleet, /atomically persist that token with status `dispatched`, then include the same token in the spawn prompt/);
   assert.match(fleet, /crash between spawn and response persistence/);
@@ -230,7 +233,7 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /Activation intent: \*\*`<ACTIVATION-INTENT>`\*\*/);
   assert.match(fleet, /nonterminal scoreboard state to `awaiting-confirmation`/);
   assert.match(fleet, /`In flight:` is the lossless active-activation projection/);
-  assert.match(fleet, /include every `dispatched`, `in-flight`, and `awaiting-confirmation` scoreboard row/);
+  assert.match(fleet, /include every `dispatched`, `in-flight`, `awaiting-confirmation`, and `awaiting-review` scoreboard row/);
   assert.match(fleet, /row without a persisted `agentId` is still listed by `activationIntent`/);
   assert.match(fleet, /re-arm supervision/);
   assert.match(fleet, /never mark it `blocked` or enter closeout while the child may still run/);

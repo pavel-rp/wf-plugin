@@ -1877,6 +1877,11 @@ export interface CoreConfig {
   /** The setup command's timeout in seconds (`Dependency Setup Timeout`),
    *  surfaced verbatim; `null` means the shipped default. Added WF-831. */
   dependencySetupTimeout: string | null;
+  /** How long `/wf:fleet` waits for a requested review, in whole minutes
+   *  (`Review Wait Minutes`), surfaced verbatim; `fleet` interprets
+   *  `<none>`/absent/unparseable as its shipped default (30) and owns the
+   *  numeric parse, `0` meaning no wait is possible. Added WF-944. */
+  reviewWaitMinutes: string | null;
 }
 
 /** Active tracker's id shape (consumer inventory §7 field #10). Product-noun

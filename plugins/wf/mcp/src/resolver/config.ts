@@ -175,5 +175,6 @@ export function parseCoreConfig(markdown: string): CoreConfig {
     versionDeclaration: normalizeValue(kv.get("version declaration")),
     dependencySetupCommand: normalizeValue(kv.get("dependency setup command")),
     dependencySetupTimeout: normalizeValue(kv.get("dependency setup timeout")),
+    reviewWaitMinutes: normalizeValue(kv.get("review wait minutes")),
   };
 }
