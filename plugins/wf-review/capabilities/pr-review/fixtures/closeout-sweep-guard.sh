@@ -9,10 +9,10 @@
 # obligations; this file evaluates the shipped prose against them.
 #
 # WHAT THE THREE FIXTURE CASES REQUIRE, and why each is here rather than left to review.
-# (Nine evaluators run: the three fixture-declared cases below, plus the fixture-corpus check
-# and five more — the unfiled-survivor obligation, artifact-path resolution, untrusted-input
-# controls, verification at the merged ref (WF-838), and
-# stated-count agreement — each added after a real defect slipped past the ones before it.)
+# (Ten evaluators run: the three fixture-declared cases below, plus the fixture-corpus check
+# and six more — the unfiled-survivor obligation, artifact-path resolution, untrusted-input
+# controls, verification at the merged ref (WF-838), the scratch-safety failure branch (WF-932),
+# and stated-count agreement — each added after a real defect slipped past the ones before it.)
 #
 #   1. REACHABILITY (seeded-thread.md). The recorded-reference fallback must be keyed
 #      on an outcome the bound read actually returns. `review-threads-read` types a
@@ -640,6 +640,43 @@ merged_ref_violations() {
     allowed_region "$c" | grep -qF 'wf-sweep-merged-ref' \
       || printf 'a caller does not name the fixed merged-ref export path or its removal in its Allowed region: %s\n' "${c##*/}"
   done
+}
+
+# --- Evaluator 6c: a failed scratch safety check has a failure branch (WF-932) --
+#
+# scratch_safety_violations <fragment>
+#
+# ADDED AFTER A POST-MERGE FINDING. The procedure verified `_local/scratch/` at the Step 0 clear,
+# the Step 2 digest file and the Step 4 export, and stated no outcome for any of them when the check
+# failed — so a literal reading carried on, and the export's `mkdir -p <dest>` followed a symlinked
+# parent out of the scratch area. What must hold:
+#   - ONE named check, with a stated failure branch, that fails closed when it cannot run;
+#   - nothing is removed, created, written or exported through a directory that failed it;
+#   - Steps 0/2 stop the pull request with a named `absent` reason, and Step 4 skips the export
+#     and marks candidates `unverifiable` — both existing, never-clean outcomes;
+#   - the pre-fix wording (a check with no outcome) is gone.
+scratch_safety_violations() {
+  local f="$1" flat
+  flat="$(flatten "$f")"
+
+  printf '%s' "$flat" | grep -qF 'scratch safety check' \
+    || printf 'no named scratch safety check, so each scratch use restates a check with no outcome\n'
+  [ "$(printf '%s' "$flat" | grep -oF 'scratch safety check' | grep -c .)" -ge 3 ] \
+    || printf 'the scratch safety check is not referenced at every scratch use (Step 0 clear, Step 2 digest, Step 4 export)\n'
+  printf '%s' "$flat" | grep -qEi 'check itself cannot run|when the check cannot run' \
+    || printf 'the scratch safety check does not fail closed when it cannot run\n'
+  printf '%s' "$flat" | grep -qEi 'through a scratch directory that failed' \
+    || printf 'nothing bars a removal, write or export through a scratch directory that failed the check\n'
+  printf '%s' "$flat" | grep -qF 'naming `scratch directory failed its safety check`' \
+    || printf 'a failed check at Step 0/2 records no named absent reason, so the pull request can continue unchecked\n'
+  printf '%s' "$flat" | grep -qF 'merged ref could not be resolved (scratch directory failed its safety check)' \
+    || printf 'a failed check at Step 4 does not skip the export and dispose candidates unverifiable with a stated reason\n'
+  printf '%s' "$flat" | grep -qEi 'do not invoke `merged-ref-read`|\*\*do not invoke `merged-ref-read`\*\*' \
+    || printf 'a failed check at Step 4 does not bar the merged-ref-read export\n'
+
+  # The defective literal: the check stated with no outcome.
+  printf '%s' "$flat" | grep -qF '(the Step 2 rule; create nothing here if it is absent' \
+    && printf 'the pre-fix Step 0 check (no failure outcome) is still present\n'
 }
 
 # --- Evaluator 7: stated counts match what they enumerate ---------------------
@@ -1367,6 +1404,33 @@ CMRF
   expect_rejected "merged-ref/caller-silent-widening" \
     "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-forbidden.md" "" "$tmp/caller-mr-ok.md")"
 
+  # -- Scratch safety (WF-932): the pre-fix Step 0 wording — a check with no failure outcome.
+  cat > "$tmp/frag-scratch-prefix.md" <<'SCPRE'
+run. Verify first that `_local/scratch/` is a real directory owned by the current user and not a
+symlink (the Step 2 rule; create nothing here if it is absent — there is then nothing to clear),
+and remove that one fixed literal path with one `Bash` removal.
+SCPRE
+  expect_rejected "scratch-safety/prefix-no-failure-branch" \
+    "$(scratch_safety_violations "$tmp/frag-scratch-prefix.md")"
+
+  # -- Scratch safety: a repaired procedure.
+  cat > "$tmp/frag-scratch-ok.md" <<'SCOK'
+Run the **scratch safety check** first. **The scratch safety check** fails when the path is a
+symlink, not a directory, or not owned by the current user — and when the check itself cannot run.
+No removal, no creation, no write and no export runs through a scratch directory that failed the
+check. At Step 0 or Step 2: record `absent: review read could not be performed`, naming
+`scratch directory failed its safety check`, and stop. Step 2: run the Step 0 scratch safety check.
+Step 4: the scratch safety check fails → **do not invoke `merged-ref-read`**; every candidate is
+`unverifiable` with `merged ref could not be resolved (scratch directory failed its safety check)`.
+SCOK
+  expect_accepted "scratch-safety/repaired" \
+    "$(scratch_safety_violations "$tmp/frag-scratch-ok.md")"
+
+  # -- Scratch safety: the Step 4 export bar removed alone must still be caught — it is the escape.
+  grep -v 'do not invoke' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-export.md"
+  expect_rejected "scratch-safety/export-still-runs" \
+    "$(scratch_safety_violations "$tmp/frag-scratch-export.md")"
+
   if [ "$st_fail" -ne 0 ]; then
     printf 'FAIL: closeout sweep guard self-test (%s case(s))\n' "$st_fail"
     exit 1
@@ -1421,6 +1485,8 @@ run_evaluator "untrusted review text is bounded at the anchor, the reasoning sin
   "$(security_violations "$FRAGMENT" "$FLEET" "$FLEET_IFACE" "$SKILL" "$DISTILLER")" || fail=1
 run_evaluator "verification reads the merged ref, never the caller's checkout, at every site" \
   "$(merged_ref_violations "$FRAGMENT" "$FLEET" "$FLEET_IFACE" "$SKILL")" || fail=1
+run_evaluator "a failed scratch safety check skips all scratch and export work, never clean" \
+  "$(scratch_safety_violations "$FRAGMENT")" || fail=1
 run_evaluator "every stated count matches the enumeration that defines it" \
   "$(count_claim_violations "$FRAGMENT" "$SKILL" "$FLEET" "$FLEET_IFACE" "$RATIONALE" "$FIX_DIR"/*.md)" || fail=1
 

@@ -259,6 +259,31 @@ they are judged against. `unverifiable` is exactly that disposition, it already 
 and it keeps each candidate's claim visible in the report. Falling back to the local checkout is
 barred outright: it would reintroduce the variance this section exists to remove, silently.
 
+## Why a failed scratch safety check stops scratch work, and why it reuses existing reasons
+
+WF-932 (a post-merge finding on the WF-883 change): the procedure verified `_local/scratch/` at
+three points — the Step 0 clear, the Step 2 digest file, and the Step 4 export — but stated no
+outcome for any of them when the check failed. Read literally, the run carried on. That matters
+because every one of those operations acts **through** the directory: if `_local/scratch` is a
+symlink, the provider's own `mkdir -p <dest>` follows it and exports the merged tree elsewhere, and
+the "remove regardless of outcome" clauses would then delete through the same link. A check with no
+failure branch is decoration — it names a risk and then does the risky thing anyway.
+
+So the fragment now names **one** check, run at all three points, and gives it one rule on
+failure: nothing is removed, created, written or exported through that path. A check that cannot
+run fails closed, for the same reason an unperformed read is never "no findings". The removal
+clauses carve out this one case explicitly, because "regardless of outcome" otherwise reads as
+covering it.
+
+The outcome reuses vocabulary that already exists instead of adding a fifth `absent` reason. At
+Step 0 or Step 2 no review has been read yet, so the pull request takes the per-pull-request
+`absent: review read could not be performed` stop, naming the check — the same treatment an
+unparseable distiller return gets, and it already forces the partial token under Step 6's
+exception. At Step 4 the review *was* read and candidates exist, so the failure is in the source
+they would be judged against: the existing `unverifiable` / `merged ref could not be resolved`
+branch, with the check named as the reason. A new reason would have had to reach every caller's
+render and every count this suite derives, with no difference in what the reader has to do.
+
 ## Why the filing cap is per pull request and not sweep-wide
 
 A sweep-wide bound was considered and dropped. The procedure executes once per pull request, so
