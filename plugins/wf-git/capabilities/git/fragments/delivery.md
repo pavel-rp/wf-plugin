@@ -409,6 +409,15 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   the exported tree can collide with it, and it is removed before the op
   returns, success or failure. Whatever an interruption leaves is inside
   `<dest>`, so the caller's one removal covers every byte the op wrote.
+- **`<dest>` is created alone, never its parents.** `mkdir -p` would have made
+  every missing parent component of `<dest>` — directories outside `<dest>` that
+  the caller's removal of `<dest>` never reaches (WF-933). A single-directory
+  `mkdir` creates exactly `<dest>`: a missing parent fails it, and so does a
+  `<dest>` that appeared after the existence check, and both are `read-failed`
+  with nothing removed, because a directory this op did not create is not this
+  op's to delete. The partial-export cleanup runs only once `<dest>` is the
+  op's own. Creating the parent is the caller's job, as it already is for the
+  post-merge sweep's scratch directory.
 - **`not-merged` is distinct from `read-failed`.** A pull request that is open,
   closed without merging, or carries no merge commit is a stated fact about the
   pull request; every other failure (host error, no such pull request, a commit
@@ -498,12 +507,14 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   the local branch lags or leads it.
 - **Merged ref** — `merged-ref-read`: step 1 on an unmerged pull request or a null
   merge commit → `<reason>` = `not-merged`; step 1 host errors, step 2 an unfetchable
-  commit, step 3 an unresolvable tree, or step 4 an existing `<dest>` or a failed
-  archive/extract → `<reason>` = `read-failed` (a partial export removed); otherwise
+  commit, step 3 an unresolvable tree, step 4 an existing `<dest>` or a missing
+  parent of `<dest>` (both before the op creates anything — nothing created,
+  nothing removed), or step 4 a failed archive/extract after the op created
+  `<dest>` (that partial export removed) → `<reason>` = `read-failed`; otherwise
   `<read-performed>` = true with `<merge-commit>`, `<tree>` and, when `<dest>` was
   supplied, `<root>` — even when the local checkout predates the merge. On every
-  path nothing is written outside `<dest>`: the staging archive is inside it and
-  gone before the op returns.
+  path nothing is written outside `<dest>`: no missing parent is created, and the
+  staging archive is inside it and gone before the op returns.
 - **Review requests** — `review-request-read`: step 1 or step 2 non-zero (host
   error, no such pull request) → `<reason>` = `read-failed`; otherwise
   `<read-performed>` = true with `<pending>`, `<request-events>`, `<reviews>` and
