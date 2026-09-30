@@ -592,13 +592,15 @@ sha256_of() {
   else shasum -a 256 "$1" | awk '{print $1}'; fi
 }
 
+# Extractor only: prints every **Plan digest:** value in $1, trimmed, one per line — no validation.
+digest_header_values() {
+  sed -nE 's/^\*\*Plan digest:\*\*(.*)$/\1/p' "$1" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
+}
+
 # A progress record binds its plan through EXACTLY ONE well-formed **Plan digest:** header (WF-878).
 # Prints the digest and returns 0; otherwise prints the rejection reason and returns 1 — never the
 # first valid value of several, never a silent skip of a malformed line:
 #   missing | malformed | duplicate-identical | duplicate-conflicting
-digest_header_values() {
-  sed -nE 's/^\*\*Plan digest:\*\*(.*)$/\1/p' "$1" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
-}
 progress_digest() {
   local n vals
   [ -f "$1" ] || { echo missing; return 1; }
