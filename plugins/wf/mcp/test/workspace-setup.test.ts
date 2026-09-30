@@ -733,6 +733,66 @@ test("pid write-back: a lock whose token moved is left byte-identical", () => {
   }
 });
 
+// WF-996 — a lock that replaces the validated one is never overwritten. The
+// injected fs swaps a different-token lock onto the path at a chosen call, and
+// refuses any rename, so the race lands at exactly that boundary every run.
+function racingFs(root: string, at: "openSync" | "writeSync", otherText: string): typeof nodeFs {
+  let swapped = false;
+  const swap = (): void => {
+    if (swapped) return;
+    swapped = true;
+    nodeFs.renameSync(lockPath(root), `${lockPath(root)}.aside`);
+    writeFileSync(lockPath(root), otherText);
+  };
+  return {
+    ...nodeFs,
+    [at]: (...args: unknown[]) => {
+      swap();
+      return (nodeFs[at] as (...a: unknown[]) => unknown)(...args);
+    },
+    renameSync: () => {
+      throw new Error("the write-back must never rename over the lock path");
+    },
+  } as typeof nodeFs;
+}
+
+function otherHolder(): string {
+  return renderSetupLock({ pid: 5151, host: hostname(), token: "c".repeat(32), acquiredAt: "2026-06-01T00:00:01.000Z", timeoutMs: 1_000 });
+}
+
+test("pid write-back: a lock that replaces the validated one before the write is left byte-identical", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token } = heldLock(ws.root);
+    const other = otherHolder();
+    const fs = racingFs(ws.root, "writeSync", other);
+    const outcome = writeBackSetupRunnerPids(fs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777, groupPid: 778 });
+    assert.equal(outcome, "token-mismatch");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), other, "the new holder's lock is untouched");
+    const displaced = parseSetupLock(readFileSync(`${lockPath(ws.root)}.aside`, "utf8"));
+    assert.equal(displaced?.token, token, "the pids went to the validated file only");
+    assert.equal(displaced?.runnerPid, 777);
+    assert.deepEqual(readdirSync(`${ws.root}/_local/resolver`).sort(), ["setup.lock", "setup.lock.aside"]);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("pid write-back: a lock that replaces the walked one before the open is left byte-identical", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token, text } = heldLock(ws.root);
+    const other = otherHolder();
+    const fs = racingFs(ws.root, "openSync", other);
+    const outcome = writeBackSetupRunnerPids(fs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777 });
+    assert.equal(outcome, "unsafe");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), other);
+    assert.equal(readFileSync(`${lockPath(ws.root)}.aside`, "utf8"), text);
+  } finally {
+    ws.cleanup();
+  }
+});
+
 test("pid write-back: a path that is not plain and relative is refused", () => {
   const ws = workspace(config({}));
   try {
