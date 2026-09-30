@@ -23857,7 +23857,7 @@ import {
   mkdirSync as mkdirSync3,
   openSync as openSync3,
   readFileSync as readFileSync3,
-  readdirSync as readdirSync2,
+  readdirSync as readdirSync3,
   realpathSync as realpathSync4,
   renameSync as renameSync3,
   rmSync as rmSync3,
@@ -23880,6 +23880,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   realpathSync as realpathSync2,
   renameSync,
   rmSync,
@@ -24055,6 +24056,39 @@ function renameContainedStateFile(root, rel, toRel) {
     return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
   }
 }
+function listContainedStateEntries(root, relDir, prefix) {
+  if (!lexicallyPlain(relDir)) {
+    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
+  }
+  let cursor;
+  try {
+    cursor = realpathSync2(root);
+  } catch (err) {
+    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = relDir.split("/");
+  for (let i = 0; i < segments.length; i += 1) {
+    cursor = join(cursor, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync(cursor);
+    } catch (err) {
+      if (err.code === "ENOENT") return { ok: true, names: [] };
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink()) {
+      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
+    }
+    if (!stat.isDirectory()) return unsafe(shown, `\`${shown}\` is not a real directory.`);
+  }
+  try {
+    return { ok: true, names: readdirSync(cursor).filter((name) => name.startsWith(prefix)).sort() };
+  } catch (err) {
+    if (err.code === "ENOENT") return { ok: true, names: [] };
+    return { ok: false, kind: "failed", path: relDir, detail: `\`${relDir}\` could not be listed: ${messageOf(err)}` };
+  }
+}
 function linkContainedStateFileExclusive(root, fromRel, toRel) {
   const from = inspectContainedStatePath(root, fromRel);
   const to = inspectContainedStatePath(root, toRel);
@@ -24077,7 +24111,7 @@ import {
   openSync as openSync2,
   readFileSync as readFileSync2,
   readSync,
-  readdirSync,
+  readdirSync as readdirSync2,
   realpathSync as realpathSync3,
   statSync as statSync2
 } from "node:fs";
@@ -25716,7 +25750,7 @@ function fingerprintContainedCapabilityFile(root, selectedPath, maxBytes) {
 }
 function listFilesOrEmpty(absDir) {
   try {
-    return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+    return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
   } catch {
     return [];
   }
@@ -26101,6 +26135,36 @@ function reclaimIfAbandoned(root, deps) {
   removeContainedStateFile(root, aside);
   return "retry";
 }
+var SETUP_LOCK_DIR = SETUP_LOCK_RELPATH.slice(0, SETUP_LOCK_RELPATH.lastIndexOf("/"));
+var SETUP_LOCK_ASIDE_PREFIX = `${SETUP_LOCK_RELPATH.slice(SETUP_LOCK_RELPATH.lastIndexOf("/") + 1)}.stale-`;
+function judgeAsideLocks(root, deps, ownToken) {
+  const listed = listContainedStateEntries(root, SETUP_LOCK_DIR, SETUP_LOCK_ASIDE_PREFIX);
+  if (!listed.ok) return listed.kind === "unsafe" ? "unsafe" : { held: SETUP_LOCK_DIR };
+  let held = null;
+  for (const name of listed.names) {
+    const rel = `${SETUP_LOCK_DIR}/${name}`;
+    const read = readLock(root, rel);
+    if (read.status === "missing") continue;
+    if (read.status === "unsafe") return "unsafe";
+    const holder = read.record;
+    if (holder !== null && holder.token === ownToken) continue;
+    if (holder === null || holder.host !== deps.host || setupLockLive(holder, deps)) {
+      held ??= rel;
+      continue;
+    }
+    if (holder.groupPid !== void 0) deps.killGroup?.(holder.groupPid);
+    const removed = removeContainedStateFile(root, rel);
+    if (!removed.ok) {
+      if (removed.kind === "unsafe") return "unsafe";
+      held ??= rel;
+    }
+  }
+  return held === null ? "clear" : { held };
+}
+function dropOwnLock(root, token2) {
+  const current = readLock(root, SETUP_LOCK_RELPATH);
+  if (current.status === "ok" && current.record?.token === token2) removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+}
 function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs = MAX_SETUP_TIMEOUT_SECONDS * 1e3) {
   const token2 = randomBytes3(16).toString("hex");
   const content = renderSetupLock({
@@ -26114,9 +26178,29 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
   for (; ; ) {
     const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, content);
     if (created.ok) {
-      issuedSetupLockTokens.add(token2);
-      heldSetupLockTokens.add(token2);
-      return { ok: true, token: token2 };
+      const asides = judgeAsideLocks(root, deps, token2);
+      if (asides === "clear") {
+        issuedSetupLockTokens.add(token2);
+        heldSetupLockTokens.add(token2);
+        return { ok: true, token: token2 };
+      }
+      dropOwnLock(root, token2);
+      if (asides === "unsafe") {
+        return {
+          ok: false,
+          kind: "unsafe",
+          detail: `a displaced setup-lock record beside \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
+        };
+      }
+      if (deps.now() >= deadline) {
+        return {
+          ok: false,
+          kind: "busy",
+          detail: `a setup run displaced to \`${asides.held}\` still holds the setup lock after ${Math.round(waitMs / 1e3)} seconds; the command was not run.`
+        };
+      }
+      deps.sleepMs(SETUP_LOCK_POLL_MS);
+      continue;
     }
     if (created.kind !== "exists") return { ok: false, kind: created.kind, detail: created.detail };
     const reclaim = reclaimIfAbandoned(root, deps);
@@ -26158,6 +26242,20 @@ function releaseSetupLock(root, token2) {
     const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
     if (!removed.ok) {
       return { ok: false, detail: `the setup lock was not released: ${removed.detail}` };
+    }
+    return { ok: true };
+  }
+  const listed = listContainedStateEntries(root, SETUP_LOCK_DIR, SETUP_LOCK_ASIDE_PREFIX);
+  if (!listed.ok) {
+    return { ok: false, detail: `the setup lock was not released: ${listed.detail}` };
+  }
+  for (const name of listed.names) {
+    const rel = `${SETUP_LOCK_DIR}/${name}`;
+    const aside = readLock(root, rel);
+    if (aside.status !== "ok" || aside.record?.token !== token2) continue;
+    const removed = removeContainedStateFile(root, rel);
+    if (!removed.ok) {
+      return { ok: false, detail: `the displaced setup lock was not released: ${removed.detail}` };
     }
   }
   return { ok: true };
@@ -27136,14 +27234,14 @@ function createDefaultPorts(workspaceRoot) {
     },
     listDirs: (absDir) => {
       try {
-        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+        return readdirSync3(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
       } catch {
         return [];
       }
     },
     listFiles: (absDir) => {
       try {
-        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+        return readdirSync3(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
       } catch {
         return [];
       }
@@ -27398,7 +27496,7 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     },
     backupsPresent: () => {
       try {
-        return readdirSync2(backupRoot).length > 0;
+        return readdirSync3(backupRoot).length > 0;
       } catch {
         return false;
       }
@@ -31433,7 +31531,7 @@ import {
   lstatSync as lstatSync4,
   mkdirSync as mkdirSync4,
   readFileSync as readFileSync4,
-  readdirSync as readdirSync3,
+  readdirSync as readdirSync4,
   renameSync as renameSync4,
   rmSync as rmSync4,
   writeFileSync as writeFileSync4
@@ -31478,7 +31576,7 @@ function ancestorsSafe(root, rel) {
 function listClass(sourceRoot, dirRel, suffixes) {
   let names;
   try {
-    names = readdirSync3(join5(sourceRoot, dirRel));
+    names = readdirSync4(join5(sourceRoot, dirRel));
   } catch {
     return [];
   }
