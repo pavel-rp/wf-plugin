@@ -26034,6 +26034,7 @@ function parseSetupRunnerReport(stdout, durationMs) {
   }
 }
 var SETUP_LOCK_RELPATH = "_local/resolver/setup.lock";
+var SETUP_LOCK_ASIDE_SUFFIX = ".stale-";
 var SETUP_LOCK_WAIT_GRACE_SECONDS = 30;
 var SETUP_LOCK_POLL_MS = 100;
 var SETUP_LOCK_MAX_BYTES = 4096;
@@ -26120,7 +26121,7 @@ function reclaimIfAbandoned(root, deps) {
   const holder = current.record;
   if (holder === null || holder.host !== deps.host || setupLockLive(holder, deps)) return "held";
   if (holder.groupPid !== void 0) deps.killGroup?.(holder.groupPid);
-  const aside = `${SETUP_LOCK_RELPATH}.stale-${randomBytes3(6).toString("hex")}`;
+  const aside = `${SETUP_LOCK_RELPATH}${SETUP_LOCK_ASIDE_SUFFIX}${randomBytes3(6).toString("hex")}`;
   const moved = renameContainedStateFile(root, SETUP_LOCK_RELPATH, aside);
   if (!moved.ok) return moved.kind === "unsafe" ? "unsafe" : "held";
   if (!moved.moved) return "retry";
@@ -26136,10 +26137,10 @@ function reclaimIfAbandoned(root, deps) {
   return "retry";
 }
 var SETUP_LOCK_DIR = SETUP_LOCK_RELPATH.slice(0, SETUP_LOCK_RELPATH.lastIndexOf("/"));
-var SETUP_LOCK_ASIDE_PREFIX = `${SETUP_LOCK_RELPATH.slice(SETUP_LOCK_RELPATH.lastIndexOf("/") + 1)}.stale-`;
+var SETUP_LOCK_ASIDE_PREFIX = `${SETUP_LOCK_RELPATH.slice(SETUP_LOCK_DIR.length + 1)}${SETUP_LOCK_ASIDE_SUFFIX}`;
 function judgeAsideLocks(root, deps, ownToken) {
   const listed = listContainedStateEntries(root, SETUP_LOCK_DIR, SETUP_LOCK_ASIDE_PREFIX);
-  if (!listed.ok) return listed.kind === "unsafe" ? "unsafe" : { held: SETUP_LOCK_DIR };
+  if (!listed.ok) return listed.kind === "unsafe" ? "unsafe" : { failed: listed.detail };
   let held = null;
   for (const name of listed.names) {
     const rel = `${SETUP_LOCK_DIR}/${name}`;
@@ -26154,16 +26155,16 @@ function judgeAsideLocks(root, deps, ownToken) {
     }
     if (holder.groupPid !== void 0) deps.killGroup?.(holder.groupPid);
     const removed = removeContainedStateFile(root, rel);
-    if (!removed.ok) {
-      if (removed.kind === "unsafe") return "unsafe";
-      held ??= rel;
-    }
+    if (!removed.ok) return removed.kind === "unsafe" ? "unsafe" : { failed: removed.detail };
   }
   return held === null ? "clear" : { held };
 }
 function dropOwnLock(root, token2) {
+  issuedSetupLockTokens.add(token2);
   const current = readLock(root, SETUP_LOCK_RELPATH);
-  if (current.status === "ok" && current.record?.token === token2) removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+  if (current.status !== "ok" || current.record?.token !== token2) return { ok: true };
+  const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+  return removed.ok ? { ok: true } : { ok: false, detail: removed.detail };
 }
 function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs = MAX_SETUP_TIMEOUT_SECONDS * 1e3) {
   const token2 = randomBytes3(16).toString("hex");
@@ -26184,12 +26185,26 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
         heldSetupLockTokens.add(token2);
         return { ok: true, token: token2 };
       }
-      dropOwnLock(root, token2);
+      const dropped = dropOwnLock(root, token2);
+      if (!dropped.ok) {
+        return {
+          ok: false,
+          kind: "failed",
+          detail: `the setup lock taken while a displaced record was present could not be given back: ${dropped.detail}; the command was not run.`
+        };
+      }
       if (asides === "unsafe") {
         return {
           ok: false,
           kind: "unsafe",
           detail: `a displaced setup-lock record beside \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
+        };
+      }
+      if ("failed" in asides) {
+        return {
+          ok: false,
+          kind: "failed",
+          detail: `the displaced setup-lock records beside \`${SETUP_LOCK_RELPATH}\` could not be checked: ${asides.failed}; the command was not run.`
         };
       }
       if (deps.now() >= deadline) {
