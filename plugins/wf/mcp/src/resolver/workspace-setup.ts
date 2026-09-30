@@ -169,8 +169,11 @@ export type SetupRunnerRequest = {
 /** The lock the runner writes its pids back into (WF-925). */
 export type SetupRunnerLock = { root: string; rel: string; token: string };
 
-/** What the runner's pid write-back did: `written`, or why the lock was left
- *  exactly as it was. */
+/** What the runner's pid write-back did: `written`, or why it did not. Every
+ *  non-`written` outcome leaves the lock now at the path untouched; after a
+ *  late `unsafe` the pids may already sit in the validated file that was
+ *  displaced from the path, and after `failed` that file's original record
+ *  has been put back. */
 export type SetupLockWriteBack = "written" | "unsafe" | "token-mismatch" | "failed";
 
 /**
@@ -183,9 +186,12 @@ export type SetupLockWriteBack = "written" | "unsafe" | "token-mismatch" | "fail
  * that same descriptor (WF-996). Nothing is renamed over, or written by, path,
  * so a lock swapped, relinked or re-taken at the path after the check is a
  * different file and is never replaced. A concurrent reader can see a record
- * mid-rewrite; every lock reader treats an unparseable record as an
- * unjudgeable holder and waits, never reclaims. Anything short of a match
- * leaves the lock untouched.
+ * mid-rewrite and treats it as an unjudgeable holder (it waits, never
+ * reclaims); because nothing reclaims or releases an unparseable lock, a
+ * rewrite that fails partway puts the validated record back through the same
+ * descriptor before reporting `failed`. A non-`written` outcome never touches
+ * the lock now at the path; a late identity mismatch is `unsafe`, like the
+ * one found before the write.
  *
  * SELF-CONTAINED ON PURPOSE: the runner is a separate `node -e` program that
  * cannot import this module, so it embeds this function's own source text.
@@ -266,19 +272,37 @@ export function writeBackSetupRunnerPids(
     record.runnerPid = pids.runnerPid;
     if (pids.groupPid !== undefined) record.groupPid = pids.groupPid;
     const bytes = Buffer.from(`${JSON.stringify(record)}\n`, "utf8");
-    let written = 0;
-    while (written < bytes.length) {
-      written += fs.writeSync(fd, bytes, written, bytes.length - written, written);
+    const original = buffer.subarray(0, offset);
+    const put = (data: Buffer): void => {
+      let done = 0;
+      while (done < data.length) {
+        done += fs.writeSync(fd as number, data, done, data.length - done, done);
+      }
+      fs.ftruncateSync(fd as number, data.length);
+    };
+    try {
+      put(bytes);
+    } catch {
+      // A rewrite that stopped partway would leave a record no reader can
+      // judge and nothing ever reclaims: put the validated bytes back
+      // through the same descriptor before reporting the failure.
+      try {
+        put(original);
+        fs.fsyncSync(fd);
+      } catch {
+        // Nothing more can be done through this descriptor.
+      }
+      return "failed";
     }
-    fs.ftruncateSync(fd, bytes.length);
     fs.fsyncSync(fd);
     // The pids landed on the validated lock file. It is still this run's
-    // lock only while the contained path names that same file.
+    // lock only while the contained path names that same file; if it no
+    // longer does, the lock now at the path was never touched.
     const after = walk();
     if (after === null) return "unsafe";
     return after.dir === first.dir && after.dirId === first.dirId && after.fileId === first.fileId
       ? "written"
-      : "token-mismatch";
+      : "unsafe";
   } catch {
     return "failed";
   } finally {

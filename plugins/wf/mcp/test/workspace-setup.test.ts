@@ -767,7 +767,7 @@ test("pid write-back: a lock that replaces the validated one before the write is
     const other = otherHolder();
     const fs = racingFs(ws.root, "writeSync", other);
     const outcome = writeBackSetupRunnerPids(fs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777, groupPid: 778 });
-    assert.equal(outcome, "token-mismatch");
+    assert.equal(outcome, "unsafe", "a late identity mismatch is reported like the one before the open");
     assert.equal(readFileSync(lockPath(ws.root), "utf8"), other, "the new holder's lock is untouched");
     const displaced = parseSetupLock(readFileSync(`${lockPath(ws.root)}.aside`, "utf8"));
     assert.equal(displaced?.token, token, "the pids went to the validated file only");
@@ -788,6 +788,34 @@ test("pid write-back: a lock that replaces the walked one before the open is lef
     assert.equal(outcome, "unsafe");
     assert.equal(readFileSync(lockPath(ws.root), "utf8"), other);
     assert.equal(readFileSync(`${lockPath(ws.root)}.aside`, "utf8"), text);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("pid write-back: a rewrite that fails partway puts the original record back", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token, text } = heldLock(ws.root);
+    let failed = false;
+    const fs = {
+      ...nodeFs,
+      writeSync: (...args: unknown[]) => {
+        const [fd, data, offset, length, position] = args as [number, Buffer, number, number, number];
+        if (!failed && length > 8) {
+          failed = true;
+          // Tear the record: land part of the new bytes, then fail.
+          nodeFs.writeSync(fd, data, offset, 8, position);
+          throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+        }
+        return nodeFs.writeSync(fd, data, offset, length, position);
+      },
+    } as typeof nodeFs;
+    const outcome = writeBackSetupRunnerPids(fs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777, groupPid: 778 });
+    assert.equal(outcome, "failed");
+    assert.ok(failed, "the injected failure fired");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), text, "the lock is byte-identical to its original record");
+    assert.equal(parseSetupLock(readFileSync(lockPath(ws.root), "utf8"))?.token, token);
   } finally {
     ws.cleanup();
   }

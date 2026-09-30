@@ -25886,15 +25886,28 @@ function writeBackSetupRunnerPids(fs, path, lock, pids) {
     if (pids.groupPid !== void 0) record2.groupPid = pids.groupPid;
     const bytes = Buffer.from(`${JSON.stringify(record2)}
 `, "utf8");
-    let written = 0;
-    while (written < bytes.length) {
-      written += fs.writeSync(fd, bytes, written, bytes.length - written, written);
+    const original = buffer.subarray(0, offset);
+    const put = (data) => {
+      let done = 0;
+      while (done < data.length) {
+        done += fs.writeSync(fd, data, done, data.length - done, done);
+      }
+      fs.ftruncateSync(fd, data.length);
+    };
+    try {
+      put(bytes);
+    } catch {
+      try {
+        put(original);
+        fs.fsyncSync(fd);
+      } catch {
+      }
+      return "failed";
     }
-    fs.ftruncateSync(fd, bytes.length);
     fs.fsyncSync(fd);
     const after = walk();
     if (after === null) return "unsafe";
-    return after.dir === first.dir && after.dirId === first.dirId && after.fileId === first.fileId ? "written" : "token-mismatch";
+    return after.dir === first.dir && after.dirId === first.dirId && after.fileId === first.fileId ? "written" : "unsafe";
   } catch {
     return "failed";
   } finally {
