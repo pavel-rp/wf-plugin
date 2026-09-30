@@ -98,17 +98,22 @@ fi
 # Seeded self-test: the ordering check accepts the right order and rejects the reversed order and
 # a missing Step 0, so a check that always passed could not hide behind the real fragment.
 seed="$(mktemp)" || { bad "cannot create a seed file"; exit 1; }
+# Removed on exit even if a seeded check stops the run; the later trap replaces this one only
+# after the inline removal below.
+trap 'rm -f "$seed"' EXIT
 s0_line="## Step 0 — Clear an earlier interrupted run's export (every pull request, unconditionally)"
 s1_line="## Step 1 — Reach the pull request (branch first, recorded reference second)"
-before=$fail
+# Tracked apart from `fail`, which an earlier check may already have set: the PASS line below
+# reflects the self-test's own cases only.
+st_fail=0
 printf '%s\nbody\n%s\nbody\n' "$s0_line" "$s1_line" > "$seed"
-step_order_ok "$seed" || bad "self-test: the ordering check rejected Step 0 before Step 1"
+step_order_ok "$seed" || { bad "self-test: the ordering check rejected Step 0 before Step 1"; st_fail=1; }
 printf '%s\nbody\n%s\nbody\n' "$s1_line" "$s0_line" > "$seed"
-step_order_ok "$seed" && bad "self-test: the ordering check accepted Step 1 before Step 0"
+step_order_ok "$seed" && { bad "self-test: the ordering check accepted Step 1 before Step 0"; st_fail=1; }
 printf '%s\nbody\n' "$s1_line" > "$seed"
-step_order_ok "$seed" && bad "self-test: the ordering check accepted a procedure with no Step 0"
+step_order_ok "$seed" && { bad "self-test: the ordering check accepted a procedure with no Step 0"; st_fail=1; }
 rm -f "$seed"
-[ "$fail" = "$before" ] \
+[ "$st_fail" -eq 0 ] \
   && pass "self-test: the ordering check accepts Step 0 first and rejects the reversed or missing order"
 
 # --- 1. A repository whose checkout is stale ------------------------------------------------
