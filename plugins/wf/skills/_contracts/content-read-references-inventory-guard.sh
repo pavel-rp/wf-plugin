@@ -19,14 +19,14 @@
 # a `plugins/*/skills/**/*.md` or `plugins/*/agents/*.md` file whose call text —
 # from the token to the first closing `)` or `}` outside a backtick span (backtick
 # list) or string (object literal), bounded — names a `ref:` ending in `.md`. The
-# ref is parsed as the WHOLE token, its stop set chosen by call form: in a
-# backtick list (`ref: …`) up to the closing backtick — the same set a §4.4 token
-# admits; a quoted value up to its closing quote (escaped quotes honoured); an
-# unquoted value up to `,`, `"`, a backtick or line end. Never a restricted-
-# character prefix of it, so
-# `sub/my template.md`, `sub/a (b).md` and `sub/a,b.md` are each one ref; a ref
-# holding a backtick or `|`, which no §4.4 cell can carry, is a violation. It is a
-# relative path and may nest under `references/` (`sub/t.md`), judged whole by the
+# ref's stop set is chosen by call form. Whole-token parsing is guaranteed for the
+# backtick-list form (`ref: …`, up to the closing backtick — the same set a §4.4
+# token admits) and for a quoted value (up to its closing quote, escaped quotes
+# honoured): there `sub/my template.md`, `sub/a (b).md` and `sub/a,b.md` are each
+# one ref. An UNQUOTED object-literal or prose ref ends at `,`, `"`, a backtick,
+# `)`, `}` or line end, so a file name holding one of those must be quoted in
+# those forms. A ref holding a backtick or `|`, which no §4.4 cell can carry, is a
+# violation. It is a relative path and may nest under `references/` (`sub/t.md`), judged whole by the
 # resolver's `isSafeRelPath` rules: backslashes normalise to `/`, and a ref the
 # resolver refuses (empty, `/`- or drive-rooted, or a `.`, `..` or empty segment)
 # is not a read — nor is any suffix of it. The
@@ -73,18 +73,19 @@ python3 - "$ROOT" "$@" <<'PY'
 import os, re, sys, shutil, tempfile
 
 TOKEN = "references-template"
-# `plugin:` and `skill:` are single segments. `ref:` is a relative path the
-# resolver admits whole — it may nest (`sub/t.md`) and hold any character a file
-# name can (`sub/my template.md`, `sub/a,b.md`) — so ref_value() takes the WHOLE
-# token, never a restricted-character prefix of it, with its stop set chosen by
-# the call form call_window() reads off the class token:
+# `plugin:` and `skill:` are single segments. `ref:` is a relative path that may
+# nest (`sub/t.md`). ref_value() chooses its stop set by the call form
+# call_window() reads off the class token, and takes the WHOLE token in the two
+# forms that delimit it:
 #   - backtick list (`ref: …`): up to its span's closing backtick or line end —
 #     exactly the set a §4.4 backtick token admits (bar `|`, reported below);
 #   - literal, quoted value ("…", '…' or `…`): up to its closing quote, `\` +
-#     that quote or `\` + `\` read as the escaped character;
-#   - literal or prose, unquoted value: up to `,`, `"`, a backtick or line end.
-# The call window ends at the first `)`/`}` outside a span or string, so a paren
-# or brace inside a quoted ref never truncates it. The token's safety is judged
+#     that quote or `\` + `\` read as the escaped character.
+# An UNQUOTED literal or prose value is not delimited, so it ends at `,`, `"`, a
+# backtick, `)`, `}` or line end: a file name holding one of those must be quoted
+# in those forms (the self-test pins this). The call window ends at the first
+# `)`/`}` outside a span or string, so a paren or brace inside a quoted ref never
+# truncates it. The token's safety is judged
 # afterwards by safe_ref(); a token holding a character no §4.4 cell can carry
 # (a backtick or `|`) is reported, never silently left unmatched.
 KEY = re.compile(r"\b(plugin|skill):\s*[\"'`]?\s*([A-Za-z0-9_.-]+)")
@@ -155,8 +156,9 @@ def call_window(text, start):
 
 
 def ref_value(win, form):
-    """The whole ref token of a call window, surrounding whitespace trimmed; its
-    stop set is chosen by the call form (see the REF comment above)."""
+    """The ref token of a call window, surrounding whitespace trimmed — whole in
+    the backtick-list and quoted forms; an unquoted value ends at its first stop
+    character (see the REF comment above)."""
     m = REF.search(win)
     if not m:
         return ""
@@ -603,6 +605,19 @@ def selftest():
             "code-span-literal-missing-row": (doc(base8 + [lam, mu], parity), 1, None,
                                               "TREE ⊄ DOC: wf/skills/omicron reads omicron/references/o t.md"),
         })
+
+        # The documented unquoted contract: an UNQUOTED object-literal ref is not
+        # delimited, so it ends at `,` or at the call's `)` — `sub/a,b.md` and
+        # `sub/a (b).md` written unquoted are not derived as reads (neither whole
+        # nor as a prefix), which is why the header requires quoting them there.
+        put("plugins/wf/skills/pi/SKILL.md",
+            "resolve_content({ workspaceRoot, class: \"references-template\", skill: \"pi\", ref: sub/a,b.md })\n"
+            "resolve_content({ workspaceRoot, class: \"references-template\", skill: \"pi\", ref: sub/a (b).md })\n")
+        tree, _ = scan(tmp)
+        if any(c == "wf/skills/pi" for c, _, _ in tree):
+            print(f"SELFTEST FAIL — unquoted literal refs derived {sorted(r for c, _, r in tree if c == 'wf/skills/pi')}; "
+                  "the documented contract says an unquoted ref ends at `,` / `)`", file=sys.stderr)
+            failed += 1
         if failed:
             print(f"content-read-references-inventory-guard: self-test FAILED ({failed} case(s))", file=sys.stderr)
             return 1
@@ -616,7 +631,8 @@ def selftest():
               "quoted refs holding parens or braces derived whole and their missing rows rejected, "
               "and text before the class token kept from shifting the window; comma-bearing backtick-list "
               "refs, an escaped-quote ref and an object literal inside a wrapped code span derived whole and "
-              "their missing rows rejected, and refs holding `|` or a backtick reported as inexpressible.")
+              "their missing rows rejected, refs holding `|` or a backtick reported as inexpressible, and "
+              "the documented unquoted-literal stop at `,` / `)` pinned.")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
