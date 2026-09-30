@@ -642,7 +642,12 @@ merged_ref_violations() {
     # WF-932: the scratch safety check fails closed when it cannot run, so a caller that does not
     # authorize its stat and its `umask 077` creation turns every sweep into an `absent` stop.
     allowed_region "$c" | grep -qF 'scratch safety check' \
-      || printf 'a caller does not authorize the scratch safety check (its stat and umask 077 creation), so the check cannot run and every pull request stops absent: %s\n' "${c##*/}"
+      || printf 'a caller does not name the scratch safety check in its Allowed region: %s\n' "${c##*/}"
+    # Naming the check is not authorizing it: each of its two operations must be granted.
+    allowed_region "$c" | grep -qF 'read-only stat' \
+      || printf 'a caller does not authorize the scratch safety check read-only stat, so the check cannot run and every pull request stops absent: %s\n' "${c##*/}"
+    allowed_region "$c" | grep -qF 'umask 077' \
+      || printf 'a caller does not authorize the scratch safety check umask 077 creation, so an absent scratch directory can never be created: %s\n' "${c##*/}"
   done
 }
 
@@ -672,8 +677,13 @@ scratch_safety_violations() {
   # A MISSING directory is the normal first-sweep state, not a hostile one. Folding it into
   # "not a directory" stops every pull request of a fresh workspace at Step 0 and makes the
   # Step 2/4 create-if-absent unreachable (a failure forbids creation).
-  printf '%s' "$flat" | grep -qEi '\*\*Absent\*\*.{0,120}\*\*Not a failure' \
+  printf '%s' "$flat" | grep -qEi '\*\*Absent\*\*.{0,200}\*\*Not a failure' \
     || printf 'an absent scratch directory has no non-failure outcome, so a fresh workspace fails the check at Step 0\n'
+  # A symlinked ANCESTOR (`_local` itself) makes `_local/scratch` look like a normal directory while
+  # every clear, write and export resolves outside the workspace. The check must walk every existing
+  # component from the workspace root down, not only the leaf.
+  printf '%s' "$flat" | grep -qEi 'every existing component from the workspace root|any existing component from the workspace root' \
+    || printf 'the scratch safety check tests only the final component, so a symlinked _local ancestor passes and scratch work escapes the workspace\n'
   printf '%s' "$flat" | grep -qEi 'through a scratch directory that failed' \
     || printf 'nothing bars a removal, write or export through a scratch directory that failed the check\n'
   printf '%s' "$flat" | grep -qF 'naming `scratch directory failed its safety check`' \
@@ -1390,7 +1400,7 @@ MROK
   cat > "$tmp/caller-mr-ok.md" <<'CMROK'
 **Allowed:** pr-detect review-threads-read pr-comments-read merged-ref-read, exporting to the fixed
 `_local/scratch/wf-sweep-merged-ref` and removing it regardless of outcome; the scratch safety check
-(one stat of the fixed `_local/scratch/`, one umask 077 creation).
+(one read-only stat of the fixed `_local/scratch/`, one umask 077 creation).
 **Forbidden:** anything else.
 CMROK
   expect_accepted "merged-ref/repaired" \
@@ -1414,6 +1424,17 @@ CMRF
   expect_rejected "merged-ref/caller-silent-widening" \
     "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-forbidden.md" "" "$tmp/caller-mr-ok.md")"
 
+  # -- Scratch safety callers (WF-932): each authorization removed alone, so each rule is isolated.
+  sed 's/; the scratch safety check//' "$tmp/caller-mr-ok.md" > "$tmp/caller-mr-noname.md"
+  expect_rejected "merged-ref/caller-no-scratch-check-name" \
+    "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-noname.md" "" "$tmp/caller-mr-ok.md")"
+  sed 's/one read-only stat of the fixed `_local\/scratch\/`, //' "$tmp/caller-mr-ok.md" > "$tmp/caller-mr-nostat.md"
+  expect_rejected "merged-ref/caller-no-scratch-stat" \
+    "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-nostat.md" "" "$tmp/caller-mr-ok.md")"
+  sed 's/, one umask 077 creation//' "$tmp/caller-mr-ok.md" > "$tmp/caller-mr-noumask.md"
+  expect_rejected "merged-ref/caller-no-scratch-umask" \
+    "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-noumask.md" "" "$tmp/caller-mr-ok.md")"
+
   # -- Scratch safety (WF-932): the pre-fix Step 0 wording — a check with no failure outcome.
   cat > "$tmp/frag-scratch-prefix.md" <<'SCPRE'
 run. Verify first that `_local/scratch/` is a real directory owned by the current user and not a
@@ -1425,7 +1446,7 @@ SCPRE
 
   # -- Scratch safety: a repaired procedure.
   cat > "$tmp/frag-scratch-ok.md" <<'SCOK'
-Run the **scratch safety check** first. **The scratch safety check** has three outcomes:
+Run the **scratch safety check** first. **The scratch safety check** probes every existing component from the workspace root down and has three outcomes:
 - **Absent** — nothing exists there. **Not a failure.** Step 0 skips the clear.
 - Fails when the path exists and is a symlink, not a directory, or not owned by the current user —
   and when the check itself cannot run.
@@ -1447,6 +1468,11 @@ SCOK
   grep -v 'Not a failure' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-absent.md"
   expect_rejected "scratch-safety/absent-treated-as-failure" \
     "$(scratch_safety_violations "$tmp/frag-scratch-absent.md")"
+
+  # -- Scratch safety: the ancestor walk removed alone — a symlinked _local would pass.
+  sed 's/ probes every existing component from the workspace root down and/ /' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-leafonly.md"
+  expect_rejected "scratch-safety/leaf-only-symlink-check" \
+    "$(scratch_safety_violations "$tmp/frag-scratch-leafonly.md")"
 
   if [ "$st_fail" -ne 0 ]; then
     printf 'FAIL: closeout sweep guard self-test (%s case(s))\n' "$st_fail"
