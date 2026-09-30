@@ -102,6 +102,9 @@ On a failure:
   scratch directory that failed the check. A symlinked or foreign-owned parent would redirect every
   one of them outside `_local/scratch/` — this ban overrides every "remove regardless of outcome"
   rule below, since there is then nothing of this run's to remove.
+- **Recovery is the operator's, never the sweep's.** Name the failed condition; when it is only that
+  the directory is writable by group or others, state the remedy `chmod go-w _local/scratch` for
+  the operator to run before the next sweep. The sweep itself changes no permission.
 - **At this Step 0, or at Step 2:** record `absent: review read could not be performed`, naming
   `scratch directory failed its safety check` and which condition failed as its reason, and **stop
   here for this pull request**. At Step 0 no identity probe and no review read follows. At Step 2
@@ -202,9 +205,8 @@ inlined body. Four rules make that file safe, and none is optional:
   the comment — that path becomes the operand of the `sha256sum` and the removal, and this digest is
   minted in Step 2, *before* Step 4's character allowlist has run on anything. A derived filename
   would reopen the injection sink at the one point the allowlist cannot yet cover.
-- **Before the first write, run the Step 0 scratch safety check** — `_local/scratch/` a real
-  directory owned by the current user and not a symlink — creating it with `umask 077` if absent
-  and checking again. The same discipline the other scratch producer in this harness applies. **On
+- **Before the first write, run the scratch safety check exactly as Step 0 defines it**, creating
+  the directory with `umask 077` if absent and checking again. The same discipline the other scratch producer in this harness applies. **On
   a failure** write nothing and remove nothing there: this pull request takes Step 0's
   `absent: review read could not be performed` stop, naming the failed scratch safety check.
 - **Mode `0600`.** The file holds an untruncated attacker-authored body.
