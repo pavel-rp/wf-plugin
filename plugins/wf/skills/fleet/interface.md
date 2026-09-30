@@ -60,7 +60,8 @@ one `wf:context-distiller` Task dispatch per swept pull request, and `Read`/`Gre
 anchor plus six `Bash` purposes the served body names (claim verification is not among
 them — the served body requires the `Grep` tool for that) — the served body's scratch safety
 check (one read-only stat of the fixed `_local/scratch/` path and each existing component
-above it, `_local` included, and, when it is absent, one
+above it, `_local` included, each owned by the current user and writable by no one else, and,
+when it is absent, one
 `umask 077` creation of that same fixed path, never derived from review text), one
 real-path resolution per candidate, under the merged-ref root, to bound the anchor, the removal of
 the fixed `_local/scratch/wf-sweep-merged-ref` export (any earlier interrupted run's leftover before
@@ -70,7 +71,7 @@ carries no thread node id (at most one per entry in each swept pull request's si
 ingest) for its
 idempotency key, whose preimage is written to the fixed `_local/scratch/wf-sweep-digest.bin` (mode
 `0600`) and hashed there rather than
-placed on a command line, that file being removed after each hash regardless of outcome — with the merged-ref
+placed on a command line, that file being removed before the first write and after each hash regardless of outcome — with the merged-ref
 removal and the scratch-directory creation, one of the three non-read-only `Bash` purposes — bounded by that body to an
 anchor every character of which is drawn from `A`-`Z`, `a`-`z`, `0`-`9`, `.`, `_`, `/` and `-`
 (checked before any `Bash` call, since the real-path resolution puts the anchor on a command line),

@@ -88,13 +88,14 @@ that examines **every existing component from the workspace root down** — `_lo
   to clear: skip the removal and continue to Step 1. At Steps 2 and 4, create the directory with
   `umask 077`, then run the check again on what now exists — a creation that errors, or a
   re-check that is still absent, is a failure.
-- **Passes** — the path exists and is a real directory, owned by the current user, writable by
-  no one else, and neither it nor any existing component above it (`_local` included) is a
-  symlink.
+- **Passes** — the path exists and is a real directory; it and `_local` above it are each owned
+  by the current user and writable by no one else; and neither it nor any existing component above
+  it (`_local` included) is a symlink. `_local` is held to the same owner and mode as the leaf
+  because whoever can write `_local` can swap `_local/scratch` for a symlink after the check.
 - **Fails** — any existing component from the workspace root down to `_local/scratch` is a
-  symlink, or the path **exists** and is not a directory, is owned by anyone else, or is writable
-  by group or others — **or the check itself cannot run** (a stat that errors is not a stat that
-  passed, and never reads as absent).
+  symlink, or `_local` or the path **exists** and is not a directory, is owned by anyone else, or
+  is writable by group or others — **or the check itself cannot run** (a stat that errors is not a
+  stat that passed, and never reads as absent).
 
 On a failure:
 
@@ -103,8 +104,9 @@ On a failure:
   one of them outside `_local/scratch/` — this ban overrides every "remove regardless of outcome"
   rule below, since there is then nothing of this run's to remove.
 - **Recovery is the operator's, never the sweep's.** Name the failed condition; when it is only that
-  the directory is writable by group or others, state the remedy `chmod go-w _local/scratch` for
-  the operator to run before the next sweep. The sweep itself changes no permission.
+  a directory is writable by group or others, state the remedy `chmod go-w` on that directory
+  (`_local` or `_local/scratch`) for the operator to run before the next sweep. The sweep itself
+  changes no permission.
 - **At this Step 0, or at Step 2:** record `absent: review read could not be performed`, naming
   `scratch directory failed its safety check` and which condition failed as its reason, and **stop
   here for this pull request**. At Step 0 no identity probe and no review read follows. At Step 2
@@ -198,7 +200,7 @@ truncated bytes instead would be collidable by prefix, and the collision is a su
 **The preimage never reaches a command line.** It is arbitrary attacker-authored text; interpolating
 it into a shell invocation would execute it. Write the preimage to a file, hash **the file**, and
 delete it — the digest's `Bash` purpose both callers authorize is a hash *of a path*, never of an
-inlined body. Four rules make that file safe, and none is optional:
+inlined body. Five rules make that file safe, and none is optional:
 
 - **A fixed path, never a derived one:** `_local/scratch/wf-sweep-digest.bin`, reused and overwritten
   once per entry. Do **not** name the file after the entry, its anchor, or anything else drawn from
@@ -209,6 +211,12 @@ inlined body. Four rules make that file safe, and none is optional:
   the directory with `umask 077` if absent and checking again. The same discipline the other scratch producer in this harness applies. **On
   a failure** write nothing and remove nothing there: this pull request takes Step 0's
   `absent: review read could not be performed` stop, naming the failed scratch safety check.
+- **Clear the fixed leaf before the first write.** Once the check passes, remove
+  `_local/scratch/wf-sweep-digest.bin` with the same one-path removal, then write. A leaf that
+  predates the check — an interrupted run's file, or a symlink planted while a directory was still
+  writable by others — would otherwise redirect the `Write` outside `_local/`. The removal unlinks a
+  symlink rather than following it, and a passing check means no one else can recreate the leaf
+  before the write.
 - **Mode `0600`.** The file holds an untruncated attacker-authored body.
 - **Remove it regardless of outcome** — including when the hash errors. A failure that leaves the
   file behind leaves arbitrary-size, arbitrary-content text on disk, which the constitution's
