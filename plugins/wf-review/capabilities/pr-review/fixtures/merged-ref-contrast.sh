@@ -9,7 +9,8 @@
 # two trees. A defect the pull request fixed is still visible in the stale checkout and gone at
 # the merged ref; a file the pull request added opens only at the merged ref; a symlink survives
 # the export so the sweep's symlink bound still sees it; and the caller's checkout, index and HEAD
-# are untouched. The export writes nothing beside <dest> (WF-883), and a leftover an interrupted
+# are untouched. The export writes nothing beside <dest> (WF-883) and creates no missing parent of
+# it (WF-933), and a leftover an interrupted
 # run left there is cleared before a pull request with no candidates (WF-884). It then shows an
 # unresolvable merge commit fails the recipe — the case the sweep must report as `merged ref could
 # not be resolved`, never as an empty result.
@@ -47,7 +48,7 @@ else
   for token in \
     'git cat-file -e "<merge-commit>^{commit}"' \
     'git rev-parse --verify "<merge-commit>^{tree}"' \
-    'mkdir -p "<dest>"' \
+    'mkdir "<dest>"' \
     'git archive --format=tar --output="<dest>/<merge-commit>.tar" "<merge-commit>"' \
     'tar -xf "<dest>/<merge-commit>.tar" -C "<dest>"' \
     'rm -f "<dest>/<merge-commit>.tar"' \
@@ -60,6 +61,10 @@ else
   printf '%s\n' "$section" | grep -qF -- '"<dest>.tar"' \
     && bad "containment: the wf-git merged-ref-read section still stages an archive beside <dest>" \
     || pass "containment: the wf-git merged-ref-read section stages nothing beside <dest>"
+  # WF-933: <dest> is created alone — never with -p, which would create missing parents outside it.
+  printf '%s\n' "$section" | grep -qF -- 'mkdir -p "<dest>"' \
+    && bad "containment: the wf-git merged-ref-read section still creates <dest> with mkdir -p" \
+    || pass "containment: the wf-git merged-ref-read section creates <dest> alone, never a missing parent"
 fi
 
 if [ -f "$FRAGMENT" ]; then
@@ -110,7 +115,7 @@ tree="$(g rev-parse --verify "$merge_commit^{tree}" 2>/dev/null)" \
   || bad "step 3: the merge commit's tree does not resolve"
 [ -e "$dest" ] && bad "step 4: the destination exists before the export (the op refuses that as read-failed)"
 archive="$dest/$merge_commit.tar"
-mkdir -p "$dest" \
+mkdir "$dest" \
   && g archive --format=tar --output="$archive" "$merge_commit" \
   && tar -xf "$archive" -C "$dest" \
   || bad "step 4: the export failed"
@@ -159,6 +164,19 @@ candidates=0
   && pass "an interrupted run's leftover is cleared before a zero-candidate pull request, archive included" \
   || bad "a leftover export survived a zero-candidate pull request"
 
+# --- 3c. A <dest> under a missing parent fails without creating anything (WF-933) ----------
+# The recipe's single-directory mkdir refuses a missing parent, so nothing outside <dest> is made
+# and there is nothing for the op to remove.
+orphan_parent="$tmp/absent-parent"
+orphan_dest="$orphan_parent/wf-sweep-merged-ref"
+if mkdir "$orphan_dest" 2>/dev/null; then
+  bad "mkdir created <dest> under a missing parent — the op would write outside <dest>"
+else
+  [ ! -e "$orphan_parent" ] && [ ! -e "$orphan_dest" ] \
+    && pass "a <dest> under a missing parent fails read-failed and creates no directory outside <dest>" \
+    || bad "a failed mkdir left a directory behind"
+fi
+
 # --- 4. An unresolvable merged ref fails the recipe, typed --------------------------------
 
 bogus="0000000000000000000000000000000000000bad"
@@ -169,7 +187,7 @@ elif g fetch --quiet origin "$bogus" 2>/dev/null; then
 else
   pass "an unresolvable merge commit is neither present nor fetchable — the op returns read-failed"
 fi
-mkdir -p "$dest"
+mkdir "$dest"
 if g archive --format=tar --output="$dest/$bogus.tar" "$bogus" 2>/dev/null; then
   bad "exporting an unresolvable commit succeeded"
 else
