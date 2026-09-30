@@ -21,6 +21,7 @@ import type { CoreConfig } from "./types.js";
 import {
   createContainedStateFileExclusive,
   linkContainedStateFileExclusive,
+  listContainedStateEntries,
   removeContainedStateFile,
   renameContainedStateFile,
 } from "./contained-state.js";
@@ -431,6 +432,10 @@ export function parseSetupRunnerReport(
 
 /** The lock file; it lives beside the success marker. */
 export const SETUP_LOCK_RELPATH = "_local/resolver/setup.lock";
+/** Appended to the lock path (then a random hex id) for a reclaim's aside copy;
+ *  the one definition both the reclaim that writes asides and the acquisition
+ *  and release that look for them use (WF-997). */
+const SETUP_LOCK_ASIDE_SUFFIX = ".stale-";
 /** Added to the command timeout to bound how long a caller waits for a holder. */
 export const SETUP_LOCK_WAIT_GRACE_SECONDS = 30;
 export const SETUP_LOCK_POLL_MS = 100;
@@ -608,7 +613,7 @@ function reclaimIfAbandoned(
   // back fails, re-block the canonical path with a copy of the captured record
   // so no other caller can take the lock beside its live holder; the captured
   // copy is only removed once that record is in place.
-  const aside = `${SETUP_LOCK_RELPATH}.stale-${randomBytes(6).toString("hex")}`;
+  const aside = `${SETUP_LOCK_RELPATH}${SETUP_LOCK_ASIDE_SUFFIX}${randomBytes(6).toString("hex")}`;
   const moved = renameContainedStateFile(root, SETUP_LOCK_RELPATH, aside);
   if (!moved.ok) return moved.kind === "unsafe" ? "unsafe" : "held";
   if (!moved.moved) return "retry";
@@ -622,6 +627,68 @@ function reclaimIfAbandoned(
   }
   removeContainedStateFile(root, aside);
   return "retry";
+}
+
+// DISPLACED HOLDERS (WF-997). A reclaim that captured a live holder's lock and
+// could not put it back keeps that record at a `setup.lock.stale-*` aside path
+// beside the lock. That record is still a claim: its holder may be running the
+// command. So a caller that has just created the lock path also judges every
+// aside record, under the same liveness rule, before it may keep the lock — a
+// live (or unjudgeable) one makes it give the lock path back and wait; an
+// abandoned one is removed. The judgement follows the create, so an aside that
+// appears while this caller races for the lock path cannot slip past it. A
+// holder's release removes its own aside record, ending its claim.
+
+const SETUP_LOCK_DIR = SETUP_LOCK_RELPATH.slice(0, SETUP_LOCK_RELPATH.lastIndexOf("/"));
+const SETUP_LOCK_ASIDE_PREFIX = `${SETUP_LOCK_RELPATH.slice(SETUP_LOCK_DIR.length + 1)}${SETUP_LOCK_ASIDE_SUFFIX}`;
+
+/**
+ * Judge every aside lock record. `clear` — none still holds a claim (abandoned
+ * ones were removed); `held` with the first aside path whose holder is live or
+ * cannot be judged; `unsafe` when the lock directory or an aside is not
+ * contained; `failed` with the reason when the lock directory could not be
+ * listed or an abandoned aside could not be removed. A record carrying
+ * `ownToken` is this caller's own and is skipped.
+ */
+function judgeAsideLocks(
+  root: string,
+  deps: SetupLockDeps,
+  ownToken: string,
+): "clear" | "unsafe" | { held: string } | { failed: string } {
+  const listed = listContainedStateEntries(root, SETUP_LOCK_DIR, SETUP_LOCK_ASIDE_PREFIX);
+  if (!listed.ok) return listed.kind === "unsafe" ? "unsafe" : { failed: listed.detail };
+  let held: string | null = null;
+  for (const name of listed.names) {
+    const rel = `${SETUP_LOCK_DIR}/${name}`;
+    const read = readLock(root, rel);
+    if (read.status === "missing") continue;
+    if (read.status === "unsafe") return "unsafe";
+    const holder = read.record;
+    if (holder !== null && holder.token === ownToken) continue;
+    if (holder === null || holder.host !== deps.host || setupLockLive(holder, deps)) {
+      held ??= rel;
+      continue;
+    }
+    // Abandoned: an aside record is never rewritten once moved there, so the
+    // record judged is the record removed.
+    if (holder.groupPid !== undefined) deps.killGroup?.(holder.groupPid);
+    const removed = removeContainedStateFile(root, rel);
+    if (!removed.ok) return removed.kind === "unsafe" ? "unsafe" : { failed: removed.detail };
+  }
+  return held === null ? "clear" : { held };
+}
+
+/**
+ * Give the lock path back: remove it only while it still carries `token`. The
+ * token is recorded as issued first, so a record a failed removal leaves behind
+ * is judged abandoned by this process rather than live until its time bound.
+ */
+function dropOwnLock(root: string, token: string): { ok: true } | { ok: false; detail: string } {
+  issuedSetupLockTokens.add(token);
+  const current = readLock(root, SETUP_LOCK_RELPATH);
+  if (current.status !== "ok" || current.record?.token !== token) return { ok: true };
+  const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+  return removed.ok ? { ok: true } : { ok: false, detail: removed.detail };
 }
 
 /**
@@ -648,9 +715,45 @@ export function acquireSetupLock(
   for (;;) {
     const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, content);
     if (created.ok) {
-      issuedSetupLockTokens.add(token);
-      heldSetupLockTokens.add(token);
-      return { ok: true, token };
+      const asides = judgeAsideLocks(root, deps, token);
+      if (asides === "clear") {
+        issuedSetupLockTokens.add(token);
+        heldSetupLockTokens.add(token);
+        return { ok: true, token };
+      }
+      // A displaced holder still claims the lock (or it could not be judged):
+      // give the lock path back.
+      const dropped = dropOwnLock(root, token);
+      if (!dropped.ok) {
+        return {
+          ok: false,
+          kind: "failed",
+          detail: `the setup lock taken while a displaced record was present could not be given back: ${dropped.detail}; the command was not run.`,
+        };
+      }
+      if (asides === "unsafe") {
+        return {
+          ok: false,
+          kind: "unsafe",
+          detail: `a displaced setup-lock record beside \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`,
+        };
+      }
+      if ("failed" in asides) {
+        return {
+          ok: false,
+          kind: "failed",
+          detail: `the displaced setup-lock records beside \`${SETUP_LOCK_RELPATH}\` could not be checked: ${asides.failed}; the command was not run.`,
+        };
+      }
+      if (deps.now() >= deadline) {
+        return {
+          ok: false,
+          kind: "busy",
+          detail: `a setup run displaced to \`${asides.held}\` still holds the setup lock after ${Math.round(waitMs / 1000)} seconds; the command was not run.`,
+        };
+      }
+      deps.sleepMs(SETUP_LOCK_POLL_MS);
+      continue;
     }
     if (created.kind !== "exists") return { ok: false, kind: created.kind, detail: created.detail };
     const reclaim = reclaimIfAbandoned(root, deps);
@@ -699,6 +802,22 @@ export function releaseSetupLock(root: string, token: string): { ok: true } | { 
     const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
     if (!removed.ok) {
       return { ok: false, detail: `the setup lock was not released: ${removed.detail}` };
+    }
+    return { ok: true };
+  }
+  // Not at the lock path: a reclaim may have displaced this run's record aside
+  // (WF-997). Remove it there, so the displaced claim ends with this run.
+  const listed = listContainedStateEntries(root, SETUP_LOCK_DIR, SETUP_LOCK_ASIDE_PREFIX);
+  if (!listed.ok) {
+    return { ok: false, detail: `the setup lock was not released: ${listed.detail}` };
+  }
+  for (const name of listed.names) {
+    const rel = `${SETUP_LOCK_DIR}/${name}`;
+    const aside = readLock(root, rel);
+    if (aside.status !== "ok" || aside.record?.token !== token) continue;
+    const removed = removeContainedStateFile(root, rel);
+    if (!removed.ok) {
+      return { ok: false, detail: `the displaced setup lock was not released: ${removed.detail}` };
     }
   }
   return { ok: true };
