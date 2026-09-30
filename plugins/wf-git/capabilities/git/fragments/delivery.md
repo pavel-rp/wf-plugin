@@ -507,9 +507,10 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   the local branch lags or leads it.
 - **Merged ref** — `merged-ref-read`: step 1 on an unmerged pull request or a null
   merge commit → `<reason>` = `not-merged`; step 1 host errors, step 2 an unfetchable
-  commit, step 3 an unresolvable tree, or step 4 an existing `<dest>`, a missing
-  parent of `<dest>` (nothing created, nothing removed) or a failed archive/extract
-  → `<reason>` = `read-failed` (a partial export removed); otherwise
+  commit, step 3 an unresolvable tree, step 4 an existing `<dest>` or a missing
+  parent of `<dest>` (both before the op creates anything — nothing created,
+  nothing removed), or step 4 a failed archive/extract after the op created
+  `<dest>` (that partial export removed) → `<reason>` = `read-failed`; otherwise
   `<read-performed>` = true with `<merge-commit>`, `<tree>` and, when `<dest>` was
   supplied, `<root>` — even when the local checkout predates the merge. On every
   path nothing is written outside `<dest>`: no missing parent is created, and the
