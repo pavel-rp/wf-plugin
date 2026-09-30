@@ -17,10 +17,11 @@
 #
 # WHAT A CALL SITE IS. Any occurrence of the class token `references-template` in
 # a `plugins/*/skills/**/*.md` or `plugins/*/agents/*.md` file whose call text —
-# from the token to the first closing `)` or `}` (bounded) — names a `ref:` ending
-# in `.md`. The ref is parsed as the WHOLE token (a quoted value up to its closing
-# quote, else up to the enclosing backtick, `"`, `,`, `)`, `}` or line end), never
-# a restricted-character prefix of it, so `sub/my template.md` is one ref. It is a
+# from the token to the first closing `)` or `}` outside a quoted span (bounded) —
+# names a `ref:` ending in `.md`. The ref is parsed as the WHOLE token (a quoted
+# value up to its closing quote, else up to the enclosing backtick, `"`, `,` or
+# line end), never a restricted-character prefix of it, so `sub/my template.md`
+# and `sub/a (b).md` are each one ref. It is a
 # relative path and may nest under `references/` (`sub/t.md`), judged whole by the
 # resolver's `isSafeRelPath` rules: backslashes normalise to `/`, and a ref the
 # resolver refuses (empty, `/`- or drive-rooted, or a `.`, `..` or empty segment)
@@ -72,10 +73,12 @@ TOKEN = "references-template"
 # resolver admits whole — it may nest (`sub/t.md`) and hold any character a file
 # name can (`sub/my template.md`) — so REF captures the WHOLE token, never a
 # restricted-character prefix of it: a quoted value ("…", '…' or `…`) up to its
-# closing quote, else an unquoted value up to the enclosing backtick, `"`, `,`,
-# `)`, `}` or line end. The token's safety is judged afterwards by safe_ref().
+# closing quote, else an unquoted value up to the enclosing backtick, `"`, `,` or
+# line end. The call window (call_window) already ends at the first `)`/`}`
+# outside a quoted span, so a paren inside a quoted ref never truncates it. The
+# token's safety is judged afterwards by safe_ref().
 KEY = re.compile(r"\b(plugin|skill):\s*[\"'`]?\s*([A-Za-z0-9_.-]+)")
-REF = re.compile(r"\bref:\s*(?:\"([^\"\n]*)\"|'([^'\n]*)'|`([^`\n]*)`|([^`\",)}\n]*))")
+REF = re.compile(r"\bref:\s*(?:\"([^\"\n]*)\"|'([^'\n]*)'|`([^`\n]*)`|([^`\",\n]*))")
 # A §4.4 cell is parsed as WHOLE backtick tokens, each optionally followed by its
 # `(owner)`; every token is judged whole by parse_doc(), never a matched suffix.
 ITEM = re.compile(r"`([^`\n]*)`(?:\s*\(([A-Za-z0-9_-]+)\))?")
@@ -101,6 +104,33 @@ def safe_ref(ref):
     if not n or n.startswith("/") or DRIVE.match(n):
         return False
     return all(s not in ("", ".", "..") for s in n.split("/"))
+
+
+def quote_step(state, prev, c):
+    """One character of quote tracking: the open quote char, or None outside any
+    quoted span. A `'` opens only after a non-word character, so an apostrophe
+    inside a word is never taken for a quote."""
+    if state is None:
+        if c in "\"`" or (c == "'" and not (prev.isalnum() or prev == "_")):
+            return c
+        return None
+    return None if c == state else state
+
+
+def call_window(text, token_start, start):
+    """The call text after the class token, up to the first `)` or `}` that sits
+    OUTSIDE a quoted span (bounded by WINDOW) — so a quoted ref holding a paren or
+    brace is kept whole. The quote state at `start` is carried in from the token's
+    own line, since the token itself usually sits inside a quoted span."""
+    state, prev = None, ""
+    for c in text[text.rfind("\n", 0, token_start) + 1:start]:
+        state, prev = quote_step(state, prev, c), c
+    win = text[start:start + WINDOW]
+    for i, c in enumerate(win):
+        if state is None and c in ")}":
+            return win[:i]
+        state, prev = quote_step(state, prev, c), c
+    return win
 
 
 def ref_token(m):
@@ -136,10 +166,7 @@ def scan(root):
                 text = fh.read()
             for m in re.finditer(re.escape(TOKEN), text):
                 start = m.end()
-                win = text[start:start + WINDOW]
-                cut = [i for i in (win.find(")"), win.find("}")) if i >= 0]
-                if cut:
-                    win = win[:min(cut)]
+                win = call_window(text, m.start(), start)
                 keys = {}
                 for k, v in KEY.findall(win):
                     keys.setdefault(k, v)
@@ -437,6 +464,41 @@ def selftest():
             "non-md-row": (doc([alpha, gamma, eps, zeta, "| `wf/skills/eta` | `sub/my template.md`, `notes.txt` |",
                                 theta], whole), 1, None, "not a .md template"),
         })
+
+        # Quote-aware call window: a `)` or `}` inside a quoted span must not end
+        # the call — a backtick-list ref holding parens and an object-literal ref
+        # holding parens and braces are derived whole. An in-word apostrophe before
+        # the class token must not open a quote: the ref-less pointer's window has
+        # to end at its own `)`, or it would swallow the next line's `ref:` and
+        # derive a read iota never makes.
+        put("plugins/wf/skills/iota/SKILL.md",
+            "The skill's rationale lives in (`class: references-template`, `skill: iota`) — never read here.\n"
+            "Obtain (`class: references-template`, `skill: beta`, `ref: shared.md`) and "
+            "(`class: references-template`, `skill: iota`, `ref: sub/paren (x).md`).\n")
+        put("plugins/wf/skills/iota/references/sub/paren (x).md", "t\n")
+        put("plugins/wf-x/agents/kappa.md",
+            "resolve_content({ workspaceRoot, class: \"references-template\", plugin: \"wf-x\", "
+            "skill: \"delta\", ref: \"q (1) {b}.md\" })\n")
+        put("plugins/wf-x/skills/delta/references/q (1) {b}.md", "t\n")
+
+        tree, _ = scan(tmp)
+        iota_reads = {(o, r) for c, o, r in tree if c == "wf/skills/iota"}
+        if iota_reads != {("beta", "shared.md"), ("iota", "sub/paren (x).md")} \
+                or ("wf-x/agents/kappa", "delta", "q (1) {b}.md") not in tree:
+            print(f"SELFTEST FAIL — quote-aware window derived {sorted(tree)}", file=sys.stderr)
+            failed += 1
+
+        iota = "| `wf/skills/iota` | `sub/paren (x).md`, `shared.md` (beta) |"
+        kappa = "| `wf-x/agents/kappa` | `q (1) {b}.md` (delta) |"
+        base6 = [alpha, gamma, eps, zeta, eta, theta]
+        run({
+            "paren-sound": (doc(base6 + [iota, kappa], "10 templates | 8 consumers (11 template reads)"), 0),
+            "paren-missing-row": (doc(base6 + ["| `wf/skills/iota` | `shared.md` (beta) |", kappa],
+                                      "9 templates | 8 consumers (10 template reads)"),
+                                  1, None, "TREE ⊄ DOC: wf/skills/iota reads iota/references/sub/paren (x).md"),
+            "brace-missing-row": (doc(base6 + [iota], "9 templates | 7 consumers (10 template reads)"),
+                                  1, None, "TREE ⊄ DOC: wf-x/agents/kappa reads delta/references/q (1) {b}.md"),
+        })
         if failed:
             print(f"content-read-references-inventory-guard: self-test FAILED ({failed} case(s))", file=sys.stderr)
             return 1
@@ -446,7 +508,9 @@ def selftest():
               "mismatch or missing template rejected, an unsafe row rejected, and unsafe refs ignored; "
               "safe_ref() agrees with isSafeRelPath on every rule, spaced and quoted refs derived whole "
               "and matched, a missing spaced row rejected, drive-rooted and backslash refs refused whole, "
-              "and drive-rooted, backslash-escape and non-.md row tokens each rejected on their own.")
+              "and drive-rooted, backslash-escape and non-.md row tokens each rejected on their own; "
+              "quoted refs holding parens or braces derived whole and their missing rows rejected, "
+              "and an in-word apostrophe kept from opening a quote.")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
