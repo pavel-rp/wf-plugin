@@ -276,10 +276,11 @@ clauses carve out this one case explicitly, because "regardless of outcome" othe
 covering it.
 
 The outcome reuses vocabulary that already exists instead of adding a fifth `absent` reason. At
-Step 0 or Step 2 no review has been read yet, so the pull request takes the per-pull-request
-`absent: review read could not be performed` stop, naming the check — the same treatment an
-unparseable distiller return gets, and it already forces the partial token under Step 6's
-exception. At Step 4 the review *was* read and candidates exist, so the failure is in the source
+Step 0 no review has been read yet; at Step 2 both reads have run, but nothing has been digested
+or judged. In both cases the pull request takes the per-pull-request
+`absent: review read could not be performed` stop, with the failed check recorded as its reason
+rather than an unperformed read — the same stop an unparseable distiller return gets, and it
+already forces the partial token under Step 6's exception. At Step 4 the review *was* read and candidates exist, so the failure is in the source
 they would be judged against: the existing `unverifiable` / `merged ref could not be resolved`
 branch, with the check named as the reason. A new reason would have had to reach every caller's
 render and every count this suite derives, with no difference in what the reader has to do.

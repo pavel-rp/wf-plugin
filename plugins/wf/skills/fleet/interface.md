@@ -57,8 +57,10 @@ request, exporting its merge commit to the fixed `_local/scratch/wf-sweep-merged
 verification never reads the orchestrator's own checkout), the tracker write `create_child`
 (tracker mode only, at most 10 per swept pull request),
 one `wf:context-distiller` Task dispatch per swept pull request, and `Read`/`Grep` of a source file at a review-supplied
-anchor plus four `Bash` purposes the served body names (claim verification is not among
-them — the served body requires the `Grep` tool for that) — one
+anchor plus six `Bash` purposes the served body names (claim verification is not among
+them — the served body requires the `Grep` tool for that) — the served body's scratch safety
+check (one read-only stat of the fixed `_local/scratch/` path, and, when it is absent, one
+`umask 077` creation of that same fixed path, never derived from review text), one
 real-path resolution per candidate, under the merged-ref root, to bound the anchor, the removal of
 the fixed `_local/scratch/wf-sweep-merged-ref` export (any earlier interrupted run's leftover before
 each swept pull request's identity probe, whatever that pull request holds, and the export after
@@ -68,7 +70,7 @@ ingest) for its
 idempotency key, whose preimage is written to the fixed `_local/scratch/wf-sweep-digest.bin` (mode
 `0600`) and hashed there rather than
 placed on a command line, that file being removed after each hash regardless of outcome — with the merged-ref
-removal, one of the two non-read-only `Bash` purposes — bounded by that body to an
+removal and the scratch-directory creation, one of the three non-read-only `Bash` purposes — bounded by that body to an
 anchor every character of which is drawn from `A`-`Z`, `a`-`z`, `0`-`9`, `.`, `_`, `/` and `-`
 (checked before any `Bash` call, since the real-path resolution puts the anchor on a command line),
 which is relative and free of any `..` segment, no component of which is a symlink, whose

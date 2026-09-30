@@ -639,6 +639,10 @@ merged_ref_violations() {
       || printf 'a caller does not authorize merged-ref-read in its Allowed region, though its composed body performs it: %s\n' "${c##*/}"
     allowed_region "$c" | grep -qF 'wf-sweep-merged-ref' \
       || printf 'a caller does not name the fixed merged-ref export path or its removal in its Allowed region: %s\n' "${c##*/}"
+    # WF-932: the scratch safety check fails closed when it cannot run, so a caller that does not
+    # authorize its stat and its `umask 077` creation turns every sweep into an `absent` stop.
+    allowed_region "$c" | grep -qF 'scratch safety check' \
+      || printf 'a caller does not authorize the scratch safety check (its stat and umask 077 creation), so the check cannot run and every pull request stops absent: %s\n' "${c##*/}"
   done
 }
 
@@ -1385,7 +1389,8 @@ Remove the merged-ref tree regardless of outcome. Decide against the code **at t
 MROK
   cat > "$tmp/caller-mr-ok.md" <<'CMROK'
 **Allowed:** pr-detect review-threads-read pr-comments-read merged-ref-read, exporting to the fixed
-`_local/scratch/wf-sweep-merged-ref` and removing it regardless of outcome.
+`_local/scratch/wf-sweep-merged-ref` and removing it regardless of outcome; the scratch safety check
+(one stat of the fixed `_local/scratch/`, one umask 077 creation).
 **Forbidden:** anything else.
 CMROK
   expect_accepted "merged-ref/repaired" \

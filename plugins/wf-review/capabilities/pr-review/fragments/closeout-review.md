@@ -97,9 +97,11 @@ On a failure:
   one of them outside `_local/scratch/` — this ban overrides every "remove regardless of outcome"
   rule below, since there is then nothing of this run's to remove.
 - **At this Step 0, or at Step 2:** record `absent: review read could not be performed`, naming
-  `scratch directory failed its safety check` and which condition failed, and **stop here for this
-  pull request** — no identity probe, no review read and no digest follows. It is a per-pull-request
-  `absent` failure under Step 6's exception, so it is never reported clean.
+  `scratch directory failed its safety check` and which condition failed as its reason, and **stop
+  here for this pull request**. At Step 0 no identity probe and no review read follows. At Step 2
+  both review reads have already run; the stop comes before any digest, distillation or judgment,
+  and the recorded reason is the failed check, never an unperformed read. Either way it is a
+  per-pull-request `absent` failure under Step 6's exception, so it is never reported clean.
 - **At Step 4:** the Step 4 rule below applies — no `merged-ref-read`, and every candidate within
   the cap is `unverifiable`.
 
