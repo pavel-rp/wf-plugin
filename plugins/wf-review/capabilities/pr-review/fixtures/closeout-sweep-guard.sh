@@ -665,6 +665,11 @@ scratch_safety_violations() {
     || printf 'the scratch safety check is not referenced at every scratch use (Step 0 clear, Step 2 digest, Step 4 export)\n'
   printf '%s' "$flat" | grep -qEi 'check itself cannot run|when the check cannot run' \
     || printf 'the scratch safety check does not fail closed when it cannot run\n'
+  # A MISSING directory is the normal first-sweep state, not a hostile one. Folding it into
+  # "not a directory" stops every pull request of a fresh workspace at Step 0 and makes the
+  # Step 2/4 create-if-absent unreachable (a failure forbids creation).
+  printf '%s' "$flat" | grep -qEi '\*\*Absent\*\*.{0,120}\*\*Not a failure' \
+    || printf 'an absent scratch directory has no non-failure outcome, so a fresh workspace fails the check at Step 0\n'
   printf '%s' "$flat" | grep -qEi 'through a scratch directory that failed' \
     || printf 'nothing bars a removal, write or export through a scratch directory that failed the check\n'
   printf '%s' "$flat" | grep -qF 'naming `scratch directory failed its safety check`' \
@@ -1415,8 +1420,10 @@ SCPRE
 
   # -- Scratch safety: a repaired procedure.
   cat > "$tmp/frag-scratch-ok.md" <<'SCOK'
-Run the **scratch safety check** first. **The scratch safety check** fails when the path is a
-symlink, not a directory, or not owned by the current user — and when the check itself cannot run.
+Run the **scratch safety check** first. **The scratch safety check** has three outcomes:
+- **Absent** — nothing exists there. **Not a failure.** Step 0 skips the clear.
+- Fails when the path exists and is a symlink, not a directory, or not owned by the current user —
+  and when the check itself cannot run.
 No removal, no creation, no write and no export runs through a scratch directory that failed the
 check. At Step 0 or Step 2: record `absent: review read could not be performed`, naming
 `scratch directory failed its safety check`, and stop. Step 2: run the Step 0 scratch safety check.
@@ -1430,6 +1437,11 @@ SCOK
   grep -v 'do not invoke' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-export.md"
   expect_rejected "scratch-safety/export-still-runs" \
     "$(scratch_safety_violations "$tmp/frag-scratch-export.md")"
+
+  # -- Scratch safety: the absent outcome removed alone — a fresh workspace would fail at Step 0.
+  grep -v 'Not a failure' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-absent.md"
+  expect_rejected "scratch-safety/absent-treated-as-failure" \
+    "$(scratch_safety_violations "$tmp/frag-scratch-absent.md")"
 
   if [ "$st_fail" -ne 0 ]; then
     printf 'FAIL: closeout sweep guard self-test (%s case(s))\n' "$st_fail"
