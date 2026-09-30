@@ -4,8 +4,10 @@ The declared **review boundary** is the point in `/wf:verify-spec` §"Fire the `
 where the enabled `subagent:` rows of the `verify`/`finding` contribution would be dispatched. A
 caller that owns lens dispatch for this run passes `--review-boundary <dir>`; the verifying agent
 then never dispatches those rows itself and never runs their rubrics in its own context. It either
-**consumes** blocks the caller already recorded for the audited tree, or **hands back** with a lens
-request. Core names no capability, lens, or agent here: every row comes from the resolved registry.
+**consumes** blocks the caller already recorded for this run's request identity — the audited tree
+`<T>` **and** the round `<N>` (§"The exchange folder"), so a same-tree block from another round is
+never reused — or **hands back** with a lens request. Core names no capability, lens, or agent here:
+every row comes from the resolved registry.
 
 ## Contents
 
