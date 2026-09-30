@@ -169,8 +169,11 @@ export type SetupRunnerRequest = {
 /** The lock the runner writes its pids back into (WF-925). */
 export type SetupRunnerLock = { root: string; rel: string; token: string };
 
-/** What the runner's pid write-back did: `written`, or why the lock was left
- *  exactly as it was. */
+/** What the runner's pid write-back did: `written`, or why it did not. Every
+ *  non-`written` outcome leaves the lock now at the path untouched; after a
+ *  late `unsafe` the pids may already sit in the validated file that was
+ *  displaced from the path, and after `failed` that file's original record
+ *  has been put back. */
 export type SetupLockWriteBack = "written" | "unsafe" | "token-mismatch" | "failed";
 
 /**
@@ -178,12 +181,17 @@ export type SetupLockWriteBack = "written" | "unsafe" | "token-mismatch" | "fail
  * every other setup-state access (`contained-state.ts`, WF-872): the lock is
  * reached from the canonical workspace root by an `lstat` walk that refuses a
  * link or a non-directory anywhere on the way and a non-regular terminal; it is
- * read through an `O_NOFOLLOW` descriptor whose identity must match the walked
- * file; the rewrite goes to a create-exclusive temp file beside it; and
- * immediately before the rename the walk, the directory and file identities and
- * the token are all checked again, so a lock swapped, relinked or re-taken in
- * between is never replaced. Anything short of that leaves the lock untouched
- * and removes the temp file.
+ * opened once through a read-write `O_NOFOLLOW` descriptor whose identity must
+ * match the walked file; and the token check and the rewrite both go through
+ * that same descriptor (WF-996). Nothing is renamed over, or written by, path,
+ * so a lock swapped, relinked or re-taken at the path after the check is a
+ * different file and is never replaced. A concurrent reader can see a record
+ * mid-rewrite and treats it as an unjudgeable holder (it waits, never
+ * reclaims); because nothing reclaims or releases an unparseable lock, a
+ * rewrite that fails partway puts the validated record back through the same
+ * descriptor before reporting `failed`. A non-`written` outcome never touches
+ * the lock now at the path; a late identity mismatch is `unsafe`, like the
+ * one found before the write.
  *
  * SELF-CONTAINED ON PURPOSE: the runner is a separate `node -e` program that
  * cannot import this module, so it embeds this function's own source text.
@@ -238,67 +246,71 @@ export function writeBackSetupRunnerPids(
     return null;
   };
   const noFollow = fs.constants.O_NOFOLLOW ?? 0;
-  // The record behind a no-follow descriptor, only when it is the walked file.
-  const read = (target: string, fileId: string): Record<string, unknown> | null => {
-    const fd = fs.openSync(target, fs.constants.O_RDONLY | noFollow);
-    try {
-      const stat = fs.fstatSync(fd);
-      if (!stat.isFile() || idOf(stat) !== fileId || stat.size > 4096) return null;
-      const buffer = Buffer.alloc(stat.size);
-      let offset = 0;
-      while (offset < stat.size) {
-        const count = fs.readSync(fd, buffer, offset, stat.size - offset, offset);
-        if (count === 0) break;
-        offset += count;
-      }
-      const parsed: unknown = JSON.parse(buffer.toString("utf8", 0, offset));
-      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : null;
-    } finally {
-      fs.closeSync(fd);
-    }
-  };
-  let temp: string | null = null;
+  let fd: number | null = null;
   try {
     const first = walk();
     if (first === null) return "unsafe";
-    const name = segments[segments.length - 1];
-    const target = path.join(first.dir, name);
-    const record = read(target, first.fileId);
-    if (record === null) return "unsafe";
+    const target = path.join(first.dir, segments[segments.length - 1]);
+    // One no-follow descriptor carries the identity check, the token check
+    // and the write, so all three act on the same file (WF-996). Nothing is
+    // ever renamed or written by path: a lock that replaces this one at the
+    // path in between is a different file and is never touched.
+    fd = fs.openSync(target, fs.constants.O_RDWR | noFollow);
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || idOf(stat) !== first.fileId || stat.size > 4096) return "unsafe";
+    const buffer = Buffer.alloc(stat.size);
+    let offset = 0;
+    while (offset < stat.size) {
+      const count = fs.readSync(fd, buffer, offset, stat.size - offset, offset);
+      if (count === 0) break;
+      offset += count;
+    }
+    const parsed: unknown = JSON.parse(buffer.toString("utf8", 0, offset));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return "unsafe";
+    const record = parsed as Record<string, unknown>;
     if (record.token !== lock.token) return "token-mismatch";
     record.runnerPid = pids.runnerPid;
     if (pids.groupPid !== undefined) record.groupPid = pids.groupPid;
-    temp = path.join(first.dir, `.${name}.runner-${pids.runnerPid}-${Math.random().toString(16).slice(2)}.tmp`);
-    // `wx` is O_CREAT|O_EXCL: created fresh, never through a planted link.
-    const fd = fs.openSync(temp, "wx");
+    const bytes = Buffer.from(`${JSON.stringify(record)}\n`, "utf8");
+    const original = buffer.subarray(0, offset);
+    const put = (data: Buffer): void => {
+      let done = 0;
+      while (done < data.length) {
+        done += fs.writeSync(fd as number, data, done, data.length - done, done);
+      }
+      fs.ftruncateSync(fd as number, data.length);
+    };
     try {
-      fs.writeFileSync(fd, `${JSON.stringify(record)}\n`, { encoding: "utf8" });
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
+      put(bytes);
+    } catch {
+      // A rewrite that stopped partway would leave a record no reader can
+      // judge and nothing ever reclaims: put the validated bytes back
+      // through the same descriptor before reporting the failure.
+      try {
+        put(original);
+        fs.fsyncSync(fd);
+      } catch {
+        // Nothing more can be done through this descriptor.
+      }
+      return "failed";
     }
-    // Revalidate immediately before the rename: same contained path, same
-    // directory, same lock file, and the lock still carries this run's token.
-    const second = walk();
-    if (second === null || second.dir !== first.dir || second.dirId !== first.dirId || second.fileId !== first.fileId) {
-      return "unsafe";
-    }
-    const current = read(target, second.fileId);
-    if (current === null) return "unsafe";
-    if (current.token !== lock.token) return "token-mismatch";
-    fs.renameSync(temp, target);
-    temp = null;
-    return "written";
+    fs.fsyncSync(fd);
+    // The pids landed on the validated lock file. It is still this run's
+    // lock only while the contained path names that same file; if it no
+    // longer does, the lock now at the path was never touched.
+    const after = walk();
+    if (after === null) return "unsafe";
+    return after.dir === first.dir && after.dirId === first.dirId && after.fileId === first.fileId
+      ? "written"
+      : "unsafe";
   } catch {
     return "failed";
   } finally {
-    if (temp !== null) {
+    if (fd !== null) {
       try {
-        fs.rmSync(temp, { force: true });
+        fs.closeSync(fd);
       } catch {
-        // A stranded temp file is inert and uniquely named.
+        // Nothing more to release.
       }
     }
   }

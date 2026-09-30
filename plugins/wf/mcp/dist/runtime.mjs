@@ -25863,60 +25863,57 @@ function writeBackSetupRunnerPids(fs, path, lock, pids) {
     return null;
   };
   const noFollow = fs.constants.O_NOFOLLOW ?? 0;
-  const read = (target, fileId) => {
-    const fd = fs.openSync(target, fs.constants.O_RDONLY | noFollow);
-    try {
-      const stat = fs.fstatSync(fd);
-      if (!stat.isFile() || idOf(stat) !== fileId || stat.size > 4096) return null;
-      const buffer = Buffer.alloc(stat.size);
-      let offset = 0;
-      while (offset < stat.size) {
-        const count = fs.readSync(fd, buffer, offset, stat.size - offset, offset);
-        if (count === 0) break;
-        offset += count;
-      }
-      const parsed = JSON.parse(buffer.toString("utf8", 0, offset));
-      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
-    } finally {
-      fs.closeSync(fd);
-    }
-  };
-  let temp = null;
+  let fd = null;
   try {
     const first = walk();
     if (first === null) return "unsafe";
-    const name = segments[segments.length - 1];
-    const target = path.join(first.dir, name);
-    const record2 = read(target, first.fileId);
-    if (record2 === null) return "unsafe";
+    const target = path.join(first.dir, segments[segments.length - 1]);
+    fd = fs.openSync(target, fs.constants.O_RDWR | noFollow);
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || idOf(stat) !== first.fileId || stat.size > 4096) return "unsafe";
+    const buffer = Buffer.alloc(stat.size);
+    let offset = 0;
+    while (offset < stat.size) {
+      const count = fs.readSync(fd, buffer, offset, stat.size - offset, offset);
+      if (count === 0) break;
+      offset += count;
+    }
+    const parsed = JSON.parse(buffer.toString("utf8", 0, offset));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return "unsafe";
+    const record2 = parsed;
     if (record2.token !== lock.token) return "token-mismatch";
     record2.runnerPid = pids.runnerPid;
     if (pids.groupPid !== void 0) record2.groupPid = pids.groupPid;
-    temp = path.join(first.dir, `.${name}.runner-${pids.runnerPid}-${Math.random().toString(16).slice(2)}.tmp`);
-    const fd = fs.openSync(temp, "wx");
+    const bytes = Buffer.from(`${JSON.stringify(record2)}
+`, "utf8");
+    const original = buffer.subarray(0, offset);
+    const put = (data) => {
+      let done = 0;
+      while (done < data.length) {
+        done += fs.writeSync(fd, data, done, data.length - done, done);
+      }
+      fs.ftruncateSync(fd, data.length);
+    };
     try {
-      fs.writeFileSync(fd, `${JSON.stringify(record2)}
-`, { encoding: "utf8" });
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
+      put(bytes);
+    } catch {
+      try {
+        put(original);
+        fs.fsyncSync(fd);
+      } catch {
+      }
+      return "failed";
     }
-    const second = walk();
-    if (second === null || second.dir !== first.dir || second.dirId !== first.dirId || second.fileId !== first.fileId) {
-      return "unsafe";
-    }
-    const current = read(target, second.fileId);
-    if (current === null) return "unsafe";
-    if (current.token !== lock.token) return "token-mismatch";
-    fs.renameSync(temp, target);
-    temp = null;
-    return "written";
+    fs.fsyncSync(fd);
+    const after = walk();
+    if (after === null) return "unsafe";
+    return after.dir === first.dir && after.dirId === first.dirId && after.fileId === first.fileId ? "written" : "unsafe";
   } catch {
     return "failed";
   } finally {
-    if (temp !== null) {
+    if (fd !== null) {
       try {
-        fs.rmSync(temp, { force: true });
+        fs.closeSync(fd);
       } catch {
       }
     }
