@@ -67,16 +67,33 @@ The caller supplies, per pull request:
 
 **Before Step 1, on every pull request swept — whatever it later turns out to hold** — remove any
 tree left at the fixed path `_local/scratch/wf-sweep-merged-ref` by an **earlier, interrupted**
-run. Verify first that `_local/scratch/` is a real directory owned by the current user and not a
-symlink (the Step 2 rule; create nothing here if it is absent — there is then nothing to clear),
-and remove that one fixed literal path with one `Bash` removal, never a path derived from a
-comment, a pull request or any read. It runs before any identity probe, so Step 1's `absent`
+run. Run the **scratch safety check** first (below; create nothing here if `_local/scratch/` is
+absent — there is then nothing to clear), and only when it passes remove that one fixed literal
+path with one `Bash` removal, never a path derived from a comment, a pull request or any read. It
+runs before any identity probe, so Step 1's `absent`
 exits, an empty review and a zero-candidate Step 3 all clear a leftover too: gating it on a
 remaining candidate left a full merged source tree on disk whenever the next swept pull request
 had nothing to judge.
 
 This clear is for a **previous** run's leftover only. A run that is not interrupted never leaves
 its own export behind: Step 4 removes it regardless of outcome.
+
+**The scratch safety check** — the one check every scratch use in this procedure runs (here, before
+Step 2's digest file, and before Step 4's export). It **passes** only when `_local/scratch/` is a
+real directory, owned by the current user, and not a symlink. It **fails** when `_local/scratch/`
+is a symlink, is not a directory, or is owned by anyone else — **and when the check itself cannot
+run** (a stat that errors is not a stat that passed). On a failure:
+
+- **Touch nothing under that path.** No removal, no creation, no write and no export runs through a
+  scratch directory that failed the check. A symlinked or foreign-owned parent would redirect every
+  one of them outside `_local/scratch/` — this ban overrides every "remove regardless of outcome"
+  rule below, since there is then nothing of this run's to remove.
+- **At this Step 0, or at Step 2:** record `absent: review read could not be performed`, naming
+  `scratch directory failed its safety check` and which condition failed, and **stop here for this
+  pull request** — no identity probe, no review read and no digest follows. It is a per-pull-request
+  `absent` failure under Step 6's exception, so it is never reported clean.
+- **At Step 4:** the Step 4 rule below applies — no `merged-ref-read`, and every candidate within
+  the cap is `unverifiable`.
 
 ## Step 1 — Reach the pull request (branch first, recorded reference second)
 
@@ -169,9 +186,11 @@ inlined body. Four rules make that file safe, and none is optional:
   the comment — that path becomes the operand of the `sha256sum` and the removal, and this digest is
   minted in Step 2, *before* Step 4's character allowlist has run on anything. A derived filename
   would reopen the injection sink at the one point the allowlist cannot yet cover.
-- **Before the first write, verify `_local/scratch/` is a real directory owned by the current user
-  and not a symlink**, and create it with `umask 077` if absent. The same discipline the other
-  scratch producer in this harness applies.
+- **Before the first write, run the Step 0 scratch safety check** — `_local/scratch/` a real
+  directory owned by the current user and not a symlink — creating it with `umask 077` if absent
+  and checking again. The same discipline the other scratch producer in this harness applies. **On
+  a failure** write nothing and remove nothing there: this pull request takes Step 0's
+  `absent: review read could not be performed` stop, naming the failed scratch safety check.
 - **Mode `0600`.** The file holds an untruncated attacker-authored body.
 - **Remove it regardless of outcome** — including when the hash errors. A failure that leaves the
   file behind leaves arbitrary-size, arbitrary-content text on disk, which the constitution's
@@ -333,10 +352,16 @@ reading that did not happen either.
 candidate within the Step 3 cap remains to be judged, invoke `merged-ref-read` with `<pr>` = the
 identity Step 1 found and `<dest>` = the fixed path `_local/scratch/wf-sweep-merged-ref` — a fixed
 path, never one derived from a comment, reused for every pull request because the sweep judges one
-pull request at a time. Before the call, verify `_local/scratch/` is a real directory owned by the
-current user and not a symlink (create it with `umask 077` if absent, the Step 2 rule). Step 0 has
-already cleared any tree an earlier interrupted run left at that fixed path, so the operation never
-finds its destination occupied by stale content.
+pull request at a time. Before the call, run the Step 0 scratch safety check (create the directory
+with `umask 077` if absent and check again, the Step 2 rule). Step 0 has already cleared any tree
+an earlier interrupted run left at that fixed path, so the operation never finds its destination
+occupied by stale content.
+
+- **The scratch safety check fails** → **do not invoke `merged-ref-read`** and export nothing.
+  Every candidate within the cap is disposed **`unverifiable`**, with the evidence `merged ref could
+  not be resolved (scratch directory failed its safety check)`. Nothing is opened, and the
+  regardless-of-outcome removal below does **not** run — nothing was exported, and a removal through
+  that directory would land outside `_local/scratch/`.
 
 - **`<read-performed>` = true** → hold `<merge-commit>` and the **merged-ref root** `<root>`. Every
   bound and every open below is taken against `<root>`, and nothing else.
@@ -349,7 +374,8 @@ finds its destination occupied by stale content.
 
 **Remove the merged-ref tree regardless of outcome** once this pull request's last candidate is
 disposed — including when a bound check or a read errors — with one `Bash` removal of that fixed
-path. It is a full source tree on disk; leaving it would violate the scratch article. Only an
+path. The one exception is a failed scratch safety check, which exported nothing and removes
+nothing (Step 0). It is a full source tree on disk; leaving it would violate the scratch article. Only an
 interruption can strand it, and then Step 0 of the next sweep collects it — whether or not that
 sweep's pull request has a candidate.
 
@@ -592,6 +618,7 @@ A caller sweeping many pull requests sums each count across them and reports the
 | `review-threads-read` / `pr-comments-read` raises an operation-level error | one `absent: review read could not be performed` record naming the error — an error is neither a performed empty read nor a typed false, and the lenient reading of an unhandled one is a false clean |
 | `<read-performed>` = false | one `absent: review read could not be performed` record — never "no findings" |
 | `merged-ref-read` returns `<read-performed>` = false (`not-merged`, `read-failed`) or errors | every candidate within the cap disposed `unverifiable`, evidence `merged ref could not be resolved (<reason>)`; nothing opened, and never a fall-back to the caller's checkout — never an empty result, and never clean |
+| the scratch safety check fails (`_local/scratch/` a symlink, not a directory, not owned by the current user, or the check cannot run) | nothing is removed, created, written or exported through it. At Step 0 or Step 2: one `absent: review read could not be performed` record naming the failed scratch safety check, and a stop for that pull request. At Step 4: no `merged-ref-read`, and every candidate within the cap is `unverifiable` with evidence `merged ref could not be resolved (scratch directory failed its safety check)`. Never clean |
 | `create_child` fails for one survivor | state one line naming the claim and the error; count it under `<unfiled>` with reason **`filing failed`** and its full evidence, and continue with the remaining survivors. It keeps its `issue filed` disposition — the verification concluded what it concluded — so it must reach a render site, and `<unfiled>` is the only one that carries a reason |
 
 Rationale, the incident this sweep answers, and the reachability analysis in full:
