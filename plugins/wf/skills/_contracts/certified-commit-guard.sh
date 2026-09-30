@@ -185,9 +185,10 @@ evaluate_tf() {
   require "$file" "$label" W7f 'tf may invoke the Skill tool for the re-verify' '^allowed-tools: \[.*Skill.*\]' || bad=1
   require "$file" "$label" W7g 'tf pins the merge to the drift-checked head' '`<expected-head>` = `B`' || bad=1
   require "$file" "$label" W7h 'a head that moved after the check stops like a refuse' '`head-moved`.*exactly as a \*\*.refuse.\*\*' || bad=1
-  require "$file" "$label" W7i 'the local-head fallback passes no pin to a provider that predates it' 'local-head fallback passes \*\*no\*\* `<expected-head>`' || bad=1
+  require "$file" "$label" W7i 'the unbound fallback passes no pin to a provider that predates it' 'unbound fallback passes \*\*no\*\* `<expected-head>`' || bad=1
+  require "$file" "$label" W7j 'step 6 pins every head checked through a provider that binds the head read' '`<expected-head>` = `B`\*\* whenever step 5 drift-checked a head through a provider that binds `branch-head-read`' || bad=1
   [ "$bad" -eq 0 ] || return 1
-  printf '%s: OK — drift check before every merge on every run, one re-verify per event, refuse merges nothing, merge pinned to the checked head, legacy fallback unpinned\n' "$label"
+  printf '%s: OK — drift check before every merge on every run, one re-verify per event, refuse merges nothing, merge pinned to the checked head, unbound legacy fallback unpinned\n' "$label"
   return 0
 }
 
@@ -343,8 +344,8 @@ allowed-tools: [Read, Write, Skill]
 5. **Drift check before the merge (the certified commit).** Follow `ref: certified-commit.ops.md` on every run — unconditionally, whoever pushed last.
    - **`reverify`** → invoke the audit **exactly once** for this drift event.
    - **`refuse`** → **no `pr-merge`**; stop the finalize.
-   - No `branch-head-read` → drift-check the local head; the local-head fallback passes **no** `<expected-head>` to step 6.
-6. **Merge.** Invoke `pr-merge`, passing **`<expected-head>` = `B`** whenever step 5 checked a head.
+   - No `branch-head-read` section → drift-check the local head; the unbound fallback passes **no** `<expected-head>` to step 6.
+6. **Merge.** Invoke `pr-merge`, passing **`<expected-head>` = `B`** whenever step 5 drift-checked a head through a provider that binds `branch-head-read`.
    - `head-moved` → nothing merged. Handle it exactly as a **`refuse`**.
 TF
   }
@@ -355,11 +356,12 @@ TF
   sound_tf | grep -v '`refuse`' >"$tmp/tf-refuse-merges.md"
   sound_tf | sed 's/\*\*exactly once\*\* for this drift event/as often as needed/' >"$tmp/tf-unbounded-reverify.md"
   sound_tf | sed 's/, Skill//' >"$tmp/tf-no-skill.md"
-  sound_tf | sed 's/, passing \*\*`<expected-head>` = `B`\*\* whenever step 5 checked a head//' >"$tmp/tf-unpinned-merge.md"
+  sound_tf | sed 's/, passing \*\*`<expected-head>` = `B`\*\* whenever step 5 drift-checked a head through a provider that binds `branch-head-read`//' >"$tmp/tf-unpinned-merge.md"
   sound_tf | grep -v '`head-moved`' >"$tmp/tf-head-moved-merges.md"
   sound_tf | sed 's/passes \*\*no\*\* `<expected-head>`/passes `<expected-head>` = `B`/' >"$tmp/tf-legacy-pinned.md"
+  sound_tf | sed 's/whenever step 5 drift-checked a head through a provider that binds `branch-head-read`/whenever step 5 took `B` from a performed remote head read/' >"$tmp/tf-bound-fallback-unpinned.md"
 
-  for case in tf-no-check tf-conditional tf-refuse-merges tf-unbounded-reverify tf-no-skill tf-unpinned-merge tf-head-moved-merges tf-legacy-pinned; do
+  for case in tf-no-check tf-conditional tf-refuse-merges tf-unbounded-reverify tf-no-skill tf-unpinned-merge tf-head-moved-merges tf-legacy-pinned tf-bound-fallback-unpinned; do
     evaluate_tf "$tmp/$case.md" "selftest/$case" >/dev/null 2>&1
     rc=$?
     if [ "$rc" -ne 1 ]; then
@@ -378,7 +380,7 @@ TF
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "certified-commit-guard: self-test passed — nine seeded ops-doc defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), seven seeded ship-wiring defects rejected (no push check, no pre-merge check, refuse proceeds, unbounded re-verify, no Skill tool, a resume that bypasses a refusal, a dropped rebind scenario), nine seeded address-pr defects rejected (no check, no content surface, a raw core read, unbounded re-verify, refuse reported mergeable, no Skill tool, no Drift line, a dropped rebind scenario, no drift residuals), eight seeded tf defects rejected (no pre-merge check, a conditional check, refuse merges, unbounded re-verify, no Skill tool, an unpinned merge, a moved head merged, a pin passed to a provider that predates it), and all four sound docs accepted."
+  echo "certified-commit-guard: self-test passed — nine seeded ops-doc defects rejected (dropped refuse outcome, unbounded re-verify, no per-event bound, fail-open, missing kind, missing reason, a tool noun, a dropped rebind scenario, an over-budget doc), seven seeded ship-wiring defects rejected (no push check, no pre-merge check, refuse proceeds, unbounded re-verify, no Skill tool, a resume that bypasses a refusal, a dropped rebind scenario), nine seeded address-pr defects rejected (no check, no content surface, a raw core read, unbounded re-verify, refuse reported mergeable, no Skill tool, no Drift line, a dropped rebind scenario, no drift residuals), nine seeded tf defects rejected (no pre-merge check, a conditional check, refuse merges, unbounded re-verify, no Skill tool, an unpinned merge, a moved head merged, a pin passed to a provider that predates it, a pin dropped for a provider that supports it), and all four sound docs accepted."
   exit 0
 fi
 
