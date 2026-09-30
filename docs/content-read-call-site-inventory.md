@@ -288,7 +288,9 @@ reads.
 > this table. `--print` emits the derived rows, so a new call site is recorded by regenerating
 > this table, never by hand-editing a count. A call site is any `references-template` occurrence
 > in a `plugins/*/skills/**` or `plugins/*/agents/*` file whose call names a `.md` `ref:`; a call
-> written in a skill's own `references/*` file counts for that skill.
+> written in a skill's own `references/*` file counts for that skill. Refs and this table's
+> templates are parsed as whole tokens (a space is part of the path) and judged by the resolver's
+> own `isSafeRelPath` rules; a table token that is not a safe `.md` path fails the guard.
 
 | Consumer | Template(s) read |
 |---|---|
