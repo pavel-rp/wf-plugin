@@ -11,7 +11,8 @@
 # the export so the sweep's symlink bound still sees it; and the caller's checkout, index and HEAD
 # are untouched. The export writes nothing beside <dest> (WF-883) and creates no missing parent of
 # it (WF-933), and a leftover an interrupted
-# run left there is cleared before a pull request with no candidates (WF-884). It then shows an
+# run left there is cleared before a pull request with no candidates (WF-884) — the procedure's
+# Step 0 clear must precede its Step 1, asserted by order, not presence (WF-934). It then shows an
 # unresolvable merge commit fails the recipe — the case the sweep must report as `merged ref could
 # not be resolved`, never as an empty result.
 #
@@ -79,6 +80,36 @@ if [ -f "$FRAGMENT" ]; then
 else
   bad "the sweep procedure is missing: ${FRAGMENT#"$ROOT"/}"
 fi
+
+# WF-934: zero-candidate cleanup depends on Step 0 running before Step 1, so heading presence is
+# not enough — Step 0's heading must come first. step_order_ok succeeds only when both headings
+# exist and Step 0's first line precedes Step 1's; a missing heading is a rejection, never a pass.
+step_order_ok() {
+  awk -v s0="## Step 0 — Clear an earlier interrupted run's export" '
+    index($0, s0) == 1 && !a { a = NR }
+    /^## Step 1 — / && !b { b = NR }
+    END { exit !(a && b && a < b) }' "$1" 2>/dev/null
+}
+if [ -f "$FRAGMENT" ]; then
+  step_order_ok "$FRAGMENT" \
+    && pass "procedure order: the sweep's Step 0 clear precedes its Step 1 identity probe" \
+    || bad "procedure order: the sweep's Step 0 heading is missing or no longer precedes Step 1"
+fi
+# Seeded self-test: the ordering check accepts the right order and rejects the reversed order and
+# a missing Step 0, so a check that always passed could not hide behind the real fragment.
+seed="$(mktemp)" || { bad "cannot create a seed file"; exit 1; }
+s0_line="## Step 0 — Clear an earlier interrupted run's export (every pull request, unconditionally)"
+s1_line="## Step 1 — Reach the pull request (branch first, recorded reference second)"
+before=$fail
+printf '%s\nbody\n%s\nbody\n' "$s0_line" "$s1_line" > "$seed"
+step_order_ok "$seed" || bad "self-test: the ordering check rejected Step 0 before Step 1"
+printf '%s\nbody\n%s\nbody\n' "$s1_line" "$s0_line" > "$seed"
+step_order_ok "$seed" && bad "self-test: the ordering check accepted Step 1 before Step 0"
+printf '%s\nbody\n' "$s1_line" > "$seed"
+step_order_ok "$seed" && bad "self-test: the ordering check accepted a procedure with no Step 0"
+rm -f "$seed"
+[ "$fail" = "$before" ] \
+  && pass "self-test: the ordering check accepts Step 0 first and rejects the reversed or missing order"
 
 # --- 1. A repository whose checkout is stale ------------------------------------------------
 
