@@ -701,6 +701,11 @@ scratch_safety_violations() {
   # otherwise be created through that ancestor — the very operation the check exists to prevent.
   printf '%s' "$flat" | grep -qEi '\*\*Absent\*\* — nothing exists at `_local/scratch/`, and every existing component above it is safe' \
     || printf 'Absent does not require every existing ancestor to be safe, so a missing scratch directory under an unsafe _local is created instead of failing\n'
+  # The Edge Cases table restates Absent; a symlink-only condition there reopens the same overlap.
+  printf '%s' "$flat" | grep -qF '| `_local/scratch/` is absent (and every existing component above it — the workspace root and `_local` — is safe) |' \
+    || printf 'the Edge Cases absent row does not require every existing ancestor to be safe, so the stop-condition table still creates scratch under an unsafe ancestor\n'
+  printf '%s' "$flat" | grep -qF 'is absent (and no existing component above it is a symlink)' \
+    && printf 'the Edge Cases absent row still carries the symlink-only precondition\n'
   printf '%s' "$flat" | grep -qF 'writable by group or others' \
     || printf 'a group- or world-writable scratch directory does not fail the check\n'
   printf '%s' "$flat" | grep -qF 'a creation that errors, or a re-check that is still absent, is a failure' \
@@ -1491,6 +1496,7 @@ An existing component is **safe** when it is a real directory, not a symlink, ow
 - or is writable by group or others —
   and when the check itself cannot run.
 Step 2: **Clear the fixed leaf before the first write.**
+| `_local/scratch/` is absent (and every existing component above it — the workspace root and `_local` — is safe) | not a failure |
 No removal, no creation, no write and no export runs through a scratch directory that failed the
 check. At Step 0 or Step 2: record `absent: review read could not be performed`, naming
 `scratch directory failed its safety check`, and stop. Step 2: run the Step 0 scratch safety check.
@@ -1530,6 +1536,11 @@ SCOK
   sed 's/, and every existing component above it is safe//' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-absentunsafe.md"
   expect_rejected "scratch-safety/absent-under-unsafe-ancestor" \
     "$(scratch_safety_violations "$tmp/frag-scratch-absentunsafe.md")"
+
+  # -- Scratch safety: the Edge Cases absent row reverted to the symlink-only condition alone.
+  sed 's/is absent (and every existing component above it — the workspace root and `_local` — is safe)/is absent (and no existing component above it is a symlink)/' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-staleabsentrow.md"
+  expect_rejected "scratch-safety/edge-cases-absent-row-symlink-only" \
+    "$(scratch_safety_violations "$tmp/frag-scratch-staleabsentrow.md")"
 
   # -- Scratch safety: the group/world-writable failure removed alone.
   grep -v 'writable by group or others' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-writable.md"
