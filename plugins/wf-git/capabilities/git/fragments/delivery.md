@@ -121,11 +121,21 @@ notes below record the load-bearing choices behind them.
 
 - **Read the upstream from `git config`, in one probe (step 2).** The two values
   (`branch.<b>.remote`, `branch.<b>.merge`) are read together with a single
-  `git config --get-regexp "^branch\.<branch>\.(remote|merge)$"` — a **probe
+  `git config --get-regexp '^branch\.<branch-re>\.(remote|merge)$'` — a **probe
   consolidation** (WF-211) that replaces the former two separate `git config --get`
   reads with one, outcomes identical. The abbreviated `<branch>@{u}` ref is deliberately
   **not** used: its remote and branch segments are joined by `/` with no escaping, so it
   cannot be split back apart when a remote or branch name itself contains a `/`.
+- **Escape the branch name before it enters the probe (WF-929).** `--get-regexp` takes an
+  extended regular expression, and a legal git branch name may carry ERE metacharacters
+  (`+ ( ) { } | $ .`). Interpolated raw, `feat+1` never matches its own `branch.feat+1.*`
+  keys (the `+` quantifies the `t`), and an unescaped `.` over-matches a neighbour
+  (`release.1` also matches `release-1`). A miss is silent and dangerous: the probe reports
+  "no upstream", so `push-upstream` bootstraps a push to `origin` and `branch-head-read`
+  reads `origin` — the wrong remote, or a false `not-published`. Backslash-escaping every
+  metacharacter into `<branch-re>` makes the name match only itself; single-quoting the
+  pattern keeps the shell from expanding `$` or `\` in it. `branch-head-read` references
+  this one definition rather than restating a pattern, so the two operations cannot drift.
 - **Local-tracking branch (`remote == .`).** A branch tracking another local branch has
   nothing to push upstream — returned as an explicit `failed (...)` rather than a
   confusing push attempt.
