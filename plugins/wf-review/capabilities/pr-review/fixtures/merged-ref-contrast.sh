@@ -96,7 +96,7 @@ if [ -f "$FRAGMENT" ]; then
     || bad "procedure order: the sweep's Step 0 heading is missing or no longer precedes Step 1"
 fi
 # Seeded self-test: the ordering check accepts the right order and rejects the reversed order and
-# a missing Step 0, so a check that always passed could not hide behind the real fragment.
+# a missing Step 0 or Step 1, so a check that always passed could not hide behind the real fragment.
 seed="$(mktemp)" || { bad "cannot create a seed file"; exit 1; }
 # Removed on exit even if a seeded check stops the run; the later trap replaces this one only
 # after the inline removal below.
@@ -112,9 +112,11 @@ printf '%s\nbody\n%s\nbody\n' "$s1_line" "$s0_line" > "$seed"
 step_order_ok "$seed" && { bad "self-test: the ordering check accepted Step 1 before Step 0"; st_fail=1; }
 printf '%s\nbody\n' "$s1_line" > "$seed"
 step_order_ok "$seed" && { bad "self-test: the ordering check accepted a procedure with no Step 0"; st_fail=1; }
+printf '%s\nbody\n' "$s0_line" > "$seed"
+step_order_ok "$seed" && { bad "self-test: the ordering check accepted a procedure with no Step 1"; st_fail=1; }
 rm -f "$seed"
 [ "$st_fail" -eq 0 ] \
-  && pass "self-test: the ordering check accepts Step 0 first and rejects the reversed or missing order"
+  && pass "self-test: the ordering check accepts Step 0 first and rejects the reversed order or a missing step"
 
 # --- 1. A repository whose checkout is stale ------------------------------------------------
 
