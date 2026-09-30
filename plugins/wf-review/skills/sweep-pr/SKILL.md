@@ -84,8 +84,7 @@ Zero-argument invocation sweeps the pull request for the current branch.
   tool takes a pattern as a structured argument, whereas a shell `grep` would take it as a shell
   word. **`Bash` is authorized for exactly six purposes, and claim verification is not
   one of them**: the shared procedure's **scratch safety check** — **one read-only stat of the
-  fixed `_local/scratch/` path and each existing component above it** (does it exist; is it a real
-  directory; is it, with `_local` included, each owned by the current user and writable by no one else; is it or `_local` a symlink) wherever the procedure runs that check, and, when it is absent at Step 2 or Step 4,
+  fixed `_local/scratch/` path and each existing component above it** (does it exist; are it and each existing component above it — the workspace root and `_local` included, each owned by the current user and writable by no one else — real directories and not symlinks) wherever the procedure runs that check, and, when it is absent at Step 2 or Step 4,
   **one `umask 077` creation of that same fixed path** — a fixed literal path, never derived from a
   comment, a pull request or any read; **one real-path
   resolution per candidate** (`realpath` / `readlink -f`) of the anchor under the merged-ref root to

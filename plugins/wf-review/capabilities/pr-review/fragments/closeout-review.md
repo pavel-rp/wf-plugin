@@ -80,22 +80,24 @@ its own export behind: Step 4 removes it regardless of outcome.
 
 **The scratch safety check** — the one check every scratch use in this procedure runs (here, before
 Step 2's digest file, and before Step 4's export). It is one read-only probe of the fixed path
-that examines **every existing component from the workspace root down** — `_local`, then
-`_local/scratch` — and it has three outcomes, not two:
+that examines **every existing component from the workspace root down** — the workspace root,
+`_local`, then `_local/scratch`. An existing component is **safe** when it is a real directory,
+not a symlink, owned by the current user, and writable by no one else. Every component is held to
+the same test because whoever can write a directory can swap the entry below it for a symlink
+after the check. The check has three outcomes, not two:
 
-- **Absent** — nothing exists at `_local/scratch/`, and no existing component above it is a
-  symlink. **Not a failure.** At Step 0 there is nothing
+- **Absent** — nothing exists at `_local/scratch/`, and every existing component above it is
+  safe. **Not a failure.** At Step 0 there is nothing
   to clear: skip the removal and continue to Step 1. At Steps 2 and 4, create the directory with
   `umask 077`, then run the check again on what now exists — a creation that errors, or a
   re-check that is still absent, is a failure.
-- **Passes** — the path exists and is a real directory; it and `_local` above it are each owned
-  by the current user and writable by no one else; and neither it nor any existing component above
-  it (`_local` included) is a symlink. `_local` is held to the same owner and mode as the leaf
-  because whoever can write `_local` can swap `_local/scratch` for a symlink after the check.
-- **Fails** — any existing component from the workspace root down to `_local/scratch` is a
-  symlink, or `_local` or the path **exists** and is not a directory, is owned by anyone else, or
-  is writable by group or others — **or the check itself cannot run** (a stat that errors is not a
-  stat that passed, and never reads as absent).
+- **Passes** — `_local/scratch` exists and every component from the workspace root down to it
+  is safe.
+- **Fails** — any existing component from the workspace root down to `_local/scratch` is not
+  safe: a symlink, not a directory, owned by anyone else, or writable by group or others —
+  **or the check itself cannot run** (a stat that errors is not a stat that passed, and never
+  reads as absent). A missing `_local/scratch` under an unsafe ancestor is a failure, never
+  Absent.
 
 On a failure:
 
@@ -105,7 +107,7 @@ On a failure:
   rule below, since there is then nothing of this run's to remove.
 - **Recovery is the operator's, never the sweep's.** Name the failed condition; when it is only that
   a directory is writable by group or others, state the remedy `chmod go-w` on that directory
-  (`_local` or `_local/scratch`) for the operator to run before the next sweep. The sweep itself
+  (the workspace root, `_local` or `_local/scratch`) for the operator to run before the next sweep. The sweep itself
   changes no permission.
 - **At this Step 0, or at Step 2:** record `absent: review read could not be performed`, naming
   `scratch directory failed its safety check` and which condition failed as its reason, and **stop
@@ -645,7 +647,7 @@ A caller sweeping many pull requests sums each count across them and reports the
 | `<read-performed>` = false | one `absent: review read could not be performed` record — never "no findings" |
 | `merged-ref-read` returns `<read-performed>` = false (`not-merged`, `read-failed`) or errors | every candidate within the cap disposed `unverifiable`, evidence `merged ref could not be resolved (<reason>)`; nothing opened, and never a fall-back to the caller's checkout — never an empty result, and never clean |
 | `_local/scratch/` is absent (and no existing component above it is a symlink) | not a failure: Step 0 skips the clear and continues; Steps 2 and 4 create it with `umask 077` and run the scratch safety check on what now exists — a failed creation, or a re-check still absent, is a failure |
-| the scratch safety check fails (any existing component from the workspace root down to `_local/scratch` is a symlink; or `_local` or `_local/scratch/` exists and is not a directory, not owned by the current user, or writable by group or others — or the check cannot run) | nothing is removed, created, written or exported through it. At Step 0 or Step 2: one `absent: review read could not be performed` record naming the failed scratch safety check, and a stop for that pull request. At Step 4: no `merged-ref-read`, and every candidate within the cap is `unverifiable` with evidence `merged ref could not be resolved (scratch directory failed its safety check)`. Never clean |
+| the scratch safety check fails (any existing component from the workspace root down to `_local/scratch` is a symlink, not a directory, not owned by the current user, or writable by group or others — or the check cannot run) | nothing is removed, created, written or exported through it. At Step 0 or Step 2: one `absent: review read could not be performed` record naming the failed scratch safety check, and a stop for that pull request. At Step 4: no `merged-ref-read`, and every candidate within the cap is `unverifiable` with evidence `merged ref could not be resolved (scratch directory failed its safety check)`. Never clean |
 | `create_child` fails for one survivor | state one line naming the claim and the error; count it under `<unfiled>` with reason **`filing failed`** and its full evidence, and continue with the remaining survivors. It keeps its `issue filed` disposition — the verification concluded what it concluded — so it must reach a render site, and `<unfiled>` is the only one that carries a reason |
 
 Rationale, the incident this sweep answers, and the reachability analysis in full:

@@ -60,7 +60,8 @@ one `wf:context-distiller` Task dispatch per swept pull request, and `Read`/`Gre
 anchor plus six `Bash` purposes the served body names (claim verification is not among
 them — the served body requires the `Grep` tool for that) — the served body's scratch safety
 check (one read-only stat of the fixed `_local/scratch/` path and each existing component
-above it, `_local` included, each owned by the current user and writable by no one else, and,
+above it, the workspace root and `_local` included, each owned by the current user and writable by
+no one else, and,
 when it is absent, one
 `umask 077` creation of that same fixed path, never derived from review text), one
 real-path resolution per candidate, under the merged-ref root, to bound the anchor, the removal of

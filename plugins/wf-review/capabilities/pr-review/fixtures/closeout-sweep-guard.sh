@@ -648,9 +648,10 @@ merged_ref_violations() {
       || printf 'a caller does not authorize the scratch safety check read-only stat, so the check cannot run and every pull request stops absent: %s\n' "${c##*/}"
     allowed_region "$c" | grep -qF 'umask 077' \
       || printf 'a caller does not authorize the scratch safety check umask 077 creation, so an absent scratch directory can never be created: %s\n' "${c##*/}"
-    # The stat must cover `_local`'s owner and mode, not only whether it is a symlink.
-    allowed_region "$c" | grep -qF '`_local` included, each owned by the current user and writable by no one else' \
-      || printf 'a caller does not authorize the owner and write-mode stat of the _local ancestor, so a foreign-writable _local passes: %s\n' "${c##*/}"
+    # The stat must cover the owner and mode of every ancestor — the workspace root and `_local` —
+    # not only whether each is a symlink.
+    allowed_region "$c" | grep -qF 'the workspace root and `_local` included, each owned by the current user and writable by no one else' \
+      || printf 'a caller does not authorize the owner and write-mode stat of the workspace root and _local, so a foreign-writable ancestor passes: %s\n' "${c##*/}"
     # The digest-file removal must also run before the first write, or a planted leaf is followed.
     allowed_region "$c" | grep -qF 'before the first write' \
       || printf 'a caller does not authorize removing the fixed digest leaf before the first write: %s\n' "${c##*/}"
@@ -690,10 +691,16 @@ scratch_safety_violations() {
   # component from the workspace root down, not only the leaf.
   printf '%s' "$flat" | grep -qEi 'every existing component from the workspace root|any existing component from the workspace root' \
     || printf 'the scratch safety check tests only the final component, so a symlinked _local ancestor passes and scratch work escapes the workspace\n'
-  # Whoever can write `_local` can swap `_local/scratch` for a symlink after the check, so the
-  # owner and write-mode requirements must reach the ancestor too, not only its symlink state.
-  printf '%s' "$flat" | grep -qF 'it and `_local` above it are each owned by the current user and writable by no one else' \
-    || printf 'the owner and write-mode requirements apply only to _local/scratch, so a foreign-writable _local can swap it for a symlink\n'
+  # Whoever can write a directory can swap the entry below it for a symlink after the check, so
+  # every component — the workspace root included — is held to one owner/mode/type test.
+  printf '%s' "$flat" | grep -qF 'An existing component is **safe** when it is a real directory, not a symlink, owned by the current user, and writable by no one else' \
+    || printf 'no single owner/mode/type test applies to every component, so a foreign-writable ancestor can swap the entry below it for a symlink\n'
+  printf '%s' "$flat" | grep -qF 'the workspace root, `_local`, then `_local/scratch`' \
+    || printf 'the workspace root is not among the checked components, so a writable root can swap _local for a symlink\n'
+  # Absent must not overlap Fails: a missing scratch directory under an unsafe ancestor would
+  # otherwise be created through that ancestor — the very operation the check exists to prevent.
+  printf '%s' "$flat" | grep -qEi '\*\*Absent\*\* — nothing exists at `_local/scratch/`, and every existing component above it is safe' \
+    || printf 'Absent does not require every existing ancestor to be safe, so a missing scratch directory under an unsafe _local is created instead of failing\n'
   printf '%s' "$flat" | grep -qF 'writable by group or others' \
     || printf 'a group- or world-writable scratch directory does not fail the check\n'
   printf '%s' "$flat" | grep -qF 'a creation that errors, or a re-check that is still absent, is a failure' \
@@ -1417,8 +1424,8 @@ MROK
   cat > "$tmp/caller-mr-ok.md" <<'CMROK'
 **Allowed:** pr-detect review-threads-read pr-comments-read merged-ref-read, exporting to the fixed
 `_local/scratch/wf-sweep-merged-ref` and removing it regardless of outcome; the scratch safety check
-(one read-only stat of the fixed `_local/scratch/`, `_local` included, each owned by the current
-user and writable by no one else, one umask 077 creation); the digest file removed before the
+(one read-only stat of the fixed `_local/scratch/`, the workspace root and `_local` included, each
+owned by the current user and writable by no one else, one umask 077 creation); the digest file removed before the
 first write and after each hash.
 **Forbidden:** anything else.
 CMROK
@@ -1453,9 +1460,12 @@ CMRF
   sed 's/, one umask 077 creation//' "$tmp/caller-mr-ok.md" > "$tmp/caller-mr-noumask.md"
   expect_rejected "merged-ref/caller-no-scratch-umask" \
     "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-noumask.md" "" "$tmp/caller-mr-ok.md")"
-  sed 's/`_local` included, each owned by the current/`_local` included/' "$tmp/caller-mr-ok.md" > "$tmp/caller-mr-noancestor.md"
+  sed 's/`_local` included, each$/`_local` included/' "$tmp/caller-mr-ok.md" | sed 's/^owned by the current user and writable by no one else, //' > "$tmp/caller-mr-noancestor.md"
   expect_rejected "merged-ref/caller-no-ancestor-owner-mode" \
     "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-noancestor.md" "" "$tmp/caller-mr-ok.md")"
+  sed 's/the workspace root and `_local` included/`_local` included/' "$tmp/caller-mr-ok.md" > "$tmp/caller-mr-noroot.md"
+  expect_rejected "merged-ref/caller-no-workspace-root" \
+    "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-noroot.md" "" "$tmp/caller-mr-ok.md")"
   sed 's/removed before the$/removed/' "$tmp/caller-mr-ok.md" | sed 's/^first write and after each hash/after each hash/' > "$tmp/caller-mr-noleaf.md"
   expect_rejected "merged-ref/caller-no-leaf-clear" \
     "$(merged_ref_violations "$tmp/frag-mr-ok.md" "$tmp/caller-mr-noleaf.md" "" "$tmp/caller-mr-ok.md")"
@@ -1472,9 +1482,11 @@ SCPRE
   # -- Scratch safety: a repaired procedure.
   cat > "$tmp/frag-scratch-ok.md" <<'SCOK'
 Run the **scratch safety check** first. **The scratch safety check** probes every existing component from the workspace root down and has three outcomes:
-- **Absent** — nothing exists there. **Not a failure.** Step 0 skips the clear.
+Components: the workspace root, `_local`, then `_local/scratch`.
+An existing component is **safe** when it is a real directory, not a symlink, owned by the current user, and writable by no one else.
+- **Absent** — nothing exists at `_local/scratch/`, and every existing component above it is safe. **Not a failure.** Step 0 skips the clear.
 - Steps 2 and 4 create it; a creation that errors, or a re-check that is still absent, is a failure.
-- Passes when it and `_local` above it are each owned by the current user and writable by no one else.
+- Passes when every component is safe.
 - Fails when the path exists and is a symlink, not a directory, or not owned by the current user —
 - or is writable by group or others —
   and when the check itself cannot run.
@@ -1503,10 +1515,21 @@ SCOK
   expect_rejected "scratch-safety/leaf-only-symlink-check" \
     "$(scratch_safety_violations "$tmp/frag-scratch-leafonly.md")"
 
-  # -- Scratch safety: owner and write-mode dropped from the _local ancestor alone.
-  sed 's/it and `_local` above it are each owned/it is owned/' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-noancestor.md"
+  # -- Scratch safety: the shared owner/mode/type test dropped alone.
+  grep -v 'An existing component is' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-noancestor.md"
   expect_rejected "scratch-safety/ancestor-owner-mode-unchecked" \
     "$(scratch_safety_violations "$tmp/frag-scratch-noancestor.md")"
+
+  # -- Scratch safety: the workspace root dropped from the checked components alone.
+  sed 's/the workspace root, `_local`, then/`_local`, then/' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-noroot.md"
+  expect_rejected "scratch-safety/workspace-root-unchecked" \
+    "$(scratch_safety_violations "$tmp/frag-scratch-noroot.md")"
+
+  # -- Scratch safety: Absent without the safe-ancestor precondition — it overlaps Fails, so a
+  #    missing scratch directory under an unsafe _local would be created instead of failing.
+  sed 's/, and every existing component above it is safe//' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-absentunsafe.md"
+  expect_rejected "scratch-safety/absent-under-unsafe-ancestor" \
+    "$(scratch_safety_violations "$tmp/frag-scratch-absentunsafe.md")"
 
   # -- Scratch safety: the group/world-writable failure removed alone.
   grep -v 'writable by group or others' "$tmp/frag-scratch-ok.md" > "$tmp/frag-scratch-writable.md"
