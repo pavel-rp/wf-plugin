@@ -767,6 +767,29 @@ test("a failed lock release is reported, not dropped", { skip: process.platform 
   }
 });
 
+test("a release that reads an unsafe lock is reported and neither follows nor removes it", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    const acquired = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z")));
+    assert.equal(acquired.ok, true);
+    if (!acquired.ok) return;
+    write(`${outside}/lock`, "not ours\n");
+    rmSync(lockPath(ws.root));
+    symlinkSync(`${outside}/lock`, lockPath(ws.root));
+    const released = releaseSetupLock(ws.root, acquired.token);
+    assert.equal(released.ok, false);
+    const detail = !released.ok ? released.detail : "";
+    assert.match(detail, /setup lock was not released/);
+    assert.ok(detail.includes(SETUP_LOCK_RELPATH), detail);
+    assert.ok(lstatSync(lockPath(ws.root)).isSymbolicLink(), "the unsafe lock path is left in place");
+    assert.equal(readFileSync(`${outside}/lock`, "utf8"), "not ours\n");
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test("unsafe-path: a symlinked setup lock blocks and the command does not run", () => {
   const ws = workspace(config({ "Dependency Setup Command": `\`${MARKED}\`` }));
   const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));

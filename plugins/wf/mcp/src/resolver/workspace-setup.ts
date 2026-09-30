@@ -671,10 +671,18 @@ export function acquireSetupLock(
 }
 
 /** Release the lock only while it still carries this run's token. A removal
- *  that fails is reported, so the caller can surface it in `diagnostics`. */
+ *  that fails, or a lock path that is no longer a contained regular file, is
+ *  reported, so the caller can surface it in `diagnostics`. An unsafe lock path
+ *  is never followed or removed. */
 export function releaseSetupLock(root: string, token: string): { ok: true } | { ok: false; detail: string } {
   heldSetupLockTokens.delete(token);
   const current = readLock(root, SETUP_LOCK_RELPATH);
+  if (current.status === "unsafe") {
+    return {
+      ok: false,
+      detail: `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`,
+    };
+  }
   if (current.status === "ok" && current.record?.token === token) {
     const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
     if (!removed.ok) {
