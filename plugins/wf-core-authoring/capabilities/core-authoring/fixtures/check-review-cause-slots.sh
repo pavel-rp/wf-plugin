@@ -111,7 +111,7 @@ if [ "${1:-}" = "--selftest" ]; then
   awk '/^Review:   </ { held = $0; next } { print } /^Next:     </ && held { print held; held = "" }' "$SHIP" > "$tmp/ship-order.md"
   seed "ship slot below Next" defect check_ship "$tmp/ship-order.md"
   { cat "$SHIP"; echo 'The Copilot review is requested here.'; } > "$tmp/ship-noun.md"; seed "ship names a product" defect check_ship "$tmp/ship-noun.md"
-  sed 's/ — review: <id> <recorded review summary> | <id> unknown — <reason>, … | none`/`/' "$FLEET" > "$tmp/fleet-seg.md"
+  sed 's/ — review: <id> <recorded review summary> | <id> unknown — <reason>, … | none//' "$FLEET" > "$tmp/fleet-seg.md"
   seed "fleet REPORT segment removed" defect check_fleet "$tmp/fleet-seg.md"
   sed 's/as `review: <value>`/as `rev: <value>`/' "$FLEET" > "$tmp/fleet-tok.md"; seed "fleet row token renamed" defect check_fleet "$tmp/fleet-tok.md"
   if [ "$st" -ne 0 ]; then echo "check-review-cause-slots selftest: FAIL"; exit 1; fi
