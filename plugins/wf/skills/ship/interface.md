@@ -13,7 +13,10 @@ keys, safety rules).
 
 `--review-boundary <dir>` is forwarded verbatim on every `/wf:run` invocation; a hand-back at
 verify's declared review boundary ends the run `SHIP — Handed-off` with
-`Built: stopped at review boundary`. Its presence also means the caller owns the review wait: a
+`Built: stopped at review boundary`. A hand-back at verify's critic boundary ends it
+`SHIP — Handed-off` with `Built: stopped at critic boundary`: a suspension resumed in place when
+`/wf:run` ran verify in its own context, otherwise an ended run the caller re-invokes with the same
+`--review-boundary <dir>`. Its presence also means the caller owns the review wait: a
 `ship.review` fill whose requested review is still outstanding ends the run `SHIP — Handed-off`
 with `Built: awaiting review`, unless `--review-lapsed` says the caller's deadline has passed.
 
