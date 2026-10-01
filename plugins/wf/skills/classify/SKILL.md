@@ -60,7 +60,7 @@ Branch inference above reaches `current-branch-query` by resolving the `delivery
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference.
-- Invoke the **Task** tool to delegate to the `wf:classify` subagent. **The subagent is the only place the rubric runs** — this skill never classifies inline.
+- Invoke the **Task** tool to delegate to the `wf:classify` subagent. **The subagent is the only place the rubric runs** — this skill never classifies inline, except under a caller that declares it cannot await children (the one exception its **When the caller cannot await children** paragraph names).
 
 **Forbidden:**
 
@@ -68,7 +68,7 @@ Branch inference above reaches `current-branch-query` by resolving the `delivery
 - Modify source files.
 - Run builds, tests, or installs.
 - Fetch from a tracker directly. Use already-resolved `00_reqs.md`/`01_spec.md` only — fetching is `/wf:spec` Phase 0's job.
-- Implement the rubric inline. If subagent invocation is unavailable, stop and report — see Phase 2.
+- Implement the rubric inline, outside the declared cannot-await exception. If subagent invocation is unavailable, stop and report — see Phase 2.
 
 ---
 
@@ -89,6 +89,8 @@ Branch inference above reaches `current-branch-query` by resolving the `delivery
 - For text mode: pass the raw text inline.
 
 Use the subagent's `CLASSIFY — Complete` block as this skill's output verbatim. Do **not** read or execute the Procedure section below — that's the subagent's job.
+
+**When the caller cannot await children.** If the running agent's own dispatch brief declares that it cannot await its children, obey the `isolated` answer per `invocation-runtime.ops.md` §"Resolver call root" (its **Caller cannot await children** paragraph) instead of the dispatch above: classification is a read-only unit with no declared hand-back boundary, so it runs in this context — apply the rubric the Procedure section names, obtained the same way — is recorded `inline — caller cannot await`, and emits the same `CLASSIFY —` block. This applies identically to every consumer's dispatch below.
 
 ---
 
