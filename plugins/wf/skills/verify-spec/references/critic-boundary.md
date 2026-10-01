@@ -106,7 +106,8 @@ the top and, at the critic step, computes its own `<C>`:
 |---|---|
 | Manifest for `<T>`/`<N>`/`<C>` | consume (§"Consume") |
 | Manifest or request for `<T>`/`<N>` carrying a different `**Candidates:**` | fail-close, `not run — candidate set changed since the hand-back` |
-| Neither | hand back (§"Hand back") |
+| Request for `<T>`/`<N>`/`<C>`, no manifest yet | hand back again (§"Hand back"), overwriting the request — the dispatcher's detect-first check keeps the critic to one dispatch per request |
+| No manifest and no request for `<T>`/`<N>` | hand back (§"Hand back") |
 
 ## Consume — the manifest and the verdict
 

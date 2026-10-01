@@ -106,7 +106,7 @@ none is treated as refuted or demoted. "Not run" is a different fact from "disag
 demotes nothing. The report names the failure once, next to the candidates it covers:
 
 ```
-- **critic** — not run: <reason> — <N> candidate(s) held blocking, unconfirmed:
+- **critic** — not run — <reason> — <N> candidate(s) held blocking, unconfirmed:
   <fingerprint>, <fingerprint>, …
 ```
 
