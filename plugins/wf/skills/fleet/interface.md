@@ -118,6 +118,9 @@ scoreboard's recorded state and never removes them; mutate a worktree an agent o
 request an agent is actively rebasing; improvise a review sweep at the `fleet.closeout-review` marker
 when the slot is unfilled or unresolved — the inline default states that no sweep ran and changes
 nothing else; accept as proof of ceremony anything a dispatched agent can author, or widen the
-receipt match to turn an unproven item proven; write the runtime model id aside, write any
+receipt match to turn an unproven item proven; present the self-reported shape ledger a shipper
+returns (or the `Shape:` axis rendered from it) as proof of anything, let a shape state change an
+item's proof-of-ceremony class or count, or leave an orchestrator takeover unrecorded in that item's
+row or render it as an as-routed run; write the runtime model id aside, write any
 AI-attribution trailer, a "generated with" footer, an emoji, or any promotional tagline into the
 scoreboard, a comment, or any output.
