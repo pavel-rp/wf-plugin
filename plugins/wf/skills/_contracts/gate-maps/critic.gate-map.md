@@ -11,5 +11,7 @@
 | DISAGREE | advisory | `verify-spec/SKILL.md` — a `DISAGREE`d candidate moves to `## Accepted warnings` (ledger `refuted`) |
 | UNVERIFIABLE | advisory | `verify-spec/SKILL.md` — an `UNVERIFIABLE` candidate moves to `## Accepted warnings` (ledger `warn`) |
 
-A malformed or failed critic dispatch keeps every candidate blocking (fail-closed); that is a
-property of the dispatch, not of any verdict label, so it adds no row here.
+A critic that did not run — a malformed or failed dispatch, or an unrecorded, failed or mismatched
+critic-boundary hand-back — keeps every candidate blocking (fail-closed, reported `not run`); that
+is a property of the dispatch, not of any verdict label, so it adds no row here. A verdict consumed
+at the critic boundary is an independent run and maps through the rows above unchanged.
