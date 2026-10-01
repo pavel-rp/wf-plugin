@@ -196,14 +196,21 @@ check_typed_results() {
 #    whose branch is published ONLY to a non-origin remote, returns that remote's head; and the
 #    documented pr-merge pin, run against a stub host that honours the head-match condition,
 #    merges an unchanged head and refuses (head-moved) one that moved after verification.
+#    The upstream probe, escaped as push-upstream step 2 defines, resolves a branch whose
+#    name carries a regex metacharacter (feat+1), which the raw pattern misses (WF-929).
 #    Everything runs in a private temp dir with local bare remotes — no network.
 check_head_binding() {
   local before=$fail section tmp
+  section=$(op_section "$OPS" push-upstream)
+  printf '%s\n' "$section" | grep -qF -- "'^branch\.<branch-re>\.(remote|merge)\$'" \
+    || err "head-binding: the push-upstream section never defines the escaped, single-quoted upstream probe over <branch-re>"
   section=$(op_section "$OPS" branch-head-read)
-  for token in 'branch\.<branch>\.(remote|merge)' '"<remote>" "refs/heads/<remote-branch>"' 'Never assume `origin`'; do
+  for token in '<branch-re>' '`push-upstream` step 2 defines' '"<remote>" "refs/heads/<remote-branch>"' 'Never assume `origin`'; do
     printf '%s\n' "$section" | grep -qF -- "$token" \
       || err "head-binding: the branch-head-read section never names '$token' (it must read the branch's configured remote)"
   done
+  grep -qF -- 'branch\.<branch>\.' "$OPS" \
+    && err "head-binding: the ops doc still places the raw <branch> in the upstream probe pattern"
   section=$(op_section "$OPS" pr-merge)
   for token in '<expected-head>' '--match-head-commit "<expected-head>"' 'headRefOid' '`head-moved`'; do
     printf '%s\n' "$section" | grep -qF -- "$token" \
@@ -243,6 +250,17 @@ check_head_binding() {
     # the fixed-origin read this replaces fails here: there is no origin remote at all
     if git ls-remote --exit-code --heads origin "refs/heads/feat-x" >/dev/null 2>&1; then exit 12; fi
 
+    # --- the same probe for a branch name carrying a regex metacharacter (WF-929) ---
+    git config 'branch.feat+1.remote' fork
+    git config 'branch.feat+1.merge' refs/heads/feat+1
+    bre=$(printf '%s' 'feat+1' | sed 's/[][\.*^$+?(){}|]/\\&/g')   # <branch-re>, as documented
+    probe=$(git config --get-regexp '^branch\.'"$bre"'\.(remote|merge)$' || true)
+    remote=$(printf '%s\n' "$probe" | awk '$1 ~ /\.remote$/ {print $2}')
+    [ "$remote" = fork ] || { echo "escaped probe read remote '$remote', expected fork" >&2; exit 17; }
+    # the raw, unescaped pattern this replaces misses the keys and would fall back to origin
+    raw=$(git config --get-regexp '^branch\.feat+1\.(remote|merge)$' || true)
+    [ -z "$raw" ] || { echo "the raw pattern unexpectedly matched: $raw" >&2; exit 18; }
+
     # --- pr-merge pin, as documented, against a stub host honouring --match-head-commit ---
     mkdir "$tmp/bin"
     cat >"$tmp/bin/gh" <<STUB
@@ -274,7 +292,7 @@ STUB
     [ ! -e "$tmp/merged" ] || exit 16                                   # ...and nothing was merged
   ) || err "head-binding: behavioral check failed (exit $?) — the non-origin head read or the pinned merge did not behave as documented"
   rm -rf "$tmp"
-  [ "$fail" = "$before" ] && ok "head-binding: branch-head-read reads a non-origin remote's head; pr-merge merges an unchanged head and refuses a moved one"
+  [ "$fail" = "$before" ] && ok "head-binding: branch-head-read reads a non-origin remote's head, the escaped upstream probe matches a metacharacter branch name; pr-merge merges an unchanged head and refuses a moved one"
 }
 
 echo "== wf-git capability self-checks =="

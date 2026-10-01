@@ -57,8 +57,13 @@ request, exporting its merge commit to the fixed `_local/scratch/wf-sweep-merged
 verification never reads the orchestrator's own checkout), the tracker write `create_child`
 (tracker mode only, at most 10 per swept pull request),
 one `wf:context-distiller` Task dispatch per swept pull request, and `Read`/`Grep` of a source file at a review-supplied
-anchor plus four `Bash` purposes the served body names (claim verification is not among
-them — the served body requires the `Grep` tool for that) — one
+anchor plus six `Bash` purposes the served body names (claim verification is not among
+them — the served body requires the `Grep` tool for that) — the served body's scratch safety
+check (one read-only stat of the fixed `_local/scratch/` path and each existing component
+above it, the workspace root and `_local` included, each owned by the current user and writable by
+no one else, and,
+when it is absent, one
+`umask 077` creation of that same fixed path, never derived from review text), one
 real-path resolution per candidate, under the merged-ref root, to bound the anchor, the removal of
 the fixed `_local/scratch/wf-sweep-merged-ref` export (any earlier interrupted run's leftover before
 each swept pull request's identity probe, whatever that pull request holds, and the export after
@@ -67,8 +72,8 @@ carries no thread node id (at most one per entry in each swept pull request's si
 ingest) for its
 idempotency key, whose preimage is written to the fixed `_local/scratch/wf-sweep-digest.bin` (mode
 `0600`) and hashed there rather than
-placed on a command line, that file being removed after each hash regardless of outcome — with the merged-ref
-removal, one of the two non-read-only `Bash` purposes — bounded by that body to an
+placed on a command line, that file being removed before the first write and after each hash regardless of outcome — with the merged-ref
+removal and the scratch-directory creation, one of the three non-read-only `Bash` purposes — bounded by that body to an
 anchor every character of which is drawn from `A`-`Z`, `a`-`z`, `0`-`9`, `.`, `_`, `/` and `-`
 (checked before any `Bash` call, since the real-path resolution puts the anchor on a command line),
 which is relative and free of any `..` segment, no component of which is a symlink, whose
@@ -92,7 +97,7 @@ item whose shipper reported a review-boundary hand-back — a closed list: read 
 each requested row as this orchestrator's own foreground child via the Agent tool (the row's agent
 token and prompt verbatim, routed first, no worktree isolation); write each returned block and then
 `manifest.md` (carrying the request's tree and round) into
-`_local/fleet/lenses/<id>/<tree>/r<round>/`, `<id>` accepted only as a single safe path segment; and send that same shipper one continuation
+`_local/fleet/lenses/<id>/<tree>/r<round>/`, `<id>` accepted only as a single safe path segment, and only after a canonical-containment check before any write or directory creation — no existing component from `_local/` down to each target file a symlink, and the resolved real path of the item folder and of the destination (each, or its nearest existing ancestor when not yet created) a strict descendant of `_local/` inside the workspace root; a path failing the check is never written, is recorded `unsafe exchange path`, and the shipper is continued without the review boundary; and send that same shipper one continuation
 message to re-invoke its ceremony. A row that fails is recorded failed and never re-run or applied by
 the orchestrator itself.
 

@@ -20217,35 +20217,60 @@ function parsePluginAnchor(registryPath) {
   if (!m) return null;
   return { pluginName: m[1], relPath: m[2] };
 }
+function isSiblingRoot(a, b) {
+  const left = a.replace(/\/+$/, "");
+  const right = b.replace(/\/+$/, "");
+  if (left === right) return false;
+  const parent = dirnameSlash(left);
+  return parent !== left && parent === dirnameSlash(right);
+}
 function resolveCapabilityPath(registryPath, opts) {
   const anchor = parsePluginAnchor(registryPath);
   if (!anchor) {
     const folder = joinSlash(opts.workspaceRoot, registryPath);
     const manifest = joinSlash(folder, "manifest.md");
     if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded", supersededRoot: null };
     }
-    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
+    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable", supersededRoot: null };
   }
   const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
-  if (recorded) {
-    const root = isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root);
-    const folder = joinSlash(root, anchor.relPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
-    }
-  }
+  const recordedRoot = recorded ? isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root) : null;
   const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
-  if (installed) {
-    const root = normalizeSlashes(installed.installPath);
-    const folder = joinSlash(root, anchor.relPath);
+  const installedRoot = installed ? normalizeSlashes(installed.installPath) : null;
+  const installedFolder = installedRoot ? joinSlash(installedRoot, anchor.relPath) : null;
+  const installedManifest = installedFolder ? joinSlash(installedFolder, "manifest.md") : null;
+  if (recordedRoot !== null) {
+    const folder = joinSlash(recordedRoot, anchor.relPath);
     const manifest = joinSlash(folder, "manifest.md");
     if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
+      if (installedRoot !== null && installedFolder !== null && installedManifest !== null && isSiblingRoot(recordedRoot, installedRoot) && opts.manifestExists(installedManifest)) {
+        return {
+          resolvedPath: installedFolder,
+          manifestPath: installedManifest,
+          provenance: "self-healed",
+          supersededRoot: recordedRoot.replace(/\/+$/, "")
+        };
+      }
+      return {
+        resolvedPath: folder,
+        manifestPath: manifest,
+        provenance: "recorded",
+        supersededRoot: null
+      };
     }
   }
-  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
+  if (installedFolder !== null && installedManifest !== null) {
+    if (opts.manifestExists(installedManifest)) {
+      return {
+        resolvedPath: installedFolder,
+        manifestPath: installedManifest,
+        provenance: "self-healed",
+        supersededRoot: null
+      };
+    }
+  }
+  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable", supersededRoot: null };
 }
 function isAbsoluteRoot(root) {
   const n = normalizeSlashes(root);
@@ -21523,7 +21548,7 @@ function applyQuestionValues(questions, inputs) {
 
 // src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 4;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.5.0" };
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 var PLAN_ENVELOPE_VERSION = 1;
 var APPLY_ENVELOPE_VERSION = 1;
@@ -23832,14 +23857,14 @@ import {
   mkdirSync as mkdirSync3,
   openSync as openSync3,
   readFileSync as readFileSync3,
-  readdirSync as readdirSync2,
+  readdirSync as readdirSync3,
   realpathSync as realpathSync4,
   renameSync as renameSync3,
   rmSync as rmSync3,
   rmdirSync,
   unlinkSync,
-  writeFileSync as writeFileSync2,
-  writeSync as writeSync2
+  writeFileSync as writeFileSync3,
+  writeSync
 } from "node:fs";
 import { execFileSync as execFileSync3, spawnSync } from "node:child_process";
 
@@ -23855,10 +23880,11 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   realpathSync as realpathSync2,
   renameSync,
   rmSync,
-  writeSync
+  writeFileSync
 } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -23946,7 +23972,7 @@ function writeTempBeside(dir, name, content) {
   let fd = null;
   try {
     fd = openSync(temp, "wx");
-    writeSync(fd, Buffer.from(content, "utf8"));
+    writeFileSync(fd, content, { encoding: "utf8" });
     fsyncSync(fd);
     closeSync(fd);
     fd = null;
@@ -24030,6 +24056,39 @@ function renameContainedStateFile(root, rel, toRel) {
     return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
   }
 }
+function listContainedStateEntries(root, relDir, prefix) {
+  if (!lexicallyPlain(relDir)) {
+    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
+  }
+  let cursor;
+  try {
+    cursor = realpathSync2(root);
+  } catch (err) {
+    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = relDir.split("/");
+  for (let i = 0; i < segments.length; i += 1) {
+    cursor = join(cursor, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync(cursor);
+    } catch (err) {
+      if (err.code === "ENOENT") return { ok: true, names: [] };
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink()) {
+      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
+    }
+    if (!stat.isDirectory()) return unsafe(shown, `\`${shown}\` is not a real directory.`);
+  }
+  try {
+    return { ok: true, names: readdirSync(cursor).filter((name) => name.startsWith(prefix)).sort() };
+  } catch (err) {
+    if (err.code === "ENOENT") return { ok: true, names: [] };
+    return { ok: false, kind: "failed", path: relDir, detail: `\`${relDir}\` could not be listed: ${messageOf(err)}` };
+  }
+}
 function linkContainedStateFileExclusive(root, fromRel, toRel) {
   const from = inspectContainedStatePath(root, fromRel);
   const to = inspectContainedStatePath(root, toRel);
@@ -24052,7 +24111,7 @@ import {
   openSync as openSync2,
   readFileSync as readFileSync2,
   readSync,
-  readdirSync,
+  readdirSync as readdirSync2,
   realpathSync as realpathSync3,
   statSync as statSync2
 } from "node:fs";
@@ -24993,6 +25052,7 @@ function buildSnapshot(inputs, io) {
   const manifestExists = (p) => io.readFile(p) !== null;
   const registeredByPlugin = /* @__PURE__ */ new Map();
   const pluginRootProvenance = /* @__PURE__ */ new Map();
+  const supersededPlugins = /* @__PURE__ */ new Set();
   const capabilities = registry2.capabilities.map((row) => {
     const anchor = /^plugin:([^/]+)\//.exec(row.path);
     const pluginName = anchor ? anchor[1] : null;
@@ -25002,6 +25062,15 @@ function buildSnapshot(inputs, io) {
       installedRoots,
       manifestExists
     });
+    if (pluginName && resolved.supersededRoot && !supersededPlugins.has(pluginName)) {
+      supersededPlugins.add(pluginName);
+      const installedRoot = resolved.resolvedPath ? relativize(workspaceRoot, resolved.resolvedPath) : "unknown";
+      diagnostics.push({
+        severity: "warning",
+        code: "capability/stale-plugin-root",
+        message: `plugin \`${pluginName}\`: the recorded root \`${relativize(workspaceRoot, resolved.supersededRoot)}\` is an older version folder of the installed pack; resolving from the installed pack instead (capability \`${row.name}\` \u2192 \`${installedRoot}\`). Re-run the owning pack's init to refresh its \`## Plugin Roots\` row.`
+      });
+    }
     let kind = null;
     let fragments = [];
     let articles = [];
@@ -25489,7 +25558,7 @@ import {
   readFileSync,
   renameSync as renameSync2,
   rmSync as rmSync2,
-  writeFileSync
+  writeFileSync as writeFileSync2
 } from "node:fs";
 import { dirname, join as join2 } from "node:path";
 import { randomBytes as randomBytes2 } from "node:crypto";
@@ -25504,7 +25573,7 @@ function writeSnapshot(workspaceRoot, snapshot) {
   const json = `${JSON.stringify(snapshot, null, 2)}
 `;
   try {
-    writeFileSync(tmp, json, { encoding: "utf8" });
+    writeFileSync2(tmp, json, { encoding: "utf8" });
     renameSync2(tmp, target);
   } catch (err) {
     try {
@@ -25681,7 +25750,7 @@ function fingerprintContainedCapabilityFile(root, selectedPath, maxBytes) {
 }
 function listFilesOrEmpty(absDir) {
   try {
-    return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+    return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
   } catch {
     return [];
   }
@@ -25792,6 +25861,98 @@ function planWorkspaceSetup(config2, stateText) {
 }
 var SETUP_RUNNER_MARGIN_MS = 15e3;
 var SETUP_RUNNER_DRAIN_MS = 2e3;
+function writeBackSetupRunnerPids(fs, path, lock, pids) {
+  const rel = lock.rel;
+  const segments = rel.split("/");
+  if (rel.length === 0 || rel.includes("\0") || rel.includes("\\") || rel.startsWith("/") || /^[A-Za-z]:/.test(rel) || segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+    return "unsafe";
+  }
+  let base;
+  try {
+    base = fs.realpathSync(lock.root);
+  } catch {
+    return "unsafe";
+  }
+  const idOf = (stat) => `${stat.dev}:${stat.ino}`;
+  const walk = () => {
+    let cursor = base;
+    let dirId = idOf(fs.lstatSync(base));
+    for (let i = 0; i < segments.length; i += 1) {
+      cursor = path.join(cursor, segments[i]);
+      let stat;
+      try {
+        stat = fs.lstatSync(cursor);
+      } catch {
+        return null;
+      }
+      if (stat.isSymbolicLink()) return null;
+      if (i < segments.length - 1) {
+        if (!stat.isDirectory()) return null;
+        dirId = idOf(stat);
+      } else {
+        if (!stat.isFile()) return null;
+        return { dir: path.dirname(cursor), dirId, fileId: idOf(stat) };
+      }
+    }
+    return null;
+  };
+  const noFollow = fs.constants.O_NOFOLLOW ?? 0;
+  let fd = null;
+  try {
+    const first = walk();
+    if (first === null) return "unsafe";
+    const target = path.join(first.dir, segments[segments.length - 1]);
+    fd = fs.openSync(target, fs.constants.O_RDWR | noFollow);
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || idOf(stat) !== first.fileId || stat.size > 4096) return "unsafe";
+    const buffer = Buffer.alloc(stat.size);
+    let offset = 0;
+    while (offset < stat.size) {
+      const count = fs.readSync(fd, buffer, offset, stat.size - offset, offset);
+      if (count === 0) break;
+      offset += count;
+    }
+    const parsed = JSON.parse(buffer.toString("utf8", 0, offset));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return "unsafe";
+    const record2 = parsed;
+    if (record2.token !== lock.token) return "token-mismatch";
+    record2.runnerPid = pids.runnerPid;
+    if (pids.groupPid !== void 0) record2.groupPid = pids.groupPid;
+    const bytes = Buffer.from(`${JSON.stringify(record2)}
+`, "utf8");
+    const original = buffer.subarray(0, offset);
+    const put = (data) => {
+      let done = 0;
+      while (done < data.length) {
+        done += fs.writeSync(fd, data, done, data.length - done, done);
+      }
+      fs.ftruncateSync(fd, data.length);
+    };
+    try {
+      put(bytes);
+    } catch {
+      try {
+        put(original);
+        fs.fsyncSync(fd);
+      } catch {
+      }
+      return "failed";
+    }
+    fs.fsyncSync(fd);
+    const after = walk();
+    if (after === null) return "unsafe";
+    return after.dir === first.dir && after.dirId === first.dirId && after.fileId === first.fileId ? "written" : "unsafe";
+  } catch {
+    return "failed";
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+      }
+    }
+  }
+}
 var SETUP_RUNNER_SOURCE = `
 const { spawn, spawnSync } = require("node:child_process");
 const req = JSON.parse(process.env.WF_SETUP_REQUEST);
@@ -25824,17 +25985,12 @@ try {
   out.error = err instanceof Error ? err.message : String(err);
   finish();
 }
+const writeBackSetupRunnerPids = ${writeBackSetupRunnerPids.toString()};
 const reportPids = () => {
   if (!req.lock || child === null || child.pid === undefined) return;
   try {
-    const fs = require("node:fs");
-    const rec = JSON.parse(fs.readFileSync(req.lock.path, "utf8"));
-    if (rec === null || typeof rec !== "object" || rec.token !== req.lock.token) return;
-    rec.runnerPid = process.pid;
-    if (!win) rec.groupPid = child.pid;
-    const tmp = req.lock.path + ".runner-" + process.pid;
-    fs.writeFileSync(tmp, JSON.stringify(rec) + "\\n", { flag: "wx" });
-    fs.renameSync(tmp, req.lock.path);
+    writeBackSetupRunnerPids(require("node:fs"), require("node:path"), req.lock,
+      win ? { runnerPid: process.pid } : { runnerPid: process.pid, groupPid: child.pid });
   } catch {}
 };
 if (child !== null) {
@@ -25878,6 +26034,7 @@ function parseSetupRunnerReport(stdout, durationMs) {
   }
 }
 var SETUP_LOCK_RELPATH = "_local/resolver/setup.lock";
+var SETUP_LOCK_ASIDE_SUFFIX = ".stale-";
 var SETUP_LOCK_WAIT_GRACE_SECONDS = 30;
 var SETUP_LOCK_POLL_MS = 100;
 var SETUP_LOCK_MAX_BYTES = 4096;
@@ -25950,6 +26107,13 @@ function readLock(root, rel) {
   if (read.status === "unsafe") return { status: "unsafe" };
   return { status: "ok", record: null };
 }
+function reblockFromCaptured(root, aside) {
+  const captured = readContainedCapabilityFile(root, aside, SETUP_LOCK_MAX_BYTES);
+  if (captured.status !== "ok") return "open";
+  const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, captured.content);
+  if (created.ok) return "restored";
+  return created.kind === "exists" ? "occupied" : "open";
+}
 function reclaimIfAbandoned(root, deps) {
   const current = readLock(root, SETUP_LOCK_RELPATH);
   if (current.status === "missing") return "retry";
@@ -25957,17 +26121,50 @@ function reclaimIfAbandoned(root, deps) {
   const holder = current.record;
   if (holder === null || holder.host !== deps.host || setupLockLive(holder, deps)) return "held";
   if (holder.groupPid !== void 0) deps.killGroup?.(holder.groupPid);
-  const aside = `${SETUP_LOCK_RELPATH}.stale-${randomBytes3(6).toString("hex")}`;
+  const aside = `${SETUP_LOCK_RELPATH}${SETUP_LOCK_ASIDE_SUFFIX}${randomBytes3(6).toString("hex")}`;
   const moved = renameContainedStateFile(root, SETUP_LOCK_RELPATH, aside);
   if (!moved.ok) return moved.kind === "unsafe" ? "unsafe" : "held";
   if (!moved.moved) return "retry";
   const captured = readLock(root, aside);
   if (captured.status === "ok" && captured.record?.token !== holder.token) {
     const linkBack = deps.linkBack ?? linkContainedStateFileExclusive;
-    if (!linkBack(root, aside, SETUP_LOCK_RELPATH)) return { restoreFailed: aside };
+    if (!linkBack(root, aside, SETUP_LOCK_RELPATH)) {
+      const reblocked = reblockFromCaptured(root, aside);
+      if (reblocked !== "restored") return { restoreFailed: aside, canonicalBlocked: reblocked === "occupied" };
+    }
   }
   removeContainedStateFile(root, aside);
   return "retry";
+}
+var SETUP_LOCK_DIR = SETUP_LOCK_RELPATH.slice(0, SETUP_LOCK_RELPATH.lastIndexOf("/"));
+var SETUP_LOCK_ASIDE_PREFIX = `${SETUP_LOCK_RELPATH.slice(SETUP_LOCK_DIR.length + 1)}${SETUP_LOCK_ASIDE_SUFFIX}`;
+function judgeAsideLocks(root, deps, ownToken) {
+  const listed = listContainedStateEntries(root, SETUP_LOCK_DIR, SETUP_LOCK_ASIDE_PREFIX);
+  if (!listed.ok) return listed.kind === "unsafe" ? "unsafe" : { failed: listed.detail };
+  let held = null;
+  for (const name of listed.names) {
+    const rel = `${SETUP_LOCK_DIR}/${name}`;
+    const read = readLock(root, rel);
+    if (read.status === "missing") continue;
+    if (read.status === "unsafe") return "unsafe";
+    const holder = read.record;
+    if (holder !== null && holder.token === ownToken) continue;
+    if (holder === null || holder.host !== deps.host || setupLockLive(holder, deps)) {
+      held ??= rel;
+      continue;
+    }
+    if (holder.groupPid !== void 0) deps.killGroup?.(holder.groupPid);
+    const removed = removeContainedStateFile(root, rel);
+    if (!removed.ok) return removed.kind === "unsafe" ? "unsafe" : { failed: removed.detail };
+  }
+  return held === null ? "clear" : { held };
+}
+function dropOwnLock(root, token2) {
+  issuedSetupLockTokens.add(token2);
+  const current = readLock(root, SETUP_LOCK_RELPATH);
+  if (current.status !== "ok" || current.record?.token !== token2) return { ok: true };
+  const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+  return removed.ok ? { ok: true } : { ok: false, detail: removed.detail };
 }
 function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs = MAX_SETUP_TIMEOUT_SECONDS * 1e3) {
   const token2 = randomBytes3(16).toString("hex");
@@ -25982,9 +26179,43 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
   for (; ; ) {
     const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, content);
     if (created.ok) {
-      issuedSetupLockTokens.add(token2);
-      heldSetupLockTokens.add(token2);
-      return { ok: true, token: token2 };
+      const asides = judgeAsideLocks(root, deps, token2);
+      if (asides === "clear") {
+        issuedSetupLockTokens.add(token2);
+        heldSetupLockTokens.add(token2);
+        return { ok: true, token: token2 };
+      }
+      const dropped = dropOwnLock(root, token2);
+      if (!dropped.ok) {
+        return {
+          ok: false,
+          kind: "failed",
+          detail: `the setup lock taken while a displaced record was present could not be given back: ${dropped.detail}; the command was not run.`
+        };
+      }
+      if (asides === "unsafe") {
+        return {
+          ok: false,
+          kind: "unsafe",
+          detail: `a displaced setup-lock record beside \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
+        };
+      }
+      if ("failed" in asides) {
+        return {
+          ok: false,
+          kind: "failed",
+          detail: `the displaced setup-lock records beside \`${SETUP_LOCK_RELPATH}\` could not be checked: ${asides.failed}; the command was not run.`
+        };
+      }
+      if (deps.now() >= deadline) {
+        return {
+          ok: false,
+          kind: "busy",
+          detail: `a setup run displaced to \`${asides.held}\` still holds the setup lock after ${Math.round(waitMs / 1e3)} seconds; the command was not run.`
+        };
+      }
+      deps.sleepMs(SETUP_LOCK_POLL_MS);
+      continue;
     }
     if (created.kind !== "exists") return { ok: false, kind: created.kind, detail: created.detail };
     const reclaim = reclaimIfAbandoned(root, deps);
@@ -25999,7 +26230,7 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
       return {
         ok: false,
         kind: "failed",
-        detail: `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could not be restored; it is kept at \`${reclaim.restoreFailed}\` and the command was not run.`
+        detail: reclaim.canonicalBlocked ? `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could not be restored because another record now holds the lock path; the captured lock is kept at \`${reclaim.restoreFailed}\` and the command was not run.` : `a live holder's \`${SETUP_LOCK_RELPATH}\` was moved aside during a reclaim and could neither be restored nor re-blocked at the lock path; it is kept at \`${reclaim.restoreFailed}\` and the command was not run.`
       };
     }
     if (reclaim === "retry") continue;
@@ -26016,10 +26247,30 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
 function releaseSetupLock(root, token2) {
   heldSetupLockTokens.delete(token2);
   const current = readLock(root, SETUP_LOCK_RELPATH);
+  if (current.status === "unsafe") {
+    return {
+      ok: false,
+      detail: `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
+    };
+  }
   if (current.status === "ok" && current.record?.token === token2) {
     const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
     if (!removed.ok) {
       return { ok: false, detail: `the setup lock was not released: ${removed.detail}` };
+    }
+    return { ok: true };
+  }
+  const listed = listContainedStateEntries(root, SETUP_LOCK_DIR, SETUP_LOCK_ASIDE_PREFIX);
+  if (!listed.ok) {
+    return { ok: false, detail: `the setup lock was not released: ${listed.detail}` };
+  }
+  for (const name of listed.names) {
+    const rel = `${SETUP_LOCK_DIR}/${name}`;
+    const aside = readLock(root, rel);
+    if (aside.status !== "ok" || aside.record?.token !== token2) continue;
+    const removed = removeContainedStateFile(root, rel);
+    if (!removed.ok) {
+      return { ok: false, detail: `the displaced setup lock was not released: ${removed.detail}` };
     }
   }
   return { ok: true };
@@ -26834,7 +27085,7 @@ function createDefaultPorts(workspaceRoot) {
     },
     writeFile: (absPath, content) => {
       mkdirSync3(dirname2(absPath), { recursive: true });
-      writeFileSync2(absPath, content, { encoding: "utf8" });
+      writeFileSync3(absPath, content, { encoding: "utf8" });
     },
     /** A write for a SECRET, kept separate from `writeFile` on purpose: the mode
      *  belongs to this one caller (WF-490's run-evidence issuer binding, whose
@@ -26861,7 +27112,7 @@ function createDefaultPorts(workspaceRoot) {
       mkdirSync3(dirname2(absPath), { recursive: true, mode: 448 });
       let fd = openSync3(absPath, "wx", 384);
       try {
-        writeFileSync2(fd, content, { encoding: "utf8" });
+        writeFileSync3(fd, content, { encoding: "utf8" });
         fsyncSync2(fd);
         closeSync3(fd);
         fd = null;
@@ -26956,7 +27207,7 @@ function createDefaultPorts(workspaceRoot) {
       };
       if (lock !== void 0) {
         try {
-          request.lock = { path: resolve3(realpathSync4(workspaceRoot), ...lock.rel.split("/")), token: lock.token };
+          request.lock = { root: realpathSync4(workspaceRoot), rel: lock.rel, token: lock.token };
         } catch {
         }
       }
@@ -26998,14 +27249,14 @@ function createDefaultPorts(workspaceRoot) {
     },
     listDirs: (absDir) => {
       try {
-        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+        return readdirSync3(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
       } catch {
         return [];
       }
     },
     listFiles: (absDir) => {
       try {
-        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+        return readdirSync3(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
       } catch {
         return [];
       }
@@ -27144,7 +27395,7 @@ function createRecoveryPorts(workspaceRoot) {
       try {
         const bytes = readFileSync3(backup.target);
         mkdirSync3(dirname2(targetPath.target), { recursive: true });
-        writeFileSync2(targetPath.target, bytes);
+        writeFileSync3(targetPath.target, bytes);
         return { ok: true };
       } catch (err) {
         return {
@@ -27218,7 +27469,7 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     try {
       mkdirSync3(dir, { recursive: true });
       fd = openSync3(temp, "wx", 384);
-      writeSync2(fd, bytes);
+      writeSync(fd, bytes);
       fsyncSync2(fd);
       closeSync3(fd);
       fd = null;
@@ -27260,7 +27511,7 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     },
     backupsPresent: () => {
       try {
-        return readdirSync2(backupRoot).length > 0;
+        return readdirSync3(backupRoot).length > 0;
       } catch {
         return false;
       }
@@ -31295,10 +31546,10 @@ import {
   lstatSync as lstatSync4,
   mkdirSync as mkdirSync4,
   readFileSync as readFileSync4,
-  readdirSync as readdirSync3,
+  readdirSync as readdirSync4,
   renameSync as renameSync4,
   rmSync as rmSync4,
-  writeFileSync as writeFileSync3
+  writeFileSync as writeFileSync4
 } from "node:fs";
 var SETUP_STATE_DIR = "_local";
 var CORE_CONFIG_REL = "_local/config.md";
@@ -31340,7 +31591,7 @@ function ancestorsSafe(root, rel) {
 function listClass(sourceRoot, dirRel, suffixes) {
   let names;
   try {
-    names = readdirSync3(join5(sourceRoot, dirRel));
+    names = readdirSync4(join5(sourceRoot, dirRel));
   } catch {
     return [];
   }
@@ -31451,7 +31702,7 @@ function applyPreparation(childRoot, copies) {
     mkdirSync4(target.slice(0, target.lastIndexOf("/")), { recursive: true });
     const temp = `${target}.wf-prepare-${process.pid}.tmp`;
     try {
-      writeFileSync3(temp, bytes, { flag: "wx" });
+      writeFileSync4(temp, bytes, { flag: "wx" });
       renameSync4(temp, target);
     } catch (err) {
       rmSync4(temp, { force: true });

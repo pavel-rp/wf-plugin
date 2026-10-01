@@ -71,7 +71,7 @@
     {
       "name": "wf-git",
       "source": "./plugins/wf-git",
-      "version": "0.13.1",
+      "version": "0.13.3",
       "description": "wf delivery-provider pack: the git capability owning the wf capability-registry's delivery surface (branch/commit/push/PR git+gh bindings). Ships /wf-git:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
@@ -101,7 +101,7 @@
     {
       "name": "wf-review",
       "source": "./plugins/wf-review",
-      "version": "0.11.0",
+      "version": "0.11.3",
       "description": "wf PR-review feature pack: the pr-review feature capability shipping the user-invoked /wf-review:address-pr, /wf-review:review-pr and /wf-review:sweep-pr skills. Reads/verifies/addresses review comments and CI failures, posts verified findings, and sweeps a merged PR for review threads that landed after the merge — entirely through the delivery provider's PR-interaction operations, the set consumed by the capability as a whole — its three skills plus its two slot fills — rather than by every skill (pr-detect/pr-comments-read/pr-comment-post/checks-read/review-thread-resolve/review-threads-read/review-thread-reply/review-request-read, the last two dispatched only by the ship.review fill and forbidden to sweep-pr), treating review-tool output as hypothesis and filing verified survivors through the active tracker. Composes natively on install for its three skills; contributes the ship.review and fleet.closeout-review slot fills once the pr-review capability is registered via /wf-review:init.",
       "author": {
         "name": "Pavel Kalabin"
@@ -131,7 +131,7 @@
     {
       "name": "wf-sandbox-testing",
       "source": "./plugins/wf-sandbox-testing",
-      "version": "0.15.3",
+      "version": "0.15.4",
       "description": "wf skill-eval harness pack: the sandbox-testing feature capability. Runs real headless wf:* skill invocations hermetically in a fingerprinted container (runner/), judges the runner's structural outputs — terminal block, workspace file set, invoked contract-op set — statistically over N runs and emits a variance-aware report separating drift from regression (assert/), ships the SMOKE/STATISTICAL tier commands and the baseline-comparison primitive, the behavioral-regression corpus mined retrofit-first from observed failures (corpus/), and the findings-loop procedure that turns a new observed failure into an assertion. Owns no provider surface and attaches no phase fragment; downstream fixtures that script a provider pair with the wf-fake pack (enforced loudly at run time, not via requires:). Ships /wf-sandbox-testing:new-experiment, an interview-driven scaffolder that emits a runnable experiment kit — manifest, kit-root files, and an engine-derived runbook — for the shared experiment engine, plus /wf-sandbox-testing:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"

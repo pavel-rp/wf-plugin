@@ -35,10 +35,11 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
-  writeSync,
+  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -161,7 +162,11 @@ function writeTempBeside(dir: string, name: string, content: string): string {
   let fd: number | null = null;
   try {
     fd = openSync(temp, "wx");
-    writeSync(fd, Buffer.from(content, "utf8"));
+    // Write in full, not with a bare `writeSync`: that returns a byte count
+    // and does not retry, so a short write would fsync and rename a TRUNCATED
+    // ledger or marker into place while this reported success. A descriptor
+    // `writeFileSync` loops until every byte is written, or throws.
+    writeFileSync(fd, content, { encoding: "utf8" });
     fsyncSync(fd);
     closeSync(fd);
     fd = null;
@@ -281,6 +286,51 @@ export function renameContainedStateFile(
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, moved: false };
     return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
+  }
+}
+
+/**
+ * The names directly inside the workspace-relative directory `relDir` that
+ * start with `prefix` (WF-997). Every segment of `relDir` must be a real
+ * directory — a link anywhere on the way is `unsafe`, never followed. An absent
+ * directory has no entries. Only names are returned: a caller reads each entry
+ * through the contained reader, which re-checks it.
+ */
+export function listContainedStateEntries(
+  root: string,
+  relDir: string,
+  prefix: string,
+): { ok: true; names: string[] } | { ok: false; kind: "unsafe" | "failed"; path: string; detail: string } {
+  if (!lexicallyPlain(relDir)) {
+    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
+  }
+  let cursor: string;
+  try {
+    cursor = realpathSync(root);
+  } catch (err) {
+    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = relDir.split("/");
+  for (let i = 0; i < segments.length; i += 1) {
+    cursor = join(cursor, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync(cursor);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, names: [] };
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink()) {
+      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
+    }
+    if (!stat.isDirectory()) return unsafe(shown, `\`${shown}\` is not a real directory.`);
+  }
+  try {
+    return { ok: true, names: readdirSync(cursor).filter((name) => name.startsWith(prefix)).sort() };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, names: [] };
+    return { ok: false, kind: "failed", path: relDir, detail: `\`${relDir}\` could not be listed: ${messageOf(err)}` };
   }
 }
 

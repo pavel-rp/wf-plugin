@@ -121,11 +121,21 @@ notes below record the load-bearing choices behind them.
 
 - **Read the upstream from `git config`, in one probe (step 2).** The two values
   (`branch.<b>.remote`, `branch.<b>.merge`) are read together with a single
-  `git config --get-regexp "^branch\.<branch>\.(remote|merge)$"` — a **probe
+  `git config --get-regexp '^branch\.<branch-re>\.(remote|merge)$'` — a **probe
   consolidation** (WF-211) that replaces the former two separate `git config --get`
   reads with one, outcomes identical. The abbreviated `<branch>@{u}` ref is deliberately
   **not** used: its remote and branch segments are joined by `/` with no escaping, so it
   cannot be split back apart when a remote or branch name itself contains a `/`.
+- **Escape the branch name before it enters the probe (WF-929).** `--get-regexp` takes an
+  extended regular expression, and a legal git branch name may carry ERE metacharacters
+  (`+ ( ) { } | $ .`). Interpolated raw, `feat+1` never matches its own `branch.feat+1.*`
+  keys (the `+` quantifies the `t`), and an unescaped `.` over-matches a neighbour
+  (`release.1` also matches `release-1`). A miss is silent and dangerous: the probe reports
+  "no upstream", so `push-upstream` bootstraps a push to `origin` and `branch-head-read`
+  reads `origin` — the wrong remote, or a false `not-published`. Backslash-escaping every
+  metacharacter into `<branch-re>` makes the name match only itself; single-quoting the
+  pattern keeps the shell from expanding `$` or `\` in it. `branch-head-read` references
+  this one definition rather than restating a pattern, so the two operations cannot drift.
 - **Local-tracking branch (`remote == .`).** A branch tracking another local branch has
   nothing to push upstream — returned as an explicit `failed (...)` rather than a
   confusing push attempt.
@@ -399,6 +409,15 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   the exported tree can collide with it, and it is removed before the op
   returns, success or failure. Whatever an interruption leaves is inside
   `<dest>`, so the caller's one removal covers every byte the op wrote.
+- **`<dest>` is created alone, never its parents.** `mkdir -p` would have made
+  every missing parent component of `<dest>` — directories outside `<dest>` that
+  the caller's removal of `<dest>` never reaches (WF-933). A single-directory
+  `mkdir` creates exactly `<dest>`: a missing parent fails it, and so does a
+  `<dest>` that appeared after the existence check, and both are `read-failed`
+  with nothing removed, because a directory this op did not create is not this
+  op's to delete. The partial-export cleanup runs only once `<dest>` is the
+  op's own. Creating the parent is the caller's job, as it already is for the
+  post-merge sweep's scratch directory.
 - **`not-merged` is distinct from `read-failed`.** A pull request that is open,
   closed without merging, or carries no merge commit is a stated fact about the
   pull request; every other failure (host error, no such pull request, a commit
@@ -488,12 +507,14 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   the local branch lags or leads it.
 - **Merged ref** — `merged-ref-read`: step 1 on an unmerged pull request or a null
   merge commit → `<reason>` = `not-merged`; step 1 host errors, step 2 an unfetchable
-  commit, step 3 an unresolvable tree, or step 4 an existing `<dest>` or a failed
-  archive/extract → `<reason>` = `read-failed` (a partial export removed); otherwise
+  commit, step 3 an unresolvable tree, step 4 an existing `<dest>` or a missing
+  parent of `<dest>` (both before the op creates anything — nothing created,
+  nothing removed), or step 4 a failed archive/extract after the op created
+  `<dest>` (that partial export removed) → `<reason>` = `read-failed`; otherwise
   `<read-performed>` = true with `<merge-commit>`, `<tree>` and, when `<dest>` was
   supplied, `<root>` — even when the local checkout predates the merge. On every
-  path nothing is written outside `<dest>`: the staging archive is inside it and
-  gone before the op returns.
+  path nothing is written outside `<dest>`: no missing parent is created, and the
+  staging archive is inside it and gone before the op returns.
 - **Review requests** — `review-request-read`: step 1 or step 2 non-zero (host
   error, no such pull request) → `<reason>` = `read-failed`; otherwise
   `<read-performed>` = true with `<pending>`, `<request-events>`, `<reviews>` and

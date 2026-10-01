@@ -267,6 +267,9 @@ export function buildSnapshot(
   }
   const registeredByPlugin = new Map<string, RegEntry>();
   const pluginRootProvenance = new Map<string, PluginRootRecord["provenance"]>();
+  // Plugins whose recorded root was passed over for a newer installed sibling
+  // version — reported once per plugin, however many capabilities it provides.
+  const supersededPlugins = new Set<string>();
 
   const capabilities: CapabilityRecord[] = registry.capabilities.map((row) => {
     const anchor = /^plugin:([^/]+)\//.exec(row.path);
@@ -278,6 +281,18 @@ export function buildSnapshot(
       installedRoots,
       manifestExists,
     });
+
+    if (pluginName && resolved.supersededRoot && !supersededPlugins.has(pluginName)) {
+      supersededPlugins.add(pluginName);
+      const installedRoot = resolved.resolvedPath
+        ? relativize(workspaceRoot, resolved.resolvedPath)
+        : "unknown";
+      diagnostics.push({
+        severity: "warning",
+        code: "capability/stale-plugin-root",
+        message: `plugin \`${pluginName}\`: the recorded root \`${relativize(workspaceRoot, resolved.supersededRoot)}\` is an older version folder of the installed pack; resolving from the installed pack instead (capability \`${row.name}\` → \`${installedRoot}\`). Re-run the owning pack's init to refresh its \`## Plugin Roots\` row.`,
+      });
+    }
 
     let kind: string | null = null;
     let fragments: CapabilityRecord["fragments"] = [];

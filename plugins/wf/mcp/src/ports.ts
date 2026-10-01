@@ -429,11 +429,13 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
         timeoutMs,
         tailChars: SETUP_OUTPUT_TAIL_CHARS,
       };
-      // The held lock's absolute path: the runner records its own and the
-      // command group's pid there, keeping the lock live while they run.
+      // The held lock, as the canonical root plus its workspace-relative path:
+      // the runner reaches it through the contained, no-follow walk (WF-925)
+      // and records its own and the command group's pid there, keeping the
+      // lock live while they run.
       if (lock !== undefined) {
         try {
-          request.lock = { path: resolve(realpathSync(workspaceRoot), ...lock.rel.split("/")), token: lock.token };
+          request.lock = { root: realpathSync(workspaceRoot), rel: lock.rel, token: lock.token };
         } catch {
           // No resolvable root: the lock stays judged by holder pid and time.
         }

@@ -3,12 +3,15 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as nodeFs from "node:fs";
+import * as nodePath from "node:path";
 import {
   chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -34,7 +37,9 @@ import {
   SETUP_RUNNER_MARGIN_MS,
   renderSetupState,
   SETUP_LOCK_RELPATH,
+  SETUP_RUNNER_SOURCE,
   setupCommandDigest,
+  writeBackSetupRunnerPids,
   type SetupLockDeps,
   type WorkspaceSetupResponse,
 } from "../src/resolver/workspace-setup.js";
@@ -579,25 +584,233 @@ test("lock liveness: this process's own pid with a token it is not using is aban
   }
 });
 
-test("reclaim: a captured live lock that cannot be restored is kept aside and nothing runs", () => {
+// WF-926 — a reclaim that captures a live holder's lock and cannot link it
+// back never leaves the lock path empty: a second acquire must still wait.
+function staleLockReplacedByLiveHolder(root: string): { fresh: string; deps: ReturnType<typeof lockDeps> } {
+  write(
+    lockPath(root),
+    renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "stale", acquiredAt: "2026-01-01T00:00:00.000Z", groupPid: GROUP }),
+  );
+  const fresh = renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "fresh", acquiredAt: "2026-06-01T00:00:00.000Z" });
+  const deps = lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z"));
+  // Between the judgement and the rename, a new holder replaces the lock.
+  deps.killGroup = () => write(lockPath(root), fresh);
+  return { fresh, deps };
+}
+
+function staleCopies(root: string): string[] {
+  return readdirSync(join(root, "_local", "resolver")).filter((name) => name.startsWith("setup.lock.stale-"));
+}
+
+test("reclaim: a captured live lock whose link-back fails re-blocks the lock path and a second acquire cannot succeed", () => {
   const ws = workspace(config({}));
   try {
-    write(
-      lockPath(ws.root),
-      renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "stale", acquiredAt: "2026-01-01T00:00:00.000Z", groupPid: GROUP }),
-    );
-    const fresh = renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "fresh", acquiredAt: "2026-06-01T00:00:00.000Z" });
-    const deps = lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z"));
-    // Between the judgement and the rename, a new holder replaces the lock.
-    deps.killGroup = () => write(lockPath(ws.root), fresh);
+    const { fresh, deps } = staleLockReplacedByLiveHolder(ws.root);
     deps.linkBack = () => false;
+    const first = acquireSetupLock(ws.root, 1_000, deps);
+    assert.equal(first.ok, false, JSON.stringify(first));
+    assert.equal(!first.ok && first.kind, "busy", "the re-blocked lock is waited on like any live holder");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), fresh, "the lock path carries the live holder's own record");
+    assert.deepEqual(staleCopies(ws.root), [], "the captured copy is removed only once the lock path is blocked again");
+
+    const second = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z")));
+    assert.equal(second.ok, false, "a second acquire cannot take the lock beside the live holder");
+    assert.equal(!second.ok && second.kind, "busy");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), fresh);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("reclaim: a captured live lock is kept aside when another record already holds the lock path", () => {
+  const ws = workspace(config({}));
+  try {
+    const { fresh, deps } = staleLockReplacedByLiveHolder(ws.root);
+    const other = renderSetupLock({ pid: DEAD_RESOLVER + 20, host: hostname(), token: "other", acquiredAt: "2026-06-01T00:00:00.000Z" });
+    // The link-back loses to a caller that took the free lock path first.
+    deps.linkBack = (root) => {
+      write(lockPath(root), other);
+      return false;
+    };
     const result = acquireSetupLock(ws.root, 1_000, deps);
     assert.equal(result.ok, false);
     assert.equal(!result.ok && result.kind, "failed");
+    assert.match(!result.ok ? result.detail : "", /another record now holds the lock path/);
     const aside = !result.ok ? /`(_local\/resolver\/setup\.lock\.stale-[0-9a-f]+)`/.exec(result.detail)?.[1] : undefined;
     assert.ok(aside, !result.ok ? result.detail : "");
     assert.equal(readFileSync(`${ws.root}/${aside}`, "utf8"), fresh, "the captured live lock is never deleted");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), other, "the record holding the lock path is left alone");
   } finally {
+    ws.cleanup();
+  }
+});
+
+// WF-997 — a displaced live holder kept aside keeps blocking acquisition after
+// the record that occupied the lock path is released.
+test("reclaim: a displaced live holder still blocks acquisition after the occupier releases", () => {
+  const ws = workspace(config({}));
+  try {
+    const { fresh, deps } = staleLockReplacedByLiveHolder(ws.root);
+    const other = renderSetupLock({ pid: DEAD_RESOLVER + 20, host: hostname(), token: "other", acquiredAt: "2026-06-01T00:00:00.000Z" });
+    deps.linkBack = (root) => {
+      write(lockPath(root), other);
+      return false;
+    };
+    const first = acquireSetupLock(ws.root, 1_000, deps);
+    assert.equal(!first.ok && first.kind, "failed", JSON.stringify(first));
+    assert.equal(staleCopies(ws.root).length, 1);
+
+    // The occupier finishes and releases: the lock path is free again.
+    assert.equal(releaseSetupLock(ws.root, "other").ok, true);
+    assert.equal(existsSync(lockPath(ws.root)), false);
+
+    const next = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z")));
+    assert.equal(next.ok, false, "no acquire succeeds beside the displaced live holder");
+    assert.equal(!next.ok && next.kind, "busy");
+    assert.match(!next.ok ? next.detail : "", /setup\.lock\.stale-[0-9a-f]+/);
+    assert.equal(existsSync(lockPath(ws.root)), false, "the waiting caller gave the lock path back");
+    assert.equal(readFileSync(join(ws.root, "_local", "resolver", staleCopies(ws.root)[0]), "utf8"), fresh);
+
+    // Once the displaced holder is no longer live, its record stops blocking.
+    const later = lockDeps(() => false, Date.parse("2027-06-01T00:00:00Z"));
+    const after = acquireSetupLock(ws.root, 1_000, later);
+    assert.equal(after.ok, true, JSON.stringify(after));
+    assert.deepEqual(staleCopies(ws.root), [], "the abandoned displaced record is removed");
+    if (after.ok) releaseSetupLock(ws.root, after.token);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("reclaim: a displaced holder's own release ends its claim", () => {
+  const ws = workspace(config({}));
+  try {
+    const now = Date.parse("2026-06-01T00:00:00Z");
+    const aside = join(ws.root, "_local", "resolver", "setup.lock.stale-0123456789ab");
+    write(aside, renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "displaced", acquiredAt: new Date(now).toISOString() }));
+    const blocked = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, now));
+    assert.equal(!blocked.ok && blocked.kind, "busy", JSON.stringify(blocked));
+
+    assert.equal(releaseSetupLock(ws.root, "displaced").ok, true);
+    assert.equal(existsSync(aside), false, "the release removed the displaced record");
+    const taken = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, now));
+    assert.equal(taken.ok, true, JSON.stringify(taken));
+    if (taken.ok) releaseSetupLock(ws.root, taken.token);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("reclaim: a displaced record that cannot be judged blocks acquisition", () => {
+  const ws = workspace(config({}));
+  try {
+    const now = Date.parse("2027-06-01T00:00:00Z");
+    const dir = join(ws.root, "_local", "resolver");
+    for (const [name, body] of [
+      ["setup.lock.stale-aaaaaaaaaaaa", "not a lock record"],
+      ["setup.lock.stale-bbbbbbbbbbbb", renderSetupLock({ pid: DEAD_RESOLVER, host: "another-host", token: "remote", acquiredAt: "2026-01-01T00:00:00.000Z" })],
+    ]) {
+      write(join(dir, name), body);
+      const result = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, now));
+      assert.equal(!result.ok && result.kind, "busy", `${name}: ${JSON.stringify(result)}`);
+      assert.equal(existsSync(join(dir, name)), true, "an unjudgeable record is never removed");
+      assert.equal(existsSync(lockPath(ws.root)), false);
+      rmSync(join(dir, name));
+    }
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("reclaim: a symlinked displaced record is unsafe and neither followed nor removed", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  try {
+    const target = join(ws.root, "outside.json");
+    write(target, renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "t", acquiredAt: "2026-01-01T00:00:00.000Z" }));
+    const link = join(ws.root, "_local", "resolver", "setup.lock.stale-cccccccccccc");
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(target, link);
+    const result = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, Date.parse("2027-06-01T00:00:00Z")));
+    assert.equal(!result.ok && result.kind, "unsafe", JSON.stringify(result));
+    assert.equal(lstatSync(link).isSymbolicLink(), true);
+    assert.equal(existsSync(target), true);
+    assert.equal(existsSync(lockPath(ws.root)), false);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+const noPermissionTests = process.platform === "win32" || process.getuid?.() === 0;
+
+test("reclaim: a lock directory that cannot be listed fails with the listing's reason", { skip: noPermissionTests }, () => {
+  const ws = workspace(config({}));
+  const dir = join(ws.root, "_local", "resolver");
+  try {
+    mkdirSync(dir, { recursive: true });
+    chmodSync(dir, 0o300); // create and remove still work; listing does not
+    const result = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z")));
+    assert.equal(!result.ok && result.kind, "failed", JSON.stringify(result));
+    assert.match(!result.ok ? result.detail : "", /could not be checked: .*could not be listed/);
+    assert.doesNotMatch(!result.ok ? result.detail : "", /displaced to/);
+    chmodSync(dir, 0o700);
+    assert.equal(existsSync(lockPath(ws.root)), false, "the lock path was given back");
+
+    chmodSync(dir, 0o300);
+    const released = releaseSetupLock(ws.root, "absent-token");
+    assert.equal(released.ok, false, "a release that cannot list the displaced records reports it");
+  } finally {
+    chmodSync(dir, 0o700);
+    ws.cleanup();
+  }
+});
+
+test("reclaim: a lock path that cannot be given back fails, and the leftover record is abandoned", { skip: noPermissionTests }, () => {
+  const ws = workspace(config({}));
+  const dir = join(ws.root, "_local", "resolver");
+  try {
+    const now = Date.parse("2026-06-01T00:00:00Z");
+    write(join(dir, "setup.lock.stale-0123456789ab"), renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "displaced", acquiredAt: new Date(now).toISOString() }));
+    // While the displaced holder is judged live, the directory turns read-only,
+    // so the caller cannot remove the lock record it just created.
+    const deps = lockDeps((pid) => {
+      if (pid === DEAD_RESOLVER + 10) chmodSync(dir, 0o500);
+      return false;
+    }, now);
+    const result = acquireSetupLock(ws.root, 1_000, deps);
+    assert.equal(!result.ok && result.kind, "failed", JSON.stringify(result));
+    assert.match(!result.ok ? result.detail : "", /could not be given back/);
+    chmodSync(dir, 0o700);
+    const leftover = parseSetupLock(readFileSync(lockPath(ws.root), "utf8"));
+    assert.ok(leftover);
+
+    // The leftover carries this process's pid and a token it issued and gave
+    // up, so it is abandoned at once once the displaced holder is gone.
+    rmSync(join(dir, "setup.lock.stale-0123456789ab"));
+    const next = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, now));
+    assert.equal(next.ok, true, JSON.stringify(next));
+    if (next.ok) releaseSetupLock(ws.root, next.token);
+  } finally {
+    chmodSync(dir, 0o700);
+    ws.cleanup();
+  }
+});
+
+test("reclaim: an abandoned displaced record that cannot be removed fails with the reason", { skip: noPermissionTests }, () => {
+  const ws = workspace(config({}));
+  const dir = join(ws.root, "_local", "resolver");
+  try {
+    const aside = join(dir, "setup.lock.stale-0123456789ab");
+    write(aside, renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "gone", acquiredAt: "2026-01-01T00:00:00.000Z", timeoutMs: 1_000 }));
+    const deps = lockDeps((pid) => {
+      if (pid === DEAD_RESOLVER + 10) chmodSync(dir, 0o500);
+      return false;
+    }, Date.parse("2026-06-01T00:00:00Z"));
+    const result = acquireSetupLock(ws.root, 1_000, deps);
+    assert.equal(!result.ok && result.kind, "failed", JSON.stringify(result));
+    chmodSync(dir, 0o700);
+    assert.equal(existsSync(aside), true, "the displaced record is still there");
+  } finally {
+    chmodSync(dir, 0o700);
     ws.cleanup();
   }
 });
@@ -618,6 +831,184 @@ test("the runner records its own and the command group's pid in the held lock", 
   }
 });
 
+// WF-925 — the runner's pid write-back follows the contained, no-follow rule.
+function heldLock(root: string): { token: string; text: string } {
+  const token = "a".repeat(32);
+  const text = renderSetupLock({ pid: 4242, host: hostname(), token, acquiredAt: "2026-06-01T00:00:00.000Z", timeoutMs: 1_000 });
+  write(lockPath(root), text);
+  return { token, text };
+}
+
+test("pid write-back: the ordinary path records both pids and keeps the token", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token } = heldLock(ws.root);
+    const outcome = writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777, groupPid: 778 });
+    assert.equal(outcome, "written");
+    const record = parseSetupLock(readFileSync(lockPath(ws.root), "utf8"));
+    assert.equal(record?.token, token);
+    assert.equal(record?.runnerPid, 777);
+    assert.equal(record?.groupPid, 778);
+    assert.deepEqual(readdirSync(`${ws.root}/_local/resolver`), ["setup.lock"], "no temp file is left behind");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("pid write-back: a symlinked `_local/resolver` is neither read nor written through", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    // An outside directory holding a lock-shaped record that carries the SAME token.
+    const { token, text } = heldLock(`${outside}/ws`);
+    const outsideResolver = `${outside}/ws/_local/resolver`;
+    rmSync(`${ws.root}/_local/resolver`, { recursive: true, force: true });
+    symlinkSync(outsideResolver, `${ws.root}/_local/resolver`);
+    const outcome = writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777, groupPid: 778 });
+    assert.equal(outcome, "unsafe");
+    assert.equal(readFileSync(`${outsideResolver}/setup.lock`, "utf8"), text, "the outside file is byte-identical");
+    assert.deepEqual(readdirSync(outsideResolver), ["setup.lock"], "no temp file lands outside");
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("pid write-back: a symlinked lock file is refused and its target left alone", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    const { token, text } = heldLock(`${outside}/ws`);
+    mkdirSync(`${ws.root}/_local/resolver`, { recursive: true });
+    symlinkSync(`${outside}/ws/${SETUP_LOCK_RELPATH}`, lockPath(ws.root));
+    const outcome = writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777 });
+    assert.equal(outcome, "unsafe");
+    assert.equal(readFileSync(`${outside}/ws/${SETUP_LOCK_RELPATH}`, "utf8"), text);
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("pid write-back: a lock whose token moved is left byte-identical", () => {
+  const ws = workspace(config({}));
+  try {
+    const { text } = heldLock(ws.root);
+    const outcome = writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token: "b".repeat(32) }, { runnerPid: 777 });
+    assert.equal(outcome, "token-mismatch");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), text);
+    assert.deepEqual(readdirSync(`${ws.root}/_local/resolver`), ["setup.lock"]);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+// WF-996 — a lock that replaces the validated one is never overwritten. The
+// injected fs swaps a different-token lock onto the path at a chosen call, and
+// refuses any rename, so the race lands at exactly that boundary every run.
+function racingFs(root: string, at: "openSync" | "writeSync", otherText: string): typeof nodeFs {
+  let swapped = false;
+  const swap = (): void => {
+    if (swapped) return;
+    swapped = true;
+    nodeFs.renameSync(lockPath(root), `${lockPath(root)}.aside`);
+    writeFileSync(lockPath(root), otherText);
+  };
+  return {
+    ...nodeFs,
+    [at]: (...args: unknown[]) => {
+      swap();
+      return (nodeFs[at] as (...a: unknown[]) => unknown)(...args);
+    },
+    renameSync: () => {
+      throw new Error("the write-back must never rename over the lock path");
+    },
+  } as typeof nodeFs;
+}
+
+function otherHolder(): string {
+  return renderSetupLock({ pid: 5151, host: hostname(), token: "c".repeat(32), acquiredAt: "2026-06-01T00:00:01.000Z", timeoutMs: 1_000 });
+}
+
+test("pid write-back: a lock that replaces the validated one before the write is left byte-identical", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token } = heldLock(ws.root);
+    const other = otherHolder();
+    const fs = racingFs(ws.root, "writeSync", other);
+    const outcome = writeBackSetupRunnerPids(fs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777, groupPid: 778 });
+    assert.equal(outcome, "unsafe", "a late identity mismatch is reported like the one before the open");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), other, "the new holder's lock is untouched");
+    const displaced = parseSetupLock(readFileSync(`${lockPath(ws.root)}.aside`, "utf8"));
+    assert.equal(displaced?.token, token, "the pids went to the validated file only");
+    assert.equal(displaced?.runnerPid, 777);
+    assert.deepEqual(readdirSync(`${ws.root}/_local/resolver`).sort(), ["setup.lock", "setup.lock.aside"]);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("pid write-back: a lock that replaces the walked one before the open is left byte-identical", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token, text } = heldLock(ws.root);
+    const other = otherHolder();
+    const fs = racingFs(ws.root, "openSync", other);
+    const outcome = writeBackSetupRunnerPids(fs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777 });
+    assert.equal(outcome, "unsafe");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), other);
+    assert.equal(readFileSync(`${lockPath(ws.root)}.aside`, "utf8"), text);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("pid write-back: a rewrite that fails partway puts the original record back", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token, text } = heldLock(ws.root);
+    let failed = false;
+    const fs = {
+      ...nodeFs,
+      writeSync: (...args: unknown[]) => {
+        const [fd, data, offset, length, position] = args as [number, Buffer, number, number, number];
+        if (!failed && length > 8) {
+          failed = true;
+          // Tear the record: land part of the new bytes, then fail.
+          nodeFs.writeSync(fd, data, offset, 8, position);
+          throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+        }
+        return nodeFs.writeSync(fd, data, offset, length, position);
+      },
+    } as typeof nodeFs;
+    const outcome = writeBackSetupRunnerPids(fs, nodePath, { root: ws.root, rel: SETUP_LOCK_RELPATH, token }, { runnerPid: 777, groupPid: 778 });
+    assert.equal(outcome, "failed");
+    assert.ok(failed, "the injected failure fired");
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), text, "the lock is byte-identical to its original record");
+    assert.equal(parseSetupLock(readFileSync(lockPath(ws.root), "utf8"))?.token, token);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("pid write-back: a path that is not plain and relative is refused", () => {
+  const ws = workspace(config({}));
+  try {
+    const { token, text } = heldLock(ws.root);
+    for (const rel of ["../x/setup.lock", "/etc/setup.lock", "_local/./resolver/setup.lock", ""]) {
+      assert.equal(writeBackSetupRunnerPids(nodeFs, nodePath, { root: ws.root, rel, token }, { runnerPid: 777 }), "unsafe", rel);
+    }
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), text);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("the runner embeds the contained write-back and no raw lock-path access", () => {
+  assert.match(SETUP_RUNNER_SOURCE, /const writeBackSetupRunnerPids = function/);
+  assert.doesNotMatch(SETUP_RUNNER_SOURCE, /req\.lock\.path/);
+});
+
 test("a failed lock release is reported, not dropped", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
   const ws = workspace(config({}));
   try {
@@ -631,6 +1022,29 @@ test("a failed lock release is reported, not dropped", { skip: process.platform 
     assert.match(!released.ok ? released.detail : "", /setup lock was not released/);
   } finally {
     ws.cleanup();
+  }
+});
+
+test("a release that reads an unsafe lock is reported and neither follows nor removes it", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  const outside = normalizeSlashes(realpathSync(mkdtempSync(join(tmpdir(), "wf-setup-out-"))));
+  try {
+    const acquired = acquireSetupLock(ws.root, 1_000, lockDeps(() => false, Date.parse("2026-06-01T00:00:00Z")));
+    assert.equal(acquired.ok, true);
+    if (!acquired.ok) return;
+    write(`${outside}/lock`, "not ours\n");
+    rmSync(lockPath(ws.root));
+    symlinkSync(`${outside}/lock`, lockPath(ws.root));
+    const released = releaseSetupLock(ws.root, acquired.token);
+    assert.equal(released.ok, false);
+    const detail = !released.ok ? released.detail : "";
+    assert.match(detail, /setup lock was not released/);
+    assert.ok(detail.includes(SETUP_LOCK_RELPATH), detail);
+    assert.ok(lstatSync(lockPath(ws.root)).isSymbolicLink(), "the unsafe lock path is left in place");
+    assert.equal(readFileSync(`${outside}/lock`, "utf8"), "not ours\n");
+  } finally {
+    ws.cleanup();
+    rmSync(outside, { recursive: true, force: true });
   }
 });
 

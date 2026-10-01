@@ -224,6 +224,15 @@ test("a resolver runtime upgrade (generator version change) is stale", () => {
   assert.ok(res.reasons.some((r) => r.code === "resolver/version-changed"));
 });
 
+test("a snapshot stamped by the pre-WF-937 generator (0.5.0) is stale against the bundled runtime", () => {
+  const ports = makePorts();
+  const snap = { ...snapshotFor(ports), generator: { name: "wf-resolver", version: "0.5.0" } };
+  // No `generatorVersion` override: the bundled RESOLVER_GENERATOR is what an upgraded runtime compares against.
+  const res = evaluateFreshness(snap, WS, { readFile: (p) => ports.readFile(p) });
+  assert.equal(res.fresh, false);
+  assert.ok(res.reasons.some((r) => r.code === "resolver/version-changed"));
+});
+
 // --- plugin inventory: add/remove/enable/disable --------------------------
 
 test("a plugin add/remove/enable/disable is detected via the normalized plugin list", () => {

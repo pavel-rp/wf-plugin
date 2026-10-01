@@ -35,7 +35,12 @@ export const SNAPSHOT_SCHEMA_VERSION = 4;
  *  upgrade and the new diagnostic never reaches the exact population it exists for: a
  *  project whose `_local/constitution.md` has not changed. Every future amendment of
  *  the core article text needs the same bump, for the same reason. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.5.0" } as const;
+/*  0.6.0 (WF-995): WF-937's installed-pack resolution rule (the sibling-root
+ *  self-heal branch in `paths.ts`) changes which root a recorded manifest resolves
+ *  to. Where the plugin inventory is unavailable, nothing else invalidates a cached
+ *  snapshot across the upgrade, so it would stay fresh and keep serving the
+ *  superseded root — the exact state that rule exists to fix. */
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.0" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */

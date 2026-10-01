@@ -112,6 +112,21 @@ export interface ResolvedCapabilityPath {
   /** Normalized manifest.md path, or null when no readable manifest exists. */
   manifestPath: string | null;
   provenance: "recorded" | "self-healed" | "unrecoverable";
+  /** The normalized recorded root when it was passed over for the installed
+   *  pack because it is an older sibling version folder of the installed root
+   *  (both readable). `null` on every other path. */
+  supersededRoot?: string | null;
+}
+
+/** True when two normalized roots are distinct sibling folders — different
+ *  paths under one shared parent directory, as two version folders of one
+ *  pack in the host's plugin cache are. Purely lexical. */
+function isSiblingRoot(a: string, b: string): boolean {
+  const left = a.replace(/\/+$/, "");
+  const right = b.replace(/\/+$/, "");
+  if (left === right) return false;
+  const parent = dirnameSlash(left);
+  return parent !== left && parent === dirnameSlash(right);
 }
 
 /**
@@ -122,6 +137,14 @@ export interface ResolvedCapabilityPath {
  * recorded root dangles (no readable manifest), it self-heals from the matching
  * installed pack's installPath (provenance `self-healed`). When neither route
  * yields a readable manifest, provenance is `unrecoverable`.
+ *
+ * One exception to recorded-root-first: when the recorded root is a sibling
+ * folder of the installed pack's installPath (an older version folder the host
+ * has not purged yet) and the installed manifest is readable, the installed
+ * pack wins — provenance `self-healed`, with the recorded root reported as
+ * `supersededRoot` — so capability folders and pack-owned references come from
+ * the version the host actually runs. A recorded root that is not such a
+ * sibling (a checkout pointed at on purpose) still wins as before.
  *
  * `manifestExists` is injected so the pure resolver can be driven from either a
  * real filesystem probe or a test double.
@@ -142,37 +165,65 @@ export function resolveCapabilityPath(
     const folder = joinSlash(opts.workspaceRoot, registryPath);
     const manifest = joinSlash(folder, "manifest.md");
     if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded", supersededRoot: null };
     }
-    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
+    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable", supersededRoot: null };
   }
 
-  // 1. Recorded root first.
   const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
-  if (recorded) {
-    const root = isAbsoluteRoot(recorded.root)
+  const recordedRoot = recorded
+    ? isAbsoluteRoot(recorded.root)
       ? normalizeSlashes(recorded.root)
-      : joinSlash(opts.workspaceRoot, recorded.root);
-    const folder = joinSlash(root, anchor.relPath);
+      : joinSlash(opts.workspaceRoot, recorded.root)
+    : null;
+  const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
+  const installedRoot = installed ? normalizeSlashes(installed.installPath) : null;
+  const installedFolder = installedRoot ? joinSlash(installedRoot, anchor.relPath) : null;
+  const installedManifest = installedFolder ? joinSlash(installedFolder, "manifest.md") : null;
+
+  // 1. Recorded root first — unless it is an older sibling version folder of a
+  //    readable installed pack, which the installed pack supersedes.
+  if (recordedRoot !== null) {
+    const folder = joinSlash(recordedRoot, anchor.relPath);
     const manifest = joinSlash(folder, "manifest.md");
     if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+      if (
+        installedRoot !== null &&
+        installedFolder !== null &&
+        installedManifest !== null &&
+        isSiblingRoot(recordedRoot, installedRoot) &&
+        opts.manifestExists(installedManifest)
+      ) {
+        return {
+          resolvedPath: installedFolder,
+          manifestPath: installedManifest,
+          provenance: "self-healed",
+          supersededRoot: recordedRoot.replace(/\/+$/, ""),
+        };
+      }
+      return {
+        resolvedPath: folder,
+        manifestPath: manifest,
+        provenance: "recorded",
+        supersededRoot: null,
+      };
     }
   }
 
   // 2. Dangling / unmapped → self-heal from the installed pack's installPath.
-  const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
-  if (installed) {
-    const root = normalizeSlashes(installed.installPath);
-    const folder = joinSlash(root, anchor.relPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
+  if (installedFolder !== null && installedManifest !== null) {
+    if (opts.manifestExists(installedManifest)) {
+      return {
+        resolvedPath: installedFolder,
+        manifestPath: installedManifest,
+        provenance: "self-healed",
+        supersededRoot: null,
+      };
     }
   }
 
   // 3. Neither route recovered a readable manifest.
-  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
+  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable", supersededRoot: null };
 }
 
 /** An absolute root has a leading `/` or a drive prefix (`C:`), per the

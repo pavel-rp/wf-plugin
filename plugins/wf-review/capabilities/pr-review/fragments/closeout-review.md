@@ -67,16 +67,56 @@ The caller supplies, per pull request:
 
 **Before Step 1, on every pull request swept — whatever it later turns out to hold** — remove any
 tree left at the fixed path `_local/scratch/wf-sweep-merged-ref` by an **earlier, interrupted**
-run. Verify first that `_local/scratch/` is a real directory owned by the current user and not a
-symlink (the Step 2 rule; create nothing here if it is absent — there is then nothing to clear),
-and remove that one fixed literal path with one `Bash` removal, never a path derived from a
-comment, a pull request or any read. It runs before any identity probe, so Step 1's `absent`
+run. Run the **scratch safety check** first (below; an absent `_local/scratch/` means nothing to
+clear — create nothing here and continue), and only when it passes remove that one fixed literal
+path with one `Bash` removal, never a path derived from a comment, a pull request or any read. It
+runs before any identity probe, so Step 1's `absent`
 exits, an empty review and a zero-candidate Step 3 all clear a leftover too: gating it on a
 remaining candidate left a full merged source tree on disk whenever the next swept pull request
 had nothing to judge.
 
 This clear is for a **previous** run's leftover only. A run that is not interrupted never leaves
 its own export behind: Step 4 removes it regardless of outcome.
+
+**The scratch safety check** — the one check every scratch use in this procedure runs (here, before
+Step 2's digest file, and before Step 4's export). It is one read-only probe of the fixed path
+that examines **every existing component from the workspace root down** — the workspace root,
+`_local`, then `_local/scratch`. An existing component is **safe** when it is a real directory,
+not a symlink, owned by the current user, and writable by no one else. Every component is held to
+the same test because whoever can write a directory can swap the entry below it for a symlink
+after the check. The check has three outcomes, not two:
+
+- **Absent** — nothing exists at `_local/scratch/`, and every existing component above it is
+  safe. **Not a failure.** At Step 0 there is nothing
+  to clear: skip the removal and continue to Step 1. At Steps 2 and 4, create the directory with
+  `umask 077`, then run the check again on what now exists — a creation that errors, or a
+  re-check that is still absent, is a failure.
+- **Passes** — `_local/scratch` exists and every component from the workspace root down to it
+  is safe.
+- **Fails** — any existing component from the workspace root down to `_local/scratch` is not
+  safe: a symlink, not a directory, owned by anyone else, or writable by group or others —
+  **or the check itself cannot run** (a stat that errors is not a stat that passed, and never
+  reads as absent). A missing `_local/scratch` under an unsafe ancestor is a failure, never
+  Absent.
+
+On a failure:
+
+- **Touch nothing under that path.** No removal, no creation, no write and no export runs through a
+  scratch directory that failed the check. A symlinked or foreign-owned parent would redirect every
+  one of them outside `_local/scratch/` — this ban overrides every "remove regardless of outcome"
+  rule below, since there is then nothing of this run's to remove.
+- **Recovery is the operator's, never the sweep's.** Name the failed condition; when it is only that
+  a directory is writable by group or others, state the remedy `chmod go-w` on that directory
+  (the workspace root, `_local` or `_local/scratch`) for the operator to run before the next sweep. The sweep itself
+  changes no permission.
+- **At this Step 0, or at Step 2:** record `absent: review read could not be performed`, naming
+  `scratch directory failed its safety check` and which condition failed as its reason, and **stop
+  here for this pull request**. At Step 0 no identity probe and no review read follows. At Step 2
+  both review reads have already run; the stop comes before any digest, distillation or judgment,
+  and the recorded reason is the failed check, never an unperformed read. Either way it is a
+  per-pull-request `absent` failure under Step 6's exception, so it is never reported clean.
+- **At Step 4:** the Step 4 rule below applies — no `merged-ref-read`, and every candidate within
+  the cap is `unverifiable`.
 
 ## Step 1 — Reach the pull request (branch first, recorded reference second)
 
@@ -162,16 +202,23 @@ truncated bytes instead would be collidable by prefix, and the collision is a su
 **The preimage never reaches a command line.** It is arbitrary attacker-authored text; interpolating
 it into a shell invocation would execute it. Write the preimage to a file, hash **the file**, and
 delete it — the digest's `Bash` purpose both callers authorize is a hash *of a path*, never of an
-inlined body. Four rules make that file safe, and none is optional:
+inlined body. Five rules make that file safe, and none is optional:
 
 - **A fixed path, never a derived one:** `_local/scratch/wf-sweep-digest.bin`, reused and overwritten
   once per entry. Do **not** name the file after the entry, its anchor, or anything else drawn from
   the comment — that path becomes the operand of the `sha256sum` and the removal, and this digest is
   minted in Step 2, *before* Step 4's character allowlist has run on anything. A derived filename
   would reopen the injection sink at the one point the allowlist cannot yet cover.
-- **Before the first write, verify `_local/scratch/` is a real directory owned by the current user
-  and not a symlink**, and create it with `umask 077` if absent. The same discipline the other
-  scratch producer in this harness applies.
+- **Before the first write, run the scratch safety check exactly as Step 0 defines it**, creating
+  the directory with `umask 077` if absent and checking again. The same discipline the other scratch producer in this harness applies. **On
+  a failure** write nothing and remove nothing there: this pull request takes Step 0's
+  `absent: review read could not be performed` stop, naming the failed scratch safety check.
+- **Clear the fixed leaf before the first write.** Once the check passes, remove
+  `_local/scratch/wf-sweep-digest.bin` with the same one-path removal, then write. A leaf that
+  predates the check — an interrupted run's file, or a symlink planted while a directory was still
+  writable by others — would otherwise redirect the `Write` outside `_local/`. The removal unlinks a
+  symlink rather than following it, and a passing check means no one else can recreate the leaf
+  before the write.
 - **Mode `0600`.** The file holds an untruncated attacker-authored body.
 - **Remove it regardless of outcome** — including when the hash errors. A failure that leaves the
   file behind leaves arbitrary-size, arbitrary-content text on disk, which the constitution's
@@ -333,10 +380,16 @@ reading that did not happen either.
 candidate within the Step 3 cap remains to be judged, invoke `merged-ref-read` with `<pr>` = the
 identity Step 1 found and `<dest>` = the fixed path `_local/scratch/wf-sweep-merged-ref` — a fixed
 path, never one derived from a comment, reused for every pull request because the sweep judges one
-pull request at a time. Before the call, verify `_local/scratch/` is a real directory owned by the
-current user and not a symlink (create it with `umask 077` if absent, the Step 2 rule). Step 0 has
-already cleared any tree an earlier interrupted run left at that fixed path, so the operation never
-finds its destination occupied by stale content.
+pull request at a time. Before the call, run the Step 0 scratch safety check (create the directory
+with `umask 077` if absent and check again, the Step 2 rule). Step 0 has already cleared any tree
+an earlier interrupted run left at that fixed path, so the operation never finds its destination
+occupied by stale content.
+
+- **The scratch safety check fails** → **do not invoke `merged-ref-read`** and export nothing.
+  Every candidate within the cap is disposed **`unverifiable`**, with the evidence `merged ref could
+  not be resolved (scratch directory failed its safety check)`. Nothing is opened, and the
+  regardless-of-outcome removal below does **not** run — nothing was exported, and a removal through
+  that directory would land outside `_local/scratch/`.
 
 - **`<read-performed>` = true** → hold `<merge-commit>` and the **merged-ref root** `<root>`. Every
   bound and every open below is taken against `<root>`, and nothing else.
@@ -349,7 +402,8 @@ finds its destination occupied by stale content.
 
 **Remove the merged-ref tree regardless of outcome** once this pull request's last candidate is
 disposed — including when a bound check or a read errors — with one `Bash` removal of that fixed
-path. It is a full source tree on disk; leaving it would violate the scratch article. Only an
+path. The one exception is a failed scratch safety check, which exported nothing and removes
+nothing (Step 0). It is a full source tree on disk; leaving it would violate the scratch article. Only an
 interruption can strand it, and then Step 0 of the next sweep collects it — whether or not that
 sweep's pull request has a candidate.
 
@@ -592,6 +646,8 @@ A caller sweeping many pull requests sums each count across them and reports the
 | `review-threads-read` / `pr-comments-read` raises an operation-level error | one `absent: review read could not be performed` record naming the error — an error is neither a performed empty read nor a typed false, and the lenient reading of an unhandled one is a false clean |
 | `<read-performed>` = false | one `absent: review read could not be performed` record — never "no findings" |
 | `merged-ref-read` returns `<read-performed>` = false (`not-merged`, `read-failed`) or errors | every candidate within the cap disposed `unverifiable`, evidence `merged ref could not be resolved (<reason>)`; nothing opened, and never a fall-back to the caller's checkout — never an empty result, and never clean |
+| `_local/scratch/` is absent (and every existing component above it — the workspace root and `_local` — is safe) | not a failure: Step 0 skips the clear and continues; Steps 2 and 4 create it with `umask 077` and run the scratch safety check on what now exists — a failed creation, or a re-check still absent, is a failure |
+| the scratch safety check fails (any existing component from the workspace root down to `_local/scratch` is a symlink, not a directory, not owned by the current user, or writable by group or others — or the check cannot run) | nothing is removed, created, written or exported through it. At Step 0 or Step 2: one `absent: review read could not be performed` record naming the failed scratch safety check, and a stop for that pull request. At Step 4: no `merged-ref-read`, and every candidate within the cap is `unverifiable` with evidence `merged ref could not be resolved (scratch directory failed its safety check)`. Never clean |
 | `create_child` fails for one survivor | state one line naming the claim and the error; count it under `<unfiled>` with reason **`filing failed`** and its full evidence, and continue with the remaining survivors. It keeps its `issue filed` disposition — the verification concluded what it concluded — so it must reach a render site, and `<unfiled>` is the only one that carries a reason |
 
 Rationale, the incident this sweep answers, and the reachability analysis in full:

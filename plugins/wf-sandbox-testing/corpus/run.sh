@@ -592,6 +592,11 @@ sha256_of() {
   else shasum -a 256 "$1" | awk '{print $1}'; fi
 }
 
+# Extractor only: prints every **Plan digest:** value in $1, trimmed, one per line — no validation.
+digest_header_values() {
+  sed -nE 's/^\*\*Plan digest:\*\*(.*)$/\1/p' "$1" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
+}
+
 # A progress record binds its plan through EXACTLY ONE well-formed **Plan digest:** header (WF-878).
 # Prints the digest and returns 0; otherwise prints the rejection reason and returns 1 — never the
 # first valid value of several, never a silent skip of a malformed line:
@@ -600,14 +605,17 @@ progress_digest() {
   local n vals
   [ -f "$1" ] || { echo missing; return 1; }
   n="$(grep -c '^\*\*Plan digest:\*\*' "$1")"
-  vals="$(sed -nE 's/^\*\*Plan digest:\*\*(.*)$/\1/p' "$1" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
   case "$n" in
     0) echo missing; return 1;;
     1) ;;
-    *) if [ "$(printf '%s\n' "$vals" | LC_ALL=C sort -u | grep -c '')" -eq 1 ]; then echo duplicate-identical
+    # Count distinct values straight off the pipeline (WF-935), never via a captured variable:
+    # command substitution strips trailing newlines, so an empty trailing value would vanish and
+    # `<digest>` + an empty header would read as duplicate-identical.
+    *) if [ "$(digest_header_values "$1" | LC_ALL=C sort -u | grep -c '')" -eq 1 ]; then echo duplicate-identical
        else echo duplicate-conflicting; fi
        return 1;;
   esac
+  vals="$(digest_header_values "$1")"
   printf '%s\n' "$vals" | grep -Eq '^[0-9a-f]{64}$' || { echo malformed; return 1; }
   printf '%s\n' "$vals"
 }
@@ -626,6 +634,12 @@ check_plan_identity() {
     "malformed-beside-valid|duplicate-conflicting|**Plan digest:** $d1\n**Plan digest:** not-a-digest" \
     "duplicate-identical|duplicate-identical|**Plan digest:** $d1\n**Plan digest:** $d1" \
     "duplicate-conflicting|duplicate-conflicting|**Plan digest:** $d1\n**Plan digest:** $d2" \
+    "malformed-empty|malformed|**Plan digest:**" \
+    "duplicate-empty-trailing|duplicate-conflicting|**Plan digest:** $d1\n**Plan digest:**" \
+    "duplicate-blank-trailing|duplicate-conflicting|**Plan digest:** $d1\n**Plan digest:**   " \
+    "duplicate-empty-leading|duplicate-conflicting|**Plan digest:**\n**Plan digest:** $d1" \
+    "duplicate-identical-then-empty|duplicate-conflicting|**Plan digest:** $d1\n**Plan digest:** $d1\n**Plan digest:**" \
+    "duplicate-empty-empty|duplicate-identical|**Plan digest:**\n**Plan digest:**" \
     "valid|$d1|# T — Implementation progress\n\n**Plan digest:** $d1 \n\n- [x] STEP-001: read"; do
     name="${spec%%|*}"; rest="${spec#*|}"; expect="${rest%%|*}"; body="${rest#*|}"
     printf '%b\n' "$body" > "$mdir/$name.md"
