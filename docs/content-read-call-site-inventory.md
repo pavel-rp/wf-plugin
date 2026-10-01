@@ -302,6 +302,7 @@ reads.
 | `wf/agents/context-distiller` | `distiller-procedure.md` (ship) |
 | `wf/agents/critic` | `critic-procedure.md` (verify-spec) |
 | `wf/agents/pr` | `procedure.md` (pr) |
+| `wf/skills/_shared` | `procedure.md` (branch) |
 | `wf/skills/branch` | `procedure.md` |
 | `wf/skills/classify` | `rubric.md` |
 | `wf/skills/commit` | `procedure.md`, `procedure.md` (branch) |
@@ -372,7 +373,7 @@ Init reads the capability's `profile.template.json` **body** to seed a downstrea
 | fragment | SUB-3 / WF-304 | 11 | 32 delivery + 8 tracker + 4 inline phase/pre-commit + 6 subagent self-boot |
 | shared | SUB-4 / WF-305 | 1 | 6 |
 | contract-ops | SUB-5 / WF-306 | 3 | 19 (registry-ops) + 7 (invocation-runtime) + 0 (pack-onboarding) |
-| references | SUB-6 / WF-307 | 58 templates | 40 consumers (90 template reads) |
+| references | SUB-6 / WF-307 | 58 templates | 41 consumers (91 template reads) |
 | profile | SUB-7 / WF-308 | 3 | 3 |
 
 Every content-read call site above has exactly one class and one named owning slice; there

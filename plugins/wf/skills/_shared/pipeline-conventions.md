@@ -111,7 +111,14 @@ every emitted `Task:` line keep `{task-id}` verbatim.
    `invocation-runtime.ops.md` §"Run-scoped provider forwarding"). Pass the model selector
    only when non-null, and preserve inherited effort when effort is null. (Do NOT call
    `/wf:branch` — that loads its `SKILL.md` into this skill's context. The subagent is
-   self-sufficient.) The delivery provider's branch operation captures and reapplies dirty
+   self-sufficient.) When the running agent's own dispatch brief declares it cannot await
+   its children, obey the `isolated` answer per that section's **Caller cannot await
+   children** paragraph instead of the Task. The branch gate is a writing unit, so follow
+   the branch procedure in this context, recorded `inline — caller cannot await`: obtain it
+   via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill:
+   branch`, `ref: procedure.md`), run it with `{task-id}` and the `delivery` record, and for
+   its index loader step invoke `/wf:index {task-id} branch "<branch-name>"` through the
+   Skill tool. Its block is handled exactly as below. The delivery provider's branch operation captures and reapplies dirty
    work across a switch. A dirty working state is therefore preserved carry and never an
    error or stall by itself. On `BRANCH — created`/`switched`/`already-active`, inspect
    `Carry:`: `none`/`applied` may continue; a preserved-entry/manual-follow-up value remains
