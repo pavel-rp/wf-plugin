@@ -97,20 +97,25 @@ citation, or no parseable block at all — is malformed.
 ## Malformed or failed dispatch
 
 The Task erroring outright, returning no block, or returning a block that fails the parsing
-contract above are the same outcome from the caller's side: **every candidate in this
-dispatch stays blocking, unconfirmed** (fail-closed) — none is silently dropped, none is
-treated as refuted or demoted. The report names the failure once, next to the candidates it
-covers:
+contract above — and, at the critic boundary (`critic-boundary.md`), a hand-back that went
+unrecorded, was recorded `failed`, carried a malformed block, or no longer matches the candidate
+set — are the same outcome from the caller's side: **the critic did not run**, and **every
+candidate in this batch stays blocking, unconfirmed** (fail-closed) — none is silently dropped,
+none is treated as refuted or demoted. "Not run" is a different fact from "disagreed": a
+`DISAGREE` is a critic judgement that demotes; a batch that was not run carries no judgement and
+demotes nothing. The report names the failure once, next to the candidates it covers:
 
 ```
-- **critic** — dispatch <failed | malformed>: <one-line reason> — <N> candidate(s) held
-  blocking, unconfirmed: <fingerprint>, <fingerprint>, …
+- **critic** — not run — <reason> — <N> candidate(s) held blocking, unconfirmed:
+  <fingerprint>, <fingerprint>, …
 ```
 
-This line renders in `## Capability findings` beside the affected bullets' own `— critic: not
-confirmed — dispatch <failed | malformed>` tags (`verify-template.md` §"Full output shape"), not
-as a separate section — a fail-closed candidate is still a blocking-set member, not a
-non-gating aside.
+`<reason>` is one of `dispatch failed`, `malformed verdict`, `routing halted`, `hand-back
+unrecorded`, `candidate set changed since the hand-back`, `manifest unreadable`, or the reason a
+dispatcher recorded. This line renders in `## Capability findings` beside the affected bullets'
+own `— critic: not run — <reason>` tags (`verify-template.md` §"Full output shape"), not as a
+separate section — a fail-closed candidate is still a blocking-set member, not a non-gating aside.
+The report's `**Critic:**` header reads `not run — <reason>` for the batch.
 
 **Distinct from a per-finding `UNVERIFIABLE`.** A well-formed block naming one candidate
 `UNVERIFIABLE` is not a dispatch failure — the critic ran, read the evidence, and made a

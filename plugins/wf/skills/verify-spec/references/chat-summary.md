@@ -36,8 +36,9 @@ Print, in this order:
   Non-gating.
 - **Critic:** one line — `not dispatched (no candidates)` when the candidate set was empty;
   `<A> confirmed · <R> refuted · <U> unverifiable (→ warn)` on a well-formed dispatch (omit
-  zero-count categories); `dispatch <failed | malformed> — <N> held blocking, unconfirmed`
-  on a fail-closed batch; or `inline, not independent — <A> confirmed · <N> held blocking,
+  zero-count categories), with ` (via hand-back)` when the verdict came from the critic boundary;
+  `not run — <reason> — <N> held blocking, unconfirmed` on a fail-closed batch — never worded as
+  a refutation; or `inline, not independent — <A> confirmed · <N> held blocking,
   unconfirmed` when the critic ran inline under a caller that cannot await. Non-gating on its own — a refutation already removed that candidate
   from the blocking set the verdict line above reads, and this line never re-derives it.
 - **Top next actions:** 1–3 bullets — the most important items from the report's

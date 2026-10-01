@@ -23,6 +23,7 @@ The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.
 **Certified:** commit `<HEAD SHA>`, tree `<audited tree identity>`  |  none — verdict <FAIL | PARTIAL>
 **Drift re-verify:** `<certified commit>`..`<HEAD SHA>` (<change kind>)   ← drift mode only; omit the line otherwise
 **Lenses:** <c>/<e> completed, <i> inline[ — incomplete: <role>, …]   ← always; `0/0 completed, 0 inline` when no `verify`/`finding` row exists; the suffix only when `<c> < <e>`
+**Critic:** none — no candidates  |  ran — independent[, via hand-back] (<a> AGREE, <d> DISAGREE, <u> UNVERIFIABLE)  |  ran — inline, not independent (<a> AGREE, <h> held)  |  not run — <reason>   ← always; `not run` is fail-closed, never a `DISAGREE`
 **Audited by:** <model identifier>
 **Audited at:** <ISO 8601 timestamp>
 
@@ -56,8 +57,8 @@ its `finding` fragment carries one) as a trailing `— Remedy: <text>` clause; o
 clause when the fragment carries none.
 
 This section carries the `fail`-severity aggregated findings that made the **blocking set** —
-anchored candidates the critic confirmed (`AGREE`), plus every candidate when a critic dispatch
-itself failed or was malformed (fail-closed, unconfirmed), plus every candidate an inline critic
+anchored candidates the critic confirmed (`AGREE`), plus every candidate when the critic did not
+run (fail-closed, unconfirmed — `critic-verdict.md` §"Malformed or failed dispatch"), plus every candidate an inline critic
 (caller cannot await) returned `DISAGREE` or `UNVERIFIABLE` (held, unconfirmed). A `fail` or `warn` that did not make
 it is recorded in exactly one of the two non-gating sections below instead of here, so every
 aggregated finding appears exactly once in the report and none is ever dropped. A `[PASS]`
@@ -66,8 +67,8 @@ The section's presence rule, its grouping, and its bullet shape are unchanged by
 when the routing leaves it with no entry at all, render the single line `- none`.
 
 A confirmed bullet appends the critic's own confirmation, `` — critic: AGREE at `path/to/file:L`
-— "<quoted evidence>"``; a bullet standing here because the critic dispatch failed or was
-malformed appends `` — critic: not confirmed — dispatch <failed | malformed>`` instead, and one
+— "<quoted evidence>"``; a bullet standing here because the critic did not run appends
+`` — critic: not run — <reason>`` instead, and one
 an inline critic held appends `` — critic: not confirmed — inline, not independent`` (an inline
 `AGREE` keeps the confirmed form with ` (critic run inline)` after it), so a reader can tell a
 grounded confirmation from a fail-closed default at a glance.

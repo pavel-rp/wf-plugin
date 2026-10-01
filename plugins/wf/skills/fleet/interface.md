@@ -99,7 +99,14 @@ token and prompt verbatim, routed first, no worktree isolation); write each retu
 `manifest.md` (carrying the request's tree and round) into
 `_local/fleet/lenses/<id>/<tree>/r<round>/`, `<id>` accepted only as a single safe path segment, and only after a canonical-containment check before any write or directory creation — no existing component from `_local/` down to each target file a symlink, and the resolved real path of the item folder and of the destination (each, or its nearest existing ancestor when not yet created) a strict descendant of `_local/` inside the workspace root; a path failing the check is never written, is recorded `unsafe exchange path`, and the shipper is continued without the review boundary; and send that same shipper one continuation
 message to re-invoke its ceremony. A row that fails is recorded failed and never re-run or applied by
-the orchestrator itself.
+the orchestrator itself. **At the critic boundary only**, for an item whose shipper reported a
+critic-boundary hand-back — the same closed list against the critic request instead: read that
+item's `04_critic-request.md` read-only; dispatch its one unit as this orchestrator's own foreground
+child, accepted only when its agent token is the core critic agent, its prompt verbatim, from the
+item's recorded worktree as the working directory; write `critic.md` and then `manifest.md` into
+`_local/fleet/lenses/<id>/<tree>/r<round>/critic/` behind the same containment check (a failing path
+recorded `unsafe exchange path`, never written); and send that same shipper one continuation message
+to continue in place. A critic unit that fails is recorded failed and never re-run or applied.
 
 **Forbidden:** write or edit any file **outside `_local/`** — the orchestrator authors no source and
 no artifact, and every source write belongs to the shipper subagents; run any raw version-control or
