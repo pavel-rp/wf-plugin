@@ -307,7 +307,7 @@ reads.
 | `wf/skills/classify` | `rubric.md` |
 | `wf/skills/commit` | `procedure.md`, `procedure.md` (branch) |
 | `wf/skills/constitution` | `clause-style.md`, `constitution-template.md`, `obligation-inventory.md` |
-| `wf/skills/fleet` | `review-boundary.md` (verify-spec) |
+| `wf/skills/fleet` | `critic-boundary.md` (verify-spec), `review-boundary.md` (verify-spec) |
 | `wf/skills/implement` | `procedure.md` (branch) |
 | `wf/skills/init` | `alias-route.md`, `config-template.md`, `core-question.md`, `envelope-relay.md`, `local-readme-template.md`, `reconcile-mode.md`, `registry-location.md`, `settle-registry.md`, `verify-command-detection.md` |
 | `wf/skills/lite` | `lite-template.md`, `procedure.md` (branch), `rubric.md` (classify) |
@@ -322,7 +322,7 @@ reads.
 | `wf/skills/spec` | `spec-template.md`, `procedure.md` (branch), `rubric.md` (classify) |
 | `wf/skills/triage` | `triage-template.md` |
 | `wf/skills/verify-fix` | `attempt-ledger.md`, `verify-fix-template.md`, `finding-disposition.md` (verify-spec) |
-| `wf/skills/verify-spec` | `chat-summary.md`, `critic-procedure.md`, `critic-verdict.md`, `finding-disposition.md`, `finding-ledger.md`, `review-boundary.md`, `verify-template.md` |
+| `wf/skills/verify-spec` | `chat-summary.md`, `critic-boundary.md`, `critic-procedure.md`, `critic-verdict.md`, `finding-disposition.md`, `finding-ledger.md`, `review-boundary.md`, `verify-template.md` |
 | `wf-angular/skills/qa-host` | `backend-host.md`, `scaffold-templates.md` |
 | `wf-angular/skills/test-page` | `backend-smoke.md`, `bootstrap.md`, `component-injection.md`, `harness.md`, `page-test-template.md` |
 | `wf-author-caps/skills/authoring-guide` | `subagents-and-vocabulary.md` |
@@ -373,7 +373,7 @@ Init reads the capability's `profile.template.json` **body** to seed a downstrea
 | fragment | SUB-3 / WF-304 | 11 | 32 delivery + 8 tracker + 4 inline phase/pre-commit + 6 subagent self-boot |
 | shared | SUB-4 / WF-305 | 1 | 6 |
 | contract-ops | SUB-5 / WF-306 | 3 | 19 (registry-ops) + 7 (invocation-runtime) + 0 (pack-onboarding) |
-| references | SUB-6 / WF-307 | 58 templates | 41 consumers (91 template reads) |
+| references | SUB-6 / WF-307 | 59 templates | 41 consumers (93 template reads) |
 | profile | SUB-7 / WF-308 | 3 | 3 |
 
 Every content-read call site above has exactly one class and one named owning slice; there
