@@ -19,10 +19,11 @@
 # a `plugins/*/skills/**/*.md` or `plugins/*/agents/*.md` file whose call text —
 # from the token to the first closing `)` or `}` outside a backtick span (backtick
 # list) or a quoted value (object literal and prose), bounded — names a `ref:`
-# ending in `.md`. The ref's stop set is chosen by call form. Whole-token parsing
-# is guaranteed for the backtick-list form (`ref: …`, up to the closing backtick —
-# the same set a §4.4 token admits) and for a quoted value in EVERY form (up to its
-# closing quote, escaped quotes honoured): there `sub/my template.md`,
+# ending in `.md`. The ref's stop set is chosen by where the ref sits. Whole-token
+# parsing is guaranteed for a ref inside its own backtick span (`ref: …`, up to the
+# closing backtick — the same set a §4.4 token admits) and for a quoted value in
+# EVERY form, a backtick-list call included (up to its closing quote, escaped
+# quotes honoured): there `sub/my template.md`,
 # `sub/a (b).md` and `sub/a,b.md` are each one ref. A quote opens a value only
 # where a value begins — after `:`, `,`, `(`, `{` or `[` (whitespace between
 # allowed) — so an apostrophe inside a word or an unquoted value is a literal
@@ -80,10 +81,12 @@ TOKEN = "references-template"
 # nest (`sub/t.md`). ref_value() chooses its stop set by the call form
 # call_window() reads off the class token, and takes the WHOLE token in the two
 # forms that delimit it:
-#   - backtick list (`ref: …`): up to its span's closing backtick or line end —
-#     exactly the set a §4.4 backtick token admits (bar `|`, reported below);
-#   - literal, quoted value ("…", '…' or `…`): up to its closing quote, `\` +
-#     that quote or `\` + `\` read as the escaped character.
+#   - inside its own backtick span (`ref: …`): up to the span's closing backtick or
+#     line end — exactly the set a §4.4 backtick token admits (bar `|`, reported
+#     below);
+#   - a quoted value ("…", '…' or `…`) in any form, a backtick-list call
+#     included: up to its closing quote, `\` + that quote or `\` + `\` read as
+#     the escaped character.
 # An UNQUOTED literal or prose value is not delimited, so it ends at `,`, `"`, a
 # backtick, `)`, `}` or line end: a file name holding one of those must be quoted
 # in those forms (the self-test pins this). An apostrophe inside an unquoted value
@@ -129,57 +132,68 @@ def safe_ref(ref):
     return all(s not in ("", ".", "..") for s in n.split("/"))
 
 
+def _scan(win, form, upto=None):
+    """Walk a call window past its head character, tracking backtick spans (the
+    list form) and quoted values (every form; a quote opens one only where a value
+    begins — VALUE_START — and backslash escapes are honoured inside it).
+    With `upto` unset, return the index of the first `)`/`}` outside any span or
+    quoted value (None when there is none). With `upto` set, return the span or
+    quote character open at that index (None when outside both)."""
+    state, esc, prev = None, False, ""  # prev: last non-space char outside both
+    for i in range(1 if form != "prose" else 0, len(win)):
+        if upto is not None and i == upto:
+            return state
+        c = win[i]
+        if state is None:
+            if c in ")}" and upto is None:
+                return i
+            if form == "list" and c == "`":
+                state = c
+            elif c in QUOTES and prev in VALUE_START:
+                state = c
+            if not c.isspace():
+                prev = c
+        elif state != "`" and esc:
+            esc = False
+        elif state != "`" and c == "\\":
+            esc = True
+        elif c == state:
+            state = None
+            prev = c
+    return None
+
+
 def call_window(text, start):
     """(window, form): the call text after the class token and the call's form,
     read off the character that closes the token itself.
-      - `list`    — a backtick closes it (`class: references-template`, …): the
-                    call ends at the first `)`/`}` outside a backtick span, so a
-                    paren or brace inside a span is part of the call;
+      - `list`    — a backtick closes it (`class: references-template`, …);
       - `literal` — a quote closes it (class: "references-template", …);
       - `prose`   — anything else.
-    In the literal and prose forms the call ends at the first `)`/`}` outside a
-    quoted value. A quote opens one only where a value begins (VALUE_START), so an
-    apostrophe inside a word or an unquoted ref (`ref: it's.md`) opens nothing;
-    backslash escapes are honoured inside a quoted value.
+    In every form the call ends at the first `)`/`}` outside a backtick span (list
+    form) or a quoted value. A quote opens one only where a value begins
+    (VALUE_START), so an apostrophe inside a word or an unquoted ref
+    (`ref: it's.md`) opens nothing; backslash escapes are honoured inside a quoted
+    value, never inside a backtick span.
     Only characters after the token are read, so nothing before it on the line
     (an apostrophe, an earlier span) can shift the window. Bounded by WINDOW."""
     win = text[start:start + WINDOW]
     head = win[:1]
     form = "list" if head == "`" else "literal" if head in ("\"", "'") else "prose"
-    # The head character closes the token's own span, so scanning starts outside
-    # any span, just past it.
-    state, esc, skip = None, False, (1 if form != "prose" else 0)
-    prev = ""  # the last non-space character outside a span or quoted value
-    for i, c in enumerate(win[skip:], skip):
-        if state is None:
-            if c in ")}":
-                return win[:i], form
-            if form == "list":
-                if c == "`":
-                    state = c
-            elif c in QUOTES and prev in VALUE_START:
-                state = c
-            if not c.isspace():
-                prev = c
-        elif form != "list" and esc:
-            esc = False
-        elif form != "list" and c == "\\":
-            esc = True
-        elif c == state:
-            state = None
-            prev = c
-    return win, form
+    # The head character closes the token's own span, so _scan starts outside any
+    # span, just past it.
+    end = _scan(win, form)
+    return (win if end is None else win[:end]), form
 
 
 def ref_value(win, form):
-    """The ref token of a call window, surrounding whitespace trimmed — whole in
-    the backtick-list and quoted forms; an unquoted value ends at its first stop
-    character (see the REF comment above)."""
+    """The ref token of a call window, surrounding whitespace trimmed — whole
+    inside its own backtick span and as a quoted value in any form; an unquoted
+    value ends at its first stop character (see the REF comment above)."""
     m = REF.search(win)
     if not m:
         return ""
     i = m.end()
-    if form == "list":
+    if form == "list" and _scan(win, form, upto=m.start()) == "`":
         # `ref: …` sits inside its own backtick span: up to that span's close.
         j = i
         while j < len(win) and win[j] not in "`\n":
@@ -639,16 +653,21 @@ def selftest():
         # a value only where one begins: a quoted prose ref holding parens is
         # derived whole; an unquoted ref holding an apostrophe (object literal and
         # prose) is derived whole, the apostrophe opening no string; and a
-        # mid-word apostrophe before the call's `)` must not swallow it.
+        # mid-word apostrophe before the call's `)` must not swallow it. In a
+        # backtick-list call, a ref written outside its own span follows the same
+        # quoted / unquoted rules: a quoted `a)b.md` is whole, an unquoted one
+        # stops at `,`.
         put("plugins/wf/skills/rho/SKILL.md",
             "Obtain it (class: references-template, skill: rho, ref: \"a (b).md\").\n"
             "resolve_content({ workspaceRoot, class: \"references-template\", skill: \"rho\", ref: it's.md })\n"
             "Then (class: references-template, skill: rho, ref: o'k.md).\n"
             "Read (class: references-template, skill: rho, ref: w.md, the template's copy) and "
-            "(class: references-template, skill: rho, ref: x.md).\n")
+            "(class: references-template, skill: rho, ref: x.md).\n"
+            "Mixed (`class: references-template`, `skill: rho`, ref: \"a)b.md\") and "
+            "(`class: references-template`, `skill: rho`, ref: m.md, x).\n")
         tree, _ = scan(tmp)
         rho = {r for c, _, r in tree if c == "wf/skills/rho"}
-        if rho != {"a (b).md", "it's.md", "o'k.md", "w.md", "x.md"}:
+        if rho != {"a (b).md", "it's.md", "o'k.md", "w.md", "x.md", "a)b.md", "m.md"}:
             print(f"SELFTEST FAIL — quoted-prose and apostrophe refs derived {sorted(rho)}", file=sys.stderr)
             failed += 1
         if failed:
@@ -666,7 +685,7 @@ def selftest():
               "refs, an escaped-quote ref and an object literal inside a wrapped code span derived whole and "
               "their missing rows rejected, refs holding `|` or a backtick reported as inexpressible, and "
               "the documented unquoted-literal stop at `,` / `)` pinned; a quoted prose ref holding parens "
-              "and unquoted refs holding an apostrophe derived whole, a mid-word apostrophe opening no string.")
+              "and unquoted refs holding an apostrophe derived whole, a mid-word apostrophe opening no string, and a backtick-list call's quoted or unquoted ref outside its own span read by the same rules.")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
