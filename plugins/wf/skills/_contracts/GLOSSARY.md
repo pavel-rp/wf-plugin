@@ -113,7 +113,7 @@ pattern: [Ss]ub[- ][Aa]gents?([^a-zA-Z-]|$)
 except: none
 applies-to: skill-body, reference, contract, capability, agent
 check: avoid-term
-evidence: plugins/wf/agents/branch.md — "the implementation lives entirely in the `wf:branch` subagent"; the closed spelling is used in every agent file, with no hyphenated occurrence in the tree
+evidence: plugins/wf/skills/branch/SKILL.md — "the implementation lives entirely in the `wf:branch` subagent"; the closed spelling is used in every agent file, with no hyphenated occurrence in the tree
 
 ### term: subagent_type is plugin-qualified
 definition: A subagent_type value names the owning plugin and the agent, `<plugin>:<agent>`; a bare agent name resolves only by accident of install order.
@@ -140,7 +140,7 @@ pattern: ^(Co-Authored-By:|🤖|Generated with \[Claude Code\])
 except: none
 applies-to: skill-body, reference, contract, capability, agent
 check: avoid-term
-evidence: plugins/wf/agents/commit.md — "Never write any AI attribution into the commit message — no `Co-Authored-By`, no \"generated with\" footer, no emoji tagline"; plugins/wf/agents/pr.md and plugins/wf/skills/constitution/SKILL.md carry the same ban. The pattern is anchored at column 1 so the ban prose, which quotes the trailer inline, never fires
+evidence: plugins/wf/skills/commit/references/procedure.md — "Never write any AI attribution into the commit message — no `Co-Authored-By`, no \"generated with\" footer, no emoji tagline"; plugins/wf/skills/pr/references/procedure.md and plugins/wf/skills/constitution/SKILL.md carry the same ban. The pattern is anchored at column 1 so the ban prose, which quotes the trailer inline, never fires
 
 ## Leading-word conformance
 

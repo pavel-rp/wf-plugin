@@ -44,7 +44,7 @@ The stated context bound for a single `/wf:ship` run, in approximate accumulated
 |-----|-------|
 | **Review Wait Minutes** | `30` |
 
-How long `/wf:fleet` waits for a requested pull-request review, in whole minutes, measured from the moment it first observes a shipper hand back `awaiting review`. The orchestrator owns this deadline: it records it in the item's scoreboard row, wakes once it has passed, and continues the shipper exactly once, so a shipper never polls for a review itself. `0` means no wait is possible — the item is recorded `review not awaited`, never a pass, and nothing merges. An absent, `<none>`, or unparseable value falls back to the shipped default (`30`), so a repo initialized before this key existed degrades gracefully. Consumed only by `/wf:fleet`.
+How long `/wf:fleet` waits for a requested pull-request review, in whole minutes, measured from the moment it first observes a shipper hand back `awaiting review`. The orchestrator owns this deadline: it records it in the item's scoreboard row, wakes once it has passed, and continues the shipper at most once per accepted send, so a shipper never polls for a review itself. A stop after the runtime accepts the send but before the orchestrator records it can deliver one duplicate continuation; it is harmless, because the resumed run repeats no side effect. `0` means no wait is possible — the item is recorded `review not awaited`, never a pass, and nothing merges. An absent, `<none>`, or unparseable value falls back to the shipped default (`30`), so a repo initialized before this key existed degrades gracefully. Consumed only by `/wf:fleet`.
 
 ## Worktree Setup
 

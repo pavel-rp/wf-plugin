@@ -56,7 +56,7 @@ test("authoritative dispatch inventory is normalized and bidirectional", () => {
   assert.equal(new Set(inventory.map((row) => row.id)).size, inventory.length, "inventory ids must be unique");
   assert.equal(inventory.filter((row) => row.classification === "excluded").length, 5, "only the revised-spec structural exclusions are allowed");
   const included = inventory.filter((row) => row.classification === "included");
-  assert.equal(included.length, 72, "fixed core dispatch inventory changed; review and guard update required");
+  assert.equal(included.length, 76,"fixed core dispatch inventory changed; review and guard update required");
   for (const row of included) {
     const source = readFileSync(join(repoRoot, row.file), "utf8");
     assert.ok(exactInventoryTargetIsPresent(source, row.target), `${row.id} exact target is stale`);
@@ -228,7 +228,11 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /crash between spawn and response persistence/);
   assert.match(fleet, /awaiting-confirmation.*occupies an in-flight pool slot/);
   assert.match(fleet, /never satisfies a dependency blocker or closeout/);
-  assert.match(fleet, /counting every `dispatched`, `in-flight`, and `awaiting-confirmation` activation/);
+  // WF-955: every live-state enumeration names awaiting-review, so a review wait holds its pool slot.
+  assert.match(fleet, /counting every `dispatched`, `in-flight`, `awaiting-confirmation`, and `awaiting-review` activation \(all occupy capacity\)/);
+  assert.match(fleet, /serialization edge with a `dispatched`, `in-flight`, `awaiting-confirmation`, or `awaiting-review` item/);
+  assert.match(fleet, /every `dispatched`, `in-flight`, `awaiting-confirmation`, and `awaiting-review` activation from it/);
+  assert.doesNotMatch(fleet, /`in-flight`, and `awaiting-confirmation` activation/);
   assert.match(fleet, /After a successful spawn response, persist `agentId`, worktree, and branch/);
   assert.match(fleet, /Activation intent: \*\*`<ACTIVATION-INTENT>`\*\*/);
   assert.match(fleet, /nonterminal scoreboard state to `awaiting-confirmation`/);
@@ -304,8 +308,10 @@ test("singleton shipper wave uses valid atomic isolated evidence", () => {
 // is `null`/`inheritance`. Before this fixture existed the gate returned
 // `invalid-stop` here, which made the escalation gate unreachable for the entire
 // single-task ceremony path — `ship:branch`, `ship:run-initial`, `ship:run-resume`,
-// `ship:phase`, `ship:ci-commit`, `ship:pr` and `ship:finalize` in `ship/SKILL.md`,
-// and the same fixed edges repeated in `fleet/SKILL.md`'s dispatch brief.
+// `ship:phase`, `ship:ci-commit`, `ship:pr` and `ship:finalize` in `ship/SKILL.md`.
+// (Since WF-943 the fleet dispatch brief routes the same unit ids with honest
+// `contextIsolation: "useful"` evidence, which selects `isolated`, and records them
+// `inline — caller cannot await`; this fixture covers `ship/SKILL.md`'s edges only.)
 test("the gate opens for a shipper-path edge that cannot honor a model selector", () => {
   const first = resolveRouting({}, {
     role: "shipper",

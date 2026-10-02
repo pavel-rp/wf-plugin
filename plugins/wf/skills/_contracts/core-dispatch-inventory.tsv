@@ -19,6 +19,9 @@ pr-agent	included	plugins/wf/skills/pr/SKILL.md	wf:pr	pr	model=true;effort=false
 branch-index	included	plugins/wf/agents/branch.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 commit-index	included	plugins/wf/agents/commit.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 pr-index	included	plugins/wf/agents/pr.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+branch-inline-index	included	plugins/wf/skills/branch/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+commit-inline-index	included	plugins/wf/skills/commit/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+pr-inline-index	included	plugins/wf/skills/pr/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 tf-index	included	plugins/wf/skills/tf/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 qa-auto-branch	included	plugins/wf/skills/qa-auto/SKILL.md	wf:branch	branch	mixed	shared-branch-gate	parent
 qa-auto-index	included	plugins/wf/skills/qa-auto/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
@@ -32,6 +35,7 @@ qa-run-index	included	plugins/wf/skills/qa-run/SKILL.md	/wf:index	index	model=fa
 verify-fix-branch	included	plugins/wf/skills/verify-fix/SKILL.md	wf:branch	branch	mixed	shared-branch-gate	parent
 verify-fix-index	included	plugins/wf/skills/verify-fix/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 pipeline-branch	included	plugins/wf/skills/_shared/pipeline-conventions.md	wf:branch	branch	model=true;effort=false	external-context,atomic,1,false,none,elevated,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+pipeline-branch-inline-index	included	plugins/wf/skills/_shared/pipeline-conventions.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 phase-runner-skill	included	plugins/wf/agents/phase-runner.md	/<skill>	phase-runner	model=false;effort=false	fixed-skill-route	phase-runner
 ship-branch	included	plugins/wf/skills/ship/SKILL.md	/wf:branch	branch	model=true;effort=true	shipper-path-complexity-route	ship
 ship-run-initial	included	plugins/wf/skills/ship/SKILL.md	/wf:run	phase-runner	model=true;effort=true	shipper-path-complexity-route	ship

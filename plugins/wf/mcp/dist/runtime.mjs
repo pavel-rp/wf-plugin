@@ -21548,7 +21548,7 @@ function applyQuestionValues(questions, inputs) {
 
 // src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 4;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.5.0" };
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 var PLAN_ENVELOPE_VERSION = 1;
 var APPLY_ENVELOPE_VERSION = 1;
@@ -23857,7 +23857,7 @@ import {
   mkdirSync as mkdirSync3,
   openSync as openSync3,
   readFileSync as readFileSync3,
-  readdirSync as readdirSync2,
+  readdirSync as readdirSync3,
   realpathSync as realpathSync4,
   renameSync as renameSync3,
   rmSync as rmSync3,
@@ -23874,214 +23874,38 @@ import { hostname } from "node:os";
 
 // src/resolver/contained-state.ts
 import {
-  closeSync,
+  closeSync as closeSync2,
+  constants as fsConstants,
+  existsSync,
+  fstatSync as fstatSync2,
   fsyncSync,
   linkSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  realpathSync as realpathSync2,
-  renameSync,
-  rmSync,
-  writeFileSync
+  lstatSync as lstatSync2,
+  mkdirSync as mkdirSync2,
+  openSync as openSync2,
+  readdirSync as readdirSync2,
+  realpathSync as realpathSync3,
+  renameSync as renameSync2,
+  rmSync as rmSync2,
+  writeFileSync as writeFileSync2
 } from "node:fs";
-import { join } from "node:path";
-import { randomBytes } from "node:crypto";
-function messageOf(err) {
-  return err instanceof Error ? err.message : String(err);
-}
-function unsafe(path, detail) {
-  return { ok: false, kind: "unsafe", path, detail };
-}
-function lexicallyPlain(rel) {
-  if (rel.length === 0 || rel.includes("\0") || rel.includes("\\")) return false;
-  if (rel.startsWith("/") || /^[A-Za-z]:/.test(rel)) return false;
-  return !rel.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
-}
-function inspectContainedStatePath(root, rel) {
-  if (!lexicallyPlain(rel)) {
-    return unsafe(rel, `\`${rel}\` is not a plain workspace-relative path.`);
-  }
-  let cursor;
-  try {
-    cursor = realpathSync2(root);
-  } catch (err) {
-    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
-  }
-  const segments = rel.split("/");
-  for (let i = 0; i < segments.length; i += 1) {
-    cursor = join(cursor, segments[i]);
-    const shown = segments.slice(0, i + 1).join("/");
-    let stat;
-    try {
-      stat = lstatSync(cursor);
-    } catch (err) {
-      if (err.code === "ENOENT") return { ok: true, state: "absent" };
-      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
-    }
-    if (stat.isSymbolicLink()) {
-      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
-    }
-    const terminal = i === segments.length - 1;
-    if (!terminal && !stat.isDirectory()) {
-      return unsafe(shown, `\`${shown}\` is not a real directory.`);
-    }
-    if (terminal && !stat.isFile()) {
-      return unsafe(shown, `\`${shown}\` exists but is not a regular file.`);
-    }
-  }
-  return { ok: true, state: "file" };
-}
-function prepareContainedParent(root, rel) {
-  const before = inspectContainedStatePath(root, rel);
-  if (!before.ok) return before;
-  const segments = rel.split("/");
-  let dir;
-  try {
-    dir = realpathSync2(root);
-  } catch (err) {
-    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
-  }
-  for (let i = 0; i < segments.length - 1; i += 1) {
-    dir = join(dir, segments[i]);
-    const shown = segments.slice(0, i + 1).join("/");
-    try {
-      mkdirSync(dir);
-    } catch (err) {
-      if (err.code !== "EEXIST") {
-        return { ok: false, kind: "failed", path: shown, detail: `\`${shown}\` could not be created: ${messageOf(err)}` };
-      }
-    }
-    let stat;
-    try {
-      stat = lstatSync(dir);
-    } catch (err) {
-      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
-    }
-    if (stat.isSymbolicLink() || !stat.isDirectory()) {
-      return unsafe(shown, `\`${shown}\` is not a real directory; resolver setup state follows no link.`);
-    }
-  }
-  const after = inspectContainedStatePath(root, rel);
-  if (!after.ok) return after;
-  return { ok: true, dir, name: segments[segments.length - 1], state: after.state };
-}
-function writeTempBeside(dir, name, content) {
-  const temp = join(dir, `.${name}.wf-state-${randomBytes(8).toString("hex")}.tmp`);
-  let fd = null;
-  try {
-    fd = openSync(temp, "wx");
-    writeFileSync(fd, content, { encoding: "utf8" });
-    fsyncSync(fd);
-    closeSync(fd);
-    fd = null;
-    return temp;
-  } catch (err) {
-    if (fd !== null) {
-      try {
-        closeSync(fd);
-      } catch {
-      }
-    }
-    try {
-      rmSync(temp, { force: true });
-    } catch {
-    }
-    throw err;
-  }
-}
-function writeContainedStateFile(root, rel, content) {
-  const parent = prepareContainedParent(root, rel);
-  if (!parent.ok) return parent;
-  let temp = null;
-  try {
-    temp = writeTempBeside(parent.dir, parent.name, content);
-    renameSync(temp, join(parent.dir, parent.name));
-    return { ok: true };
-  } catch (err) {
-    if (temp !== null) {
-      try {
-        rmSync(temp, { force: true });
-      } catch {
-      }
-    }
-    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be written: ${messageOf(err)}` };
-  }
-}
-function createContainedStateFileExclusive(root, rel, content) {
-  const parent = prepareContainedParent(root, rel);
-  if (!parent.ok) return parent;
-  if (parent.state === "file") return { ok: false, kind: "exists" };
-  let temp = null;
-  try {
-    temp = writeTempBeside(parent.dir, parent.name, content);
-    linkSync(temp, join(parent.dir, parent.name));
-    return { ok: true };
-  } catch (err) {
-    if (err.code === "EEXIST") return { ok: false, kind: "exists" };
-    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be created: ${messageOf(err)}` };
-  } finally {
-    if (temp !== null) {
-      try {
-        rmSync(temp, { force: true });
-      } catch {
-      }
-    }
-  }
-}
-function removeContainedStateFile(root, rel) {
-  const inspected = inspectContainedStatePath(root, rel);
-  if (!inspected.ok) return inspected;
-  if (inspected.state === "absent") return { ok: true };
-  try {
-    rmSync(join(realpathSync2(root), ...rel.split("/")), { force: true });
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be removed: ${messageOf(err)}` };
-  }
-}
-function renameContainedStateFile(root, rel, toRel) {
-  const from = inspectContainedStatePath(root, rel);
-  if (!from.ok) return from;
-  const to = inspectContainedStatePath(root, toRel);
-  if (!to.ok) return to;
-  if (from.state === "absent") return { ok: true, moved: false };
-  try {
-    const base = realpathSync2(root);
-    renameSync(join(base, ...rel.split("/")), join(base, ...toRel.split("/")));
-    return { ok: true, moved: true };
-  } catch (err) {
-    if (err.code === "ENOENT") return { ok: true, moved: false };
-    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
-  }
-}
-function linkContainedStateFileExclusive(root, fromRel, toRel) {
-  const from = inspectContainedStatePath(root, fromRel);
-  const to = inspectContainedStatePath(root, toRel);
-  if (!from.ok || !to.ok || from.state !== "file" || to.state !== "absent") return false;
-  try {
-    const base = realpathSync2(root);
-    linkSync(join(base, ...fromRel.split("/")), join(base, ...toRel.split("/")));
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { join as join3 } from "node:path";
+import { randomBytes as randomBytes2 } from "node:crypto";
 
 // src/resolver/engine.ts
 import {
-  closeSync as closeSync2,
+  closeSync,
   constants,
   fstatSync,
-  lstatSync as lstatSync2,
-  openSync as openSync2,
+  lstatSync,
+  openSync,
   readFileSync as readFileSync2,
   readSync,
   readdirSync,
-  realpathSync as realpathSync3,
+  realpathSync as realpathSync2,
   statSync as statSync2
 } from "node:fs";
-import { isAbsolute as isAbsolute3, join as join3, relative, resolve as resolve2, sep } from "node:path";
+import { isAbsolute as isAbsolute3, join as join2, relative, resolve as resolve2, sep } from "node:path";
 import { execFileSync as execFileSync2 } from "node:child_process";
 import { createHash as createHash2 } from "node:crypto";
 
@@ -25520,30 +25344,30 @@ function buildSnapshot(inputs, io) {
 
 // src/resolver/snapshot-store.ts
 import {
-  mkdirSync as mkdirSync2,
+  mkdirSync,
   readFileSync,
-  renameSync as renameSync2,
-  rmSync as rmSync2,
-  writeFileSync as writeFileSync2
+  renameSync,
+  rmSync,
+  writeFileSync
 } from "node:fs";
-import { dirname, join as join2 } from "node:path";
-import { randomBytes as randomBytes2 } from "node:crypto";
+import { dirname, join } from "node:path";
+import { randomBytes } from "node:crypto";
 function snapshotPath(workspaceRoot) {
-  return join2(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
+  return join(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
 }
 function writeSnapshot(workspaceRoot, snapshot) {
   const target = snapshotPath(workspaceRoot);
   const dir = dirname(target);
-  mkdirSync2(dir, { recursive: true });
-  const tmp = join2(dir, `.snapshot.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`);
+  mkdirSync(dir, { recursive: true });
+  const tmp = join(dir, `.snapshot.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
   const json = `${JSON.stringify(snapshot, null, 2)}
 `;
   try {
-    writeFileSync2(tmp, json, { encoding: "utf8" });
-    renameSync2(tmp, target);
+    writeFileSync(tmp, json, { encoding: "utf8" });
+    renameSync(tmp, target);
   } catch (err) {
     try {
-      rmSync2(tmp, { force: true });
+      rmSync(tmp, { force: true });
     } catch {
     }
     throw err;
@@ -25609,11 +25433,11 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
     const normalized = normalizeSlashes(path);
     return process.platform === "win32" ? normalized.toLowerCase() : normalized;
   };
-  const sameIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
+  const sameIdentity2 = (left, right) => left.dev === right.dev && left.ino === right.ino;
   let fd = null;
   let targetValidated = false;
   try {
-    const canonicalRoot = realpathSync3(root);
+    const canonicalRoot = realpathSync2(root);
     const rootStat = statSync2(canonicalRoot, { bigint: true });
     if (!rootStat.isDirectory()) {
       return { status: "unsafe", path: lexicalPath, content: null };
@@ -25626,11 +25450,11 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
     let cursor = canonicalRoot;
     for (const segment of segments) {
       cursor = resolve2(cursor, segment);
-      if (lstatSync2(cursor).isSymbolicLink()) {
+      if (lstatSync(cursor).isSymbolicLink()) {
         return { status: "unsafe", path: lexicalPath, content: null };
       }
     }
-    const canonicalTarget = realpathSync3(canonicalCandidate);
+    const canonicalTarget = realpathSync2(canonicalCandidate);
     if (!inside(canonicalRoot, canonicalTarget) || comparable(canonicalTarget) !== comparable(canonicalCandidate)) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
@@ -25647,21 +25471,21 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
     const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
-    fd = openSync2(
+    fd = openSync(
       canonicalTarget,
       noFollow === 0 ? constants.O_RDONLY | nonBlock : constants.O_RDONLY | noFollow | nonBlock
     );
     const opened = fstatSync(fd, { bigint: true });
-    if (!opened.isFile() || !sameIdentity(expected, opened)) {
+    if (!opened.isFile() || !sameIdentity2(expected, opened)) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
     if (opened.size > BigInt(maxBytes)) {
       return { status: "too-large", path: lexicalPath, content: null };
     }
-    const postOpenTarget = realpathSync3(canonicalCandidate);
+    const postOpenTarget = realpathSync2(canonicalCandidate);
     const postOpenStat = statSync2(canonicalCandidate, { bigint: true });
     const postOpenRoot = statSync2(canonicalRoot, { bigint: true });
-    if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity(opened, postOpenStat) || !sameIdentity(rootStat, postOpenRoot)) {
+    if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity2(opened, postOpenStat) || !sameIdentity2(rootStat, postOpenRoot)) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
     const chunks = [];
@@ -25678,7 +25502,7 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
       return { status: "too-large", path: lexicalPath, content: null };
     }
     const afterRead = fstatSync(fd, { bigint: true });
-    if (!sameIdentity(opened, afterRead) || afterRead.size !== opened.size) {
+    if (!sameIdentity2(opened, afterRead) || afterRead.size !== opened.size) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
     return {
@@ -25698,7 +25522,7 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
       content: null
     };
   } finally {
-    if (fd !== null) closeSync2(fd);
+    if (fd !== null) closeSync(fd);
   }
 }
 function readContainedCapabilityFile(root, selectedPath, maxBytes) {
@@ -25749,11 +25573,11 @@ function runPluginList() {
 function resolveSnapshot(opts) {
   const workspaceRoot = normalizeSlashes(opts.workspaceRoot);
   const io = opts.io ?? fsIO;
-  const wfConfigContent = io.readFile(join3(opts.workspaceRoot, "wf.config.js"));
+  const wfConfigContent = io.readFile(join2(opts.workspaceRoot, "wf.config.js"));
   const registryPathValue = extractRegistryPath(wfConfigContent);
-  const registryAbs = join3(opts.workspaceRoot, registryPathValue);
+  const registryAbs = join2(opts.workspaceRoot, registryPathValue);
   const registryContent = io.readFile(registryAbs);
-  const coreConfigAbs = join3(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
+  const coreConfigAbs = join2(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
   const coreConfigContent = registryPathValue === DEFAULT_REGISTRY_RELPATH ? registryContent : io.readFile(coreConfigAbs);
   const pluginListRaw = opts.pluginListRaw !== void 0 ? opts.pluginListRaw : runPluginList();
   const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
@@ -25769,6 +25593,305 @@ function resolveSnapshot(opts) {
     corePluginRoot: opts.corePluginRoot ?? null
   };
   return buildSnapshot(inputs, io);
+}
+
+// src/resolver/contained-state.ts
+function messageOf(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+function unsafe(path, detail) {
+  return { ok: false, kind: "unsafe", path, detail };
+}
+function lexicallyPlain(rel) {
+  if (rel.length === 0 || rel.includes("\0") || rel.includes("\\")) return false;
+  if (rel.startsWith("/") || /^[A-Za-z]:/.test(rel)) return false;
+  return !rel.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+}
+function inspectContainedStatePath(root, rel) {
+  if (!lexicallyPlain(rel)) {
+    return unsafe(rel, `\`${rel}\` is not a plain workspace-relative path.`);
+  }
+  let cursor;
+  try {
+    cursor = realpathSync3(root);
+  } catch (err) {
+    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = rel.split("/");
+  for (let i = 0; i < segments.length; i += 1) {
+    cursor = join3(cursor, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync2(cursor);
+    } catch (err) {
+      if (err.code === "ENOENT") return { ok: true, state: "absent" };
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink()) {
+      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
+    }
+    const terminal = i === segments.length - 1;
+    if (!terminal && !stat.isDirectory()) {
+      return unsafe(shown, `\`${shown}\` is not a real directory.`);
+    }
+    if (terminal && !stat.isFile()) {
+      return unsafe(shown, `\`${shown}\` exists but is not a regular file.`);
+    }
+  }
+  return { ok: true, state: "file" };
+}
+function prepareContainedParent(root, rel) {
+  const before = inspectContainedStatePath(root, rel);
+  if (!before.ok) return before;
+  const segments = rel.split("/");
+  let dir;
+  try {
+    dir = realpathSync3(root);
+  } catch (err) {
+    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    dir = join3(dir, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    try {
+      mkdirSync2(dir);
+    } catch (err) {
+      if (err.code !== "EEXIST") {
+        return { ok: false, kind: "failed", path: shown, detail: `\`${shown}\` could not be created: ${messageOf(err)}` };
+      }
+    }
+    let stat;
+    try {
+      stat = lstatSync2(dir);
+    } catch (err) {
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      return unsafe(shown, `\`${shown}\` is not a real directory; resolver setup state follows no link.`);
+    }
+  }
+  const after = inspectContainedStatePath(root, rel);
+  if (!after.ok) return after;
+  return { ok: true, dir, name: segments[segments.length - 1], state: after.state };
+}
+function writeTempBeside(dir, name, content) {
+  const temp = join3(dir, `.${name}.wf-state-${randomBytes2(8).toString("hex")}.tmp`);
+  let fd = null;
+  try {
+    fd = openSync2(temp, "wx");
+    writeFileSync2(fd, content, { encoding: "utf8" });
+    fsyncSync(fd);
+    closeSync2(fd);
+    fd = null;
+    return temp;
+  } catch (err) {
+    if (fd !== null) {
+      try {
+        closeSync2(fd);
+      } catch {
+      }
+    }
+    try {
+      rmSync2(temp, { force: true });
+    } catch {
+    }
+    throw err;
+  }
+}
+function writeContainedStateFile(root, rel, content) {
+  const parent = prepareContainedParent(root, rel);
+  if (!parent.ok) return parent;
+  let temp = null;
+  try {
+    temp = writeTempBeside(parent.dir, parent.name, content);
+    renameSync2(temp, join3(parent.dir, parent.name));
+    return { ok: true };
+  } catch (err) {
+    if (temp !== null) {
+      try {
+        rmSync2(temp, { force: true });
+      } catch {
+      }
+    }
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be written: ${messageOf(err)}` };
+  }
+}
+function createContainedStateFileExclusive(root, rel, content) {
+  const parent = prepareContainedParent(root, rel);
+  if (!parent.ok) return parent;
+  if (parent.state === "file") return { ok: false, kind: "exists" };
+  let temp = null;
+  try {
+    temp = writeTempBeside(parent.dir, parent.name, content);
+    linkSync(temp, join3(parent.dir, parent.name));
+    return { ok: true };
+  } catch (err) {
+    if (err.code === "EEXIST") return { ok: false, kind: "exists" };
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be created: ${messageOf(err)}` };
+  } finally {
+    if (temp !== null) {
+      try {
+        rmSync2(temp, { force: true });
+      } catch {
+      }
+    }
+  }
+}
+function removeContainedStateFile(root, rel) {
+  const inspected = inspectContainedStatePath(root, rel);
+  if (!inspected.ok) return inspected;
+  if (inspected.state === "absent") return { ok: true };
+  try {
+    rmSync2(join3(realpathSync3(root), ...rel.split("/")), { force: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be removed: ${messageOf(err)}` };
+  }
+}
+function renameContainedStateFile(root, rel, toRel) {
+  const from = inspectContainedStatePath(root, rel);
+  if (!from.ok) return from;
+  const to = inspectContainedStatePath(root, toRel);
+  if (!to.ok) return to;
+  if (from.state === "absent") return { ok: true, moved: false };
+  try {
+    const base = realpathSync3(root);
+    renameSync2(join3(base, ...rel.split("/")), join3(base, ...toRel.split("/")));
+    return { ok: true, moved: true };
+  } catch (err) {
+    if (err.code === "ENOENT") return { ok: true, moved: false };
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
+  }
+}
+var listingAfterVerifyOverride = null;
+var listingIdentityOverride = null;
+function observedIdentity(stat) {
+  const id = { dev: stat.dev, ino: stat.ino };
+  return listingIdentityOverride !== null ? listingIdentityOverride(id) : id;
+}
+function walkDirectory(base, segments) {
+  let cursor = base;
+  const ids = [];
+  for (let i = 0; i < segments.length; i += 1) {
+    cursor = join3(cursor, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync2(cursor, { bigint: true });
+    } catch (err) {
+      if (err.code === "ENOENT") return { ok: true, state: "absent" };
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink()) {
+      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
+    }
+    if (!stat.isDirectory()) return unsafe(shown, `\`${shown}\` is not a real directory.`);
+    ids.push(observedIdentity(stat));
+  }
+  return { ok: true, state: "present", dir: cursor, ids };
+}
+function sameIdentity(a, b) {
+  return a.dev === b.dev && a.ino === b.ino;
+}
+function noFollowDirectoryFlags() {
+  const { O_RDONLY, O_DIRECTORY, O_NOFOLLOW } = fsConstants;
+  if (typeof O_DIRECTORY !== "number" || typeof O_NOFOLLOW !== "number") return null;
+  return (O_RDONLY ?? 0) | O_DIRECTORY | O_NOFOLLOW;
+}
+function handleListingPath(fd) {
+  if (process.platform !== "linux") return null;
+  const path = `/proc/self/fd/${fd}`;
+  return existsSync(path) ? path : null;
+}
+function listContainedStateEntries(root, relDir, prefix) {
+  if (!lexicallyPlain(relDir)) {
+    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
+  }
+  let base;
+  try {
+    base = realpathSync3(root);
+  } catch (err) {
+    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = relDir.split("/");
+  const before = walkDirectory(base, segments);
+  if (!before.ok) return before;
+  if (before.state === "absent") return { ok: true, names: [] };
+  const unidentified = before.ids.findIndex((id) => !hasStatIdentity(id));
+  if (unidentified !== -1) {
+    const shown = segments.slice(0, unidentified + 1).join("/");
+    return unsafe(
+      shown,
+      `\`${shown}\` reports no device/inode identity, so its listing cannot be bound to the directory verified.`
+    );
+  }
+  const verified = before.ids[before.ids.length - 1];
+  const changed = (why) => unsafe(relDir, `\`${relDir}\` changed while it was being listed (${why}); resolver setup state follows no link.`);
+  const failed = (err) => ({
+    ok: false,
+    kind: "failed",
+    path: relDir,
+    detail: `\`${relDir}\` could not be listed: ${messageOf(err)}`
+  });
+  listingAfterVerifyOverride?.();
+  let fd = null;
+  try {
+    const flags = noFollowDirectoryFlags();
+    if (flags !== null) {
+      try {
+        fd = openSync2(before.dir, flags);
+      } catch (err) {
+        const code = err.code;
+        if (code === "ENOENT" || code === "ELOOP" || code === "ENOTDIR") return changed(`it could not be reopened: ${code}`);
+        return failed(err);
+      }
+      let opened;
+      try {
+        opened = fstatSync2(fd, { bigint: true });
+      } catch (err) {
+        return failed(err);
+      }
+      if (!opened.isDirectory() || !sameIdentity(observedIdentity(opened), verified)) {
+        return changed("the opened directory is not the one verified");
+      }
+    }
+    let entries;
+    try {
+      entries = readdirSync2((fd !== null ? handleListingPath(fd) : null) ?? before.dir);
+    } catch (err) {
+      if (err.code === "ENOENT") return changed("it disappeared");
+      return failed(err);
+    }
+    const after = walkDirectory(base, segments);
+    if (!after.ok) return changed(after.detail);
+    if (after.state === "absent") return changed("it disappeared");
+    for (let i = 0; i < before.ids.length; i += 1) {
+      if (!sameIdentity(before.ids[i], after.ids[i])) {
+        return changed(`\`${segments.slice(0, i + 1).join("/")}\` is no longer the directory verified`);
+      }
+    }
+    return { ok: true, names: entries.filter((name) => name.startsWith(prefix)).sort() };
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync2(fd);
+      } catch {
+      }
+    }
+  }
+}
+function linkContainedStateFileExclusive(root, fromRel, toRel) {
+  const from = inspectContainedStatePath(root, fromRel);
+  const to = inspectContainedStatePath(root, toRel);
+  if (!from.ok || !to.ok || from.state !== "file" || to.state !== "absent") return false;
+  try {
+    const base = realpathSync3(root);
+    linkSync(join3(base, ...fromRel.split("/")), join3(base, ...toRel.split("/")));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // src/resolver/workspace-setup.ts
@@ -25863,60 +25986,57 @@ function writeBackSetupRunnerPids(fs, path, lock, pids) {
     return null;
   };
   const noFollow = fs.constants.O_NOFOLLOW ?? 0;
-  const read = (target, fileId) => {
-    const fd = fs.openSync(target, fs.constants.O_RDONLY | noFollow);
-    try {
-      const stat = fs.fstatSync(fd);
-      if (!stat.isFile() || idOf(stat) !== fileId || stat.size > 4096) return null;
-      const buffer = Buffer.alloc(stat.size);
-      let offset = 0;
-      while (offset < stat.size) {
-        const count = fs.readSync(fd, buffer, offset, stat.size - offset, offset);
-        if (count === 0) break;
-        offset += count;
-      }
-      const parsed = JSON.parse(buffer.toString("utf8", 0, offset));
-      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
-    } finally {
-      fs.closeSync(fd);
-    }
-  };
-  let temp = null;
+  let fd = null;
   try {
     const first = walk();
     if (first === null) return "unsafe";
-    const name = segments[segments.length - 1];
-    const target = path.join(first.dir, name);
-    const record2 = read(target, first.fileId);
-    if (record2 === null) return "unsafe";
+    const target = path.join(first.dir, segments[segments.length - 1]);
+    fd = fs.openSync(target, fs.constants.O_RDWR | noFollow);
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || idOf(stat) !== first.fileId || stat.size > 4096) return "unsafe";
+    const buffer = Buffer.alloc(stat.size);
+    let offset = 0;
+    while (offset < stat.size) {
+      const count = fs.readSync(fd, buffer, offset, stat.size - offset, offset);
+      if (count === 0) break;
+      offset += count;
+    }
+    const parsed = JSON.parse(buffer.toString("utf8", 0, offset));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return "unsafe";
+    const record2 = parsed;
     if (record2.token !== lock.token) return "token-mismatch";
     record2.runnerPid = pids.runnerPid;
     if (pids.groupPid !== void 0) record2.groupPid = pids.groupPid;
-    temp = path.join(first.dir, `.${name}.runner-${pids.runnerPid}-${Math.random().toString(16).slice(2)}.tmp`);
-    const fd = fs.openSync(temp, "wx");
+    const bytes = Buffer.from(`${JSON.stringify(record2)}
+`, "utf8");
+    const original = buffer.subarray(0, offset);
+    const put = (data) => {
+      let done = 0;
+      while (done < data.length) {
+        done += fs.writeSync(fd, data, done, data.length - done, done);
+      }
+      fs.ftruncateSync(fd, data.length);
+    };
     try {
-      fs.writeFileSync(fd, `${JSON.stringify(record2)}
-`, { encoding: "utf8" });
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
+      put(bytes);
+    } catch {
+      try {
+        put(original);
+        fs.fsyncSync(fd);
+      } catch {
+      }
+      return "failed";
     }
-    const second = walk();
-    if (second === null || second.dir !== first.dir || second.dirId !== first.dirId || second.fileId !== first.fileId) {
-      return "unsafe";
-    }
-    const current = read(target, second.fileId);
-    if (current === null) return "unsafe";
-    if (current.token !== lock.token) return "token-mismatch";
-    fs.renameSync(temp, target);
-    temp = null;
-    return "written";
+    fs.fsyncSync(fd);
+    const after = walk();
+    if (after === null) return "unsafe";
+    return after.dir === first.dir && after.dirId === first.dirId && after.fileId === first.fileId ? "written" : "unsafe";
   } catch {
     return "failed";
   } finally {
-    if (temp !== null) {
+    if (fd !== null) {
       try {
-        fs.rmSync(temp, { force: true });
+        fs.closeSync(fd);
       } catch {
       }
     }
@@ -26003,6 +26123,7 @@ function parseSetupRunnerReport(stdout, durationMs) {
   }
 }
 var SETUP_LOCK_RELPATH = "_local/resolver/setup.lock";
+var SETUP_LOCK_ASIDE_SUFFIX = ".stale-";
 var SETUP_LOCK_WAIT_GRACE_SECONDS = 30;
 var SETUP_LOCK_POLL_MS = 100;
 var SETUP_LOCK_MAX_BYTES = 4096;
@@ -26089,7 +26210,7 @@ function reclaimIfAbandoned(root, deps) {
   const holder = current.record;
   if (holder === null || holder.host !== deps.host || setupLockLive(holder, deps)) return "held";
   if (holder.groupPid !== void 0) deps.killGroup?.(holder.groupPid);
-  const aside = `${SETUP_LOCK_RELPATH}.stale-${randomBytes3(6).toString("hex")}`;
+  const aside = `${SETUP_LOCK_RELPATH}${SETUP_LOCK_ASIDE_SUFFIX}${randomBytes3(6).toString("hex")}`;
   const moved = renameContainedStateFile(root, SETUP_LOCK_RELPATH, aside);
   if (!moved.ok) return moved.kind === "unsafe" ? "unsafe" : "held";
   if (!moved.moved) return "retry";
@@ -26104,6 +26225,52 @@ function reclaimIfAbandoned(root, deps) {
   removeContainedStateFile(root, aside);
   return "retry";
 }
+var SETUP_LOCK_DIR = SETUP_LOCK_RELPATH.slice(0, SETUP_LOCK_RELPATH.lastIndexOf("/"));
+var SETUP_LOCK_ASIDE_PREFIX = `${SETUP_LOCK_RELPATH.slice(SETUP_LOCK_DIR.length + 1)}${SETUP_LOCK_ASIDE_SUFFIX}`;
+function judgeAsideLocks(root, deps, ownToken) {
+  const listed = listContainedStateEntries(root, SETUP_LOCK_DIR, SETUP_LOCK_ASIDE_PREFIX);
+  if (!listed.ok) return listed.kind === "unsafe" ? "unsafe" : { failed: listed.detail };
+  let held = null;
+  for (const name of listed.names) {
+    const rel = `${SETUP_LOCK_DIR}/${name}`;
+    const read = readLock(root, rel);
+    if (read.status === "missing") continue;
+    if (read.status === "unsafe") return "unsafe";
+    const holder = read.record;
+    if (holder !== null && holder.token === ownToken) continue;
+    if (holder === null || holder.host !== deps.host || setupLockLive(holder, deps)) {
+      held ??= rel;
+      continue;
+    }
+    if (holder.groupPid !== void 0) deps.killGroup?.(holder.groupPid);
+    const removed = removeContainedStateFile(root, rel);
+    if (!removed.ok) return removed.kind === "unsafe" ? "unsafe" : { failed: removed.detail };
+  }
+  return held === null ? "clear" : { held };
+}
+function giveBackState(read, token2) {
+  if (read.status === "missing") return "given-back";
+  if (read.status === "unsafe") return "unsafe";
+  if (read.record === null) return "unreadable";
+  return read.record.token === token2 ? "own" : "given-back";
+}
+function dropOwnLock(root, token2) {
+  issuedSetupLockTokens.add(token2);
+  const state = giveBackState(readLock(root, SETUP_LOCK_RELPATH), token2);
+  if (state === "given-back") return { ok: true };
+  if (state === "unsafe") {
+    return {
+      ok: false,
+      kind: "unsafe",
+      detail: `\`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link`
+    };
+  }
+  if (state === "unreadable") {
+    return { ok: false, kind: "failed", detail: `\`${SETUP_LOCK_RELPATH}\` could not be read as a setup-lock record` };
+  }
+  const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
+  return removed.ok ? { ok: true } : { ok: false, kind: removed.kind === "unsafe" ? "unsafe" : "failed", detail: removed.detail };
+}
 function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs = MAX_SETUP_TIMEOUT_SECONDS * 1e3) {
   const token2 = randomBytes3(16).toString("hex");
   const content = renderSetupLock({
@@ -26117,9 +26284,43 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
   for (; ; ) {
     const created = createContainedStateFileExclusive(root, SETUP_LOCK_RELPATH, content);
     if (created.ok) {
-      issuedSetupLockTokens.add(token2);
-      heldSetupLockTokens.add(token2);
-      return { ok: true, token: token2 };
+      const asides = judgeAsideLocks(root, deps, token2);
+      if (asides === "clear") {
+        issuedSetupLockTokens.add(token2);
+        heldSetupLockTokens.add(token2);
+        return { ok: true, token: token2 };
+      }
+      const dropped = dropOwnLock(root, token2);
+      if (!dropped.ok) {
+        return {
+          ok: false,
+          kind: dropped.kind,
+          detail: `the setup lock taken while a displaced record was present could not be given back: ${dropped.detail}; the command was not run.`
+        };
+      }
+      if (asides === "unsafe") {
+        return {
+          ok: false,
+          kind: "unsafe",
+          detail: `a displaced setup-lock record beside \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
+        };
+      }
+      if ("failed" in asides) {
+        return {
+          ok: false,
+          kind: "failed",
+          detail: `the displaced setup-lock records beside \`${SETUP_LOCK_RELPATH}\` could not be checked: ${asides.failed}; the command was not run.`
+        };
+      }
+      if (deps.now() >= deadline) {
+        return {
+          ok: false,
+          kind: "busy",
+          detail: `a setup run displaced to \`${asides.held}\` still holds the setup lock after ${Math.round(waitMs / 1e3)} seconds; the command was not run.`
+        };
+      }
+      deps.sleepMs(SETUP_LOCK_POLL_MS);
+      continue;
     }
     if (created.kind !== "exists") return { ok: false, kind: created.kind, detail: created.detail };
     const reclaim = reclaimIfAbandoned(root, deps);
@@ -26150,20 +26351,41 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
 }
 function releaseSetupLock(root, token2) {
   heldSetupLockTokens.delete(token2);
-  const current = readLock(root, SETUP_LOCK_RELPATH);
-  if (current.status === "unsafe") {
-    return {
-      ok: false,
-      detail: `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
-    };
-  }
-  if (current.status === "ok" && current.record?.token === token2) {
+  let failure2 = null;
+  const current = giveBackState(readLock(root, SETUP_LOCK_RELPATH), token2);
+  if (current === "unsafe") {
+    failure2 = `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`;
+  } else if (current === "unreadable") {
+    failure2 = `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` could not be read as a setup-lock record.`;
+  } else if (current === "own") {
     const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
     if (!removed.ok) {
       return { ok: false, detail: `the setup lock was not released: ${removed.detail}` };
     }
+    return { ok: true };
   }
-  return { ok: true };
+  const listed = listContainedStateEntries(root, SETUP_LOCK_DIR, SETUP_LOCK_ASIDE_PREFIX);
+  if (!listed.ok) {
+    return { ok: false, detail: failure2 ?? `the setup lock was not released: ${listed.detail}` };
+  }
+  for (const name of listed.names) {
+    const rel = `${SETUP_LOCK_DIR}/${name}`;
+    const aside = giveBackState(readLock(root, rel), token2);
+    if (aside === "given-back") continue;
+    if (aside === "unsafe") {
+      failure2 ??= `the displaced setup lock was not released: \`${rel}\` is not a contained regular file; resolver setup state follows no link.`;
+      continue;
+    }
+    if (aside === "unreadable") {
+      failure2 ??= `the displaced setup lock was not released: \`${rel}\` could not be read as a setup-lock record.`;
+      continue;
+    }
+    const removed = removeContainedStateFile(root, rel);
+    if (!removed.ok) {
+      failure2 ??= `the displaced setup lock was not released: ${removed.detail}`;
+    }
+  }
+  return failure2 === null ? { ok: true } : { ok: false, detail: failure2 };
 }
 function tailOf(output) {
   return output.length <= SETUP_OUTPUT_TAIL_CHARS ? output : output.slice(output.length - SETUP_OUTPUT_TAIL_CHARS);
@@ -27139,14 +27361,14 @@ function createDefaultPorts(workspaceRoot) {
     },
     listDirs: (absDir) => {
       try {
-        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+        return readdirSync3(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
       } catch {
         return [];
       }
     },
     listFiles: (absDir) => {
       try {
-        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+        return readdirSync3(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
       } catch {
         return [];
       }
@@ -27401,7 +27623,7 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     },
     backupsPresent: () => {
       try {
-        return readdirSync2(backupRoot).length > 0;
+        return readdirSync3(backupRoot).length > 0;
       } catch {
         return false;
       }
@@ -31436,7 +31658,7 @@ import {
   lstatSync as lstatSync4,
   mkdirSync as mkdirSync4,
   readFileSync as readFileSync4,
-  readdirSync as readdirSync3,
+  readdirSync as readdirSync4,
   renameSync as renameSync4,
   rmSync as rmSync4,
   writeFileSync as writeFileSync4
@@ -31481,7 +31703,7 @@ function ancestorsSafe(root, rel) {
 function listClass(sourceRoot, dirRel, suffixes) {
   let names;
   try {
-    names = readdirSync3(join5(sourceRoot, dirRel));
+    names = readdirSync4(join5(sourceRoot, dirRel));
   } catch {
     return [];
   }
