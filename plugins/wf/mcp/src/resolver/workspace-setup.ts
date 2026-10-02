@@ -679,14 +679,40 @@ function judgeAsideLocks(
 }
 
 /**
+ * How a lock read bears on giving a record back (WF-1005). Only a `missing`
+ * record, or one that parsed and carries another token, is already given back;
+ * a read that is `unsafe`, or present but unparseable, cannot show the record
+ * is not this caller's own, so it is never taken as given back.
+ */
+type GiveBackRead = "own" | "given-back" | "unsafe" | "unreadable";
+
+function giveBackState(
+  read: { status: "ok"; record: SetupLockRecord | null } | { status: "missing" } | { status: "unsafe" },
+  token: string,
+): GiveBackRead {
+  if (read.status === "missing") return "given-back";
+  if (read.status === "unsafe") return "unsafe";
+  if (read.record === null) return "unreadable";
+  return read.record.token === token ? "own" : "given-back";
+}
+
+/**
  * Give the lock path back: remove it only while it still carries `token`. The
  * token is recorded as issued first, so a record a failed removal leaves behind
  * is judged abandoned by this process rather than live until its time bound.
+ * A lock path that reads `unsafe` or unparseable is a failure, never followed
+ * or removed: it cannot be shown to no longer hold this caller's record.
  */
 function dropOwnLock(root: string, token: string): { ok: true } | { ok: false; detail: string } {
   issuedSetupLockTokens.add(token);
-  const current = readLock(root, SETUP_LOCK_RELPATH);
-  if (current.status !== "ok" || current.record?.token !== token) return { ok: true };
+  const state = giveBackState(readLock(root, SETUP_LOCK_RELPATH), token);
+  if (state === "given-back") return { ok: true };
+  if (state === "unsafe") {
+    return { ok: false, detail: `\`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link` };
+  }
+  if (state === "unreadable") {
+    return { ok: false, detail: `\`${SETUP_LOCK_RELPATH}\` could not be read as a setup-lock record` };
+  }
   const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
   return removed.ok ? { ok: true } : { ok: false, detail: removed.detail };
 }
@@ -791,14 +817,20 @@ export function acquireSetupLock(
  *  is never followed or removed. */
 export function releaseSetupLock(root: string, token: string): { ok: true } | { ok: false; detail: string } {
   heldSetupLockTokens.delete(token);
-  const current = readLock(root, SETUP_LOCK_RELPATH);
-  if (current.status === "unsafe") {
+  const current = giveBackState(readLock(root, SETUP_LOCK_RELPATH), token);
+  if (current === "unsafe") {
     return {
       ok: false,
       detail: `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`,
     };
   }
-  if (current.status === "ok" && current.record?.token === token) {
+  if (current === "unreadable") {
+    return {
+      ok: false,
+      detail: `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` could not be read as a setup-lock record.`,
+    };
+  }
+  if (current === "own") {
     const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
     if (!removed.ok) {
       return { ok: false, detail: `the setup lock was not released: ${removed.detail}` };
@@ -813,8 +845,22 @@ export function releaseSetupLock(root: string, token: string): { ok: true } | { 
   }
   for (const name of listed.names) {
     const rel = `${SETUP_LOCK_DIR}/${name}`;
-    const aside = readLock(root, rel);
-    if (aside.status !== "ok" || aside.record?.token !== token) continue;
+    const aside = giveBackState(readLock(root, rel), token);
+    if (aside === "given-back") continue;
+    // An aside that cannot be read safely may be this run's own displaced
+    // claim: report it, and neither follow nor remove it (WF-1005).
+    if (aside === "unsafe") {
+      return {
+        ok: false,
+        detail: `the displaced setup lock was not released: \`${rel}\` is not a contained regular file; resolver setup state follows no link.`,
+      };
+    }
+    if (aside === "unreadable") {
+      return {
+        ok: false,
+        detail: `the displaced setup lock was not released: \`${rel}\` could not be read as a setup-lock record.`,
+      };
+    }
     const removed = removeContainedStateFile(root, rel);
     if (!removed.ok) {
       return { ok: false, detail: `the displaced setup lock was not released: ${removed.detail}` };
