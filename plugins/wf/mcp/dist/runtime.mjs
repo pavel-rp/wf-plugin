@@ -26248,10 +26248,22 @@ function judgeAsideLocks(root, deps, ownToken) {
   }
   return held === null ? "clear" : { held };
 }
+function giveBackState(read, token2) {
+  if (read.status === "missing") return "given-back";
+  if (read.status === "unsafe") return "unsafe";
+  if (read.record === null) return "unreadable";
+  return read.record.token === token2 ? "own" : "given-back";
+}
 function dropOwnLock(root, token2) {
   issuedSetupLockTokens.add(token2);
-  const current = readLock(root, SETUP_LOCK_RELPATH);
-  if (current.status !== "ok" || current.record?.token !== token2) return { ok: true };
+  const state = giveBackState(readLock(root, SETUP_LOCK_RELPATH), token2);
+  if (state === "given-back") return { ok: true };
+  if (state === "unsafe") {
+    return { ok: false, detail: `\`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link` };
+  }
+  if (state === "unreadable") {
+    return { ok: false, detail: `\`${SETUP_LOCK_RELPATH}\` could not be read as a setup-lock record` };
+  }
   const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
   return removed.ok ? { ok: true } : { ok: false, detail: removed.detail };
 }
@@ -26335,14 +26347,20 @@ function acquireSetupLock(root, waitMs, deps = defaultSetupLockDeps, timeoutMs =
 }
 function releaseSetupLock(root, token2) {
   heldSetupLockTokens.delete(token2);
-  const current = readLock(root, SETUP_LOCK_RELPATH);
-  if (current.status === "unsafe") {
+  const current = giveBackState(readLock(root, SETUP_LOCK_RELPATH), token2);
+  if (current === "unsafe") {
     return {
       ok: false,
       detail: `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` is not a contained regular file; resolver setup state follows no link.`
     };
   }
-  if (current.status === "ok" && current.record?.token === token2) {
+  if (current === "unreadable") {
+    return {
+      ok: false,
+      detail: `the setup lock was not released: \`${SETUP_LOCK_RELPATH}\` could not be read as a setup-lock record.`
+    };
+  }
+  if (current === "own") {
     const removed = removeContainedStateFile(root, SETUP_LOCK_RELPATH);
     if (!removed.ok) {
       return { ok: false, detail: `the setup lock was not released: ${removed.detail}` };
@@ -26355,8 +26373,20 @@ function releaseSetupLock(root, token2) {
   }
   for (const name of listed.names) {
     const rel = `${SETUP_LOCK_DIR}/${name}`;
-    const aside = readLock(root, rel);
-    if (aside.status !== "ok" || aside.record?.token !== token2) continue;
+    const aside = giveBackState(readLock(root, rel), token2);
+    if (aside === "given-back") continue;
+    if (aside === "unsafe") {
+      return {
+        ok: false,
+        detail: `the displaced setup lock was not released: \`${rel}\` is not a contained regular file; resolver setup state follows no link.`
+      };
+    }
+    if (aside === "unreadable") {
+      return {
+        ok: false,
+        detail: `the displaced setup lock was not released: \`${rel}\` could not be read as a setup-lock record.`
+      };
+    }
     const removed = removeContainedStateFile(root, rel);
     if (!removed.ok) {
       return { ok: false, detail: `the displaced setup lock was not released: ${removed.detail}` };
