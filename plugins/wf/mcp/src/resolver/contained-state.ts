@@ -30,6 +30,9 @@
 
 import {
   closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
   fsyncSync,
   linkSync,
   lstatSync,
@@ -289,48 +292,161 @@ export function renameContainedStateFile(
   }
 }
 
-/**
- * The names directly inside the workspace-relative directory `relDir` that
- * start with `prefix` (WF-997). Every segment of `relDir` must be a real
- * directory — a link anywhere on the way is `unsafe`, never followed. An absent
- * directory has no entries. Only names are returned: a caller reads each entry
- * through the contained reader, which re-checks it.
- */
-export function listContainedStateEntries(
-  root: string,
-  relDir: string,
-  prefix: string,
-): { ok: true; names: string[] } | { ok: false; kind: "unsafe" | "failed"; path: string; detail: string } {
-  if (!lexicallyPlain(relDir)) {
-    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
-  }
-  let cursor: string;
-  try {
-    cursor = realpathSync(root);
-  } catch (err) {
-    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
-  }
-  const segments = relDir.split("/");
+export type ContainedStateListing =
+  | { ok: true; names: string[] }
+  | { ok: false; kind: "unsafe" | "failed"; path: string; detail: string };
+
+/** Test seam: `afterVerify` runs between the verifying walk and the listing,
+ *  where a concurrent swap of the directory would land. */
+export interface ContainedStateListingHooks {
+  afterVerify?: () => void;
+}
+
+type DirectoryIdentity = { dev: bigint; ino: bigint };
+
+type DirectoryWalk =
+  | { ok: true; state: "present"; dir: string; ids: DirectoryIdentity[] }
+  | { ok: true; state: "absent" }
+  | { ok: false; kind: "unsafe"; path: string; detail: string };
+
+/** Walk `segments` from `base` with `lstat`, requiring every segment to be a
+ *  real directory, and record each one's identity. */
+function walkDirectory(base: string, segments: string[]): DirectoryWalk {
+  let cursor = base;
+  const ids: DirectoryIdentity[] = [];
   for (let i = 0; i < segments.length; i += 1) {
     cursor = join(cursor, segments[i]);
     const shown = segments.slice(0, i + 1).join("/");
     let stat;
     try {
-      stat = lstatSync(cursor);
+      stat = lstatSync(cursor, { bigint: true });
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, names: [] };
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, state: "absent" };
       return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
     }
     if (stat.isSymbolicLink()) {
       return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
     }
     if (!stat.isDirectory()) return unsafe(shown, `\`${shown}\` is not a real directory.`);
+    ids.push({ dev: stat.dev, ino: stat.ino });
   }
+  return { ok: true, state: "present", dir: cursor, ids };
+}
+
+function sameIdentity(a: DirectoryIdentity, b: DirectoryIdentity): boolean {
+  return a.dev === b.dev && a.ino === b.ino;
+}
+
+/** `O_RDONLY | O_DIRECTORY | O_NOFOLLOW` where the platform defines all three,
+ *  else null (no no-follow directory handle can be opened). */
+function noFollowDirectoryFlags(): number | null {
+  const { O_RDONLY, O_DIRECTORY, O_NOFOLLOW } = fsConstants;
+  if (typeof O_DIRECTORY !== "number" || typeof O_NOFOLLOW !== "number") return null;
+  return (O_RDONLY ?? 0) | O_DIRECTORY | O_NOFOLLOW;
+}
+
+/** A path that lists the directory an open descriptor refers to, rather than
+ *  whatever its original path names now — available where procfs is. */
+function handleListingPath(fd: number): string | null {
+  if (process.platform !== "linux") return null;
+  const path = `/proc/self/fd/${fd}`;
+  return existsSync(path) ? path : null;
+}
+
+/**
+ * The names directly inside the workspace-relative directory `relDir` that
+ * start with `prefix` (WF-997). Every segment of `relDir` must be a real
+ * directory — a link anywhere on the way is `unsafe`, never followed. An absent
+ * directory has no entries. Only names are returned: a caller reads each entry
+ * through the contained reader, which re-checks it.
+ *
+ * The listing is bound to the directory the walk verified (WF-1004): the
+ * directory is opened no-follow and its handle must carry the verified
+ * identity, the entries are read through that handle where the platform can
+ * (procfs), and the whole path is walked again afterwards. A directory
+ * replaced — by a link, or by another directory — between the walk and the
+ * listing is `unsafe`, never an `ok` listing of what was swapped in. Where no
+ * handle-bound listing exists, the before/after identity check is what binds
+ * it; a swap undone before the second walk is outside what that can observe.
+ */
+export function listContainedStateEntries(
+  root: string,
+  relDir: string,
+  prefix: string,
+  hooks?: ContainedStateListingHooks,
+): ContainedStateListing {
+  if (!lexicallyPlain(relDir)) {
+    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
+  }
+  let base: string;
   try {
-    return { ok: true, names: readdirSync(cursor).filter((name) => name.startsWith(prefix)).sort() };
+    base = realpathSync(root);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, names: [] };
-    return { ok: false, kind: "failed", path: relDir, detail: `\`${relDir}\` could not be listed: ${messageOf(err)}` };
+    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = relDir.split("/");
+  const before = walkDirectory(base, segments);
+  if (!before.ok) return before;
+  if (before.state === "absent") return { ok: true, names: [] };
+  const verified = before.ids[before.ids.length - 1];
+  const changed = (why: string) =>
+    unsafe(relDir, `\`${relDir}\` changed while it was being listed (${why}); resolver setup state follows no link.`);
+  const failed = (err: unknown): ContainedStateListing => ({
+    ok: false,
+    kind: "failed",
+    path: relDir,
+    detail: `\`${relDir}\` could not be listed: ${messageOf(err)}`,
+  });
+
+  hooks?.afterVerify?.();
+
+  let fd: number | null = null;
+  try {
+    const flags = noFollowDirectoryFlags();
+    if (flags !== null) {
+      try {
+        fd = openSync(before.dir, flags);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "ENOENT" || code === "ELOOP" || code === "ENOTDIR") return changed(`it could not be reopened: ${code}`);
+        return failed(err);
+      }
+      let opened;
+      try {
+        opened = fstatSync(fd, { bigint: true });
+      } catch (err) {
+        return failed(err);
+      }
+      if (!opened.isDirectory() || !sameIdentity({ dev: opened.dev, ino: opened.ino }, verified)) {
+        return changed("the opened directory is not the one verified");
+      }
+    }
+
+    let entries: string[];
+    try {
+      entries = readdirSync((fd !== null ? handleListingPath(fd) : null) ?? before.dir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return changed("it disappeared");
+      return failed(err);
+    }
+
+    const after = walkDirectory(base, segments);
+    if (!after.ok) return changed(after.detail);
+    if (after.state === "absent") return changed("it disappeared");
+    for (let i = 0; i < before.ids.length; i += 1) {
+      if (!sameIdentity(before.ids[i], after.ids[i])) {
+        return changed(`\`${segments.slice(0, i + 1).join("/")}\` is no longer the directory verified`);
+      }
+    }
+    return { ok: true, names: entries.filter((name) => name.startsWith(prefix)).sort() };
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* the listing result stands; the descriptor is released with the process */
+      }
+    }
   }
 }
 
