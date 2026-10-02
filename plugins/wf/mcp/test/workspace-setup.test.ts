@@ -815,6 +815,124 @@ test("reclaim: an abandoned displaced record that cannot be removed fails with t
   }
 });
 
+// WF-1005 — a give-back only counts as done when the record is missing or
+// parsed with another token; an unsafe or unparseable read is a failure.
+test("give-back: a lock path that turns unsafe before it is given back fails, and is neither followed nor removed", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  const dir = join(ws.root, "_local", "resolver");
+  try {
+    const now = Date.parse("2026-06-01T00:00:00Z");
+    write(join(dir, "setup.lock.stale-0123456789ab"), renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "displaced", acquiredAt: new Date(now).toISOString() }));
+    const outside = join(ws.root, "outside-lock.json");
+    // While the displaced holder is judged live, the caller's own lock path is
+    // swapped for a link to a copy of its record outside the lock directory.
+    const deps = lockDeps((pid) => {
+      if (pid === DEAD_RESOLVER + 10 && !existsSync(outside)) {
+        write(outside, readFileSync(lockPath(ws.root), "utf8"));
+        rmSync(lockPath(ws.root));
+        symlinkSync(outside, lockPath(ws.root));
+      }
+      return false;
+    }, now);
+    const result = acquireSetupLock(ws.root, 1_000, deps);
+    assert.equal(!result.ok && result.kind, "unsafe", "the same kind the reclaim path reports for an unsafe lock path");
+    assert.match(!result.ok ? result.detail : "", /could not be given back: .*not a contained regular file/);
+    assert.equal(lstatSync(lockPath(ws.root)).isSymbolicLink(), true, "the unsafe lock path is not removed");
+    assert.equal(existsSync(outside), true, "the link target is not followed or removed");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("give-back: a lock path that turns unparseable before it is given back fails, and is left in place", () => {
+  const ws = workspace(config({}));
+  const dir = join(ws.root, "_local", "resolver");
+  try {
+    const now = Date.parse("2026-06-01T00:00:00Z");
+    write(join(dir, "setup.lock.stale-0123456789ab"), renderSetupLock({ pid: DEAD_RESOLVER + 10, host: hostname(), token: "displaced", acquiredAt: new Date(now).toISOString() }));
+    let swapped = false;
+    const deps = lockDeps((pid) => {
+      if (pid === DEAD_RESOLVER + 10 && !swapped) {
+        swapped = true;
+        write(lockPath(ws.root), "not a lock record");
+      }
+      return false;
+    }, now);
+    const result = acquireSetupLock(ws.root, 1_000, deps);
+    assert.equal(!result.ok && result.kind, "failed", JSON.stringify(result));
+    assert.match(!result.ok ? result.detail : "", /could not be given back: .*could not be read as a setup-lock record/);
+    assert.equal(readFileSync(lockPath(ws.root), "utf8"), "not a lock record", "the unparseable lock path is not removed");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("release: this run's own displaced record is still removed when another displaced record is unsafe", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  try {
+    const dir = join(ws.root, "_local", "resolver");
+    const target = join(ws.root, "outside.json");
+    write(target, renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "theirs", acquiredAt: "2026-01-01T00:00:00.000Z" }));
+    mkdirSync(dir, { recursive: true });
+    const link = join(dir, "setup.lock.stale-000000000000");
+    symlinkSync(target, link);
+    const own = join(dir, "setup.lock.stale-ffffffffffff");
+    write(own, renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "mine", acquiredAt: "2026-01-01T00:00:00.000Z" }));
+    const released = releaseSetupLock(ws.root, "mine");
+    assert.equal(released.ok, false, "the unsafe displaced record is still reported");
+    assert.equal(existsSync(own), false, "this run's own displaced record is removed regardless of order");
+    assert.equal(lstatSync(link).isSymbolicLink(), true);
+    assert.equal(existsSync(target), true);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("release: an unsafe displaced record is reported, and is neither followed nor removed", { skip: process.platform === "win32" }, () => {
+  const ws = workspace(config({}));
+  try {
+    const target = join(ws.root, "outside.json");
+    write(target, renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "mine", acquiredAt: "2026-01-01T00:00:00.000Z" }));
+    const link = join(ws.root, "_local", "resolver", "setup.lock.stale-dddddddddddd");
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(target, link);
+    const released = releaseSetupLock(ws.root, "mine");
+    assert.equal(released.ok, false, "an unsafe displaced record is never taken as given back");
+    assert.match(!released.ok ? released.detail : "", /displaced setup lock was not released: .*not a contained regular file/);
+    assert.equal(lstatSync(link).isSymbolicLink(), true);
+    assert.equal(existsSync(target), true);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("release: an unparseable displaced or canonical record is reported and left in place", () => {
+  const ws = workspace(config({}));
+  try {
+    const aside = join(ws.root, "_local", "resolver", "setup.lock.stale-eeeeeeeeeeee");
+    write(aside, "not a lock record");
+    const fromAside = releaseSetupLock(ws.root, "mine");
+    assert.equal(fromAside.ok, false);
+    assert.match(!fromAside.ok ? fromAside.detail : "", /could not be read as a setup-lock record/);
+    assert.equal(existsSync(aside), true);
+    rmSync(aside);
+
+    write(lockPath(ws.root), "not a lock record");
+    const fromCanonical = releaseSetupLock(ws.root, "mine");
+    assert.equal(fromCanonical.ok, false);
+    assert.match(!fromCanonical.ok ? fromCanonical.detail : "", /setup lock was not released: .*could not be read/);
+    assert.equal(existsSync(lockPath(ws.root)), true);
+
+    // A missing record, or one parsed with another token, is already given back.
+    rmSync(lockPath(ws.root));
+    write(aside, renderSetupLock({ pid: DEAD_RESOLVER, host: hostname(), token: "theirs", acquiredAt: "2026-01-01T00:00:00.000Z" }));
+    assert.equal(releaseSetupLock(ws.root, "mine").ok, true);
+    assert.equal(existsSync(aside), true, "another holder's record is left alone");
+  } finally {
+    ws.cleanup();
+  }
+});
+
 test("the runner records its own and the command group's pid in the held lock", () => {
   const ws = workspace(config({ "Dependency Setup Command": "`sleep 0.5; cat _local/resolver/setup.lock > seen.json`" }));
   try {
