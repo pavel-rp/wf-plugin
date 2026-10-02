@@ -23875,6 +23875,9 @@ import { hostname } from "node:os";
 // src/resolver/contained-state.ts
 import {
   closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
   fsyncSync,
   linkSync,
   lstatSync,
@@ -24056,37 +24059,107 @@ function renameContainedStateFile(root, rel, toRel) {
     return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
   }
 }
-function listContainedStateEntries(root, relDir, prefix) {
-  if (!lexicallyPlain(relDir)) {
-    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
-  }
-  let cursor;
-  try {
-    cursor = realpathSync2(root);
-  } catch (err) {
-    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
-  }
-  const segments = relDir.split("/");
+function walkDirectory(base, segments) {
+  let cursor = base;
+  const ids = [];
   for (let i = 0; i < segments.length; i += 1) {
     cursor = join(cursor, segments[i]);
     const shown = segments.slice(0, i + 1).join("/");
     let stat;
     try {
-      stat = lstatSync(cursor);
+      stat = lstatSync(cursor, { bigint: true });
     } catch (err) {
-      if (err.code === "ENOENT") return { ok: true, names: [] };
+      if (err.code === "ENOENT") return { ok: true, state: "absent" };
       return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
     }
     if (stat.isSymbolicLink()) {
       return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
     }
     if (!stat.isDirectory()) return unsafe(shown, `\`${shown}\` is not a real directory.`);
+    ids.push({ dev: stat.dev, ino: stat.ino });
   }
+  return { ok: true, state: "present", dir: cursor, ids };
+}
+function sameIdentity(a, b) {
+  return a.dev === b.dev && a.ino === b.ino;
+}
+function noFollowDirectoryFlags() {
+  const { O_RDONLY, O_DIRECTORY, O_NOFOLLOW } = fsConstants;
+  if (typeof O_DIRECTORY !== "number" || typeof O_NOFOLLOW !== "number") return null;
+  return (O_RDONLY ?? 0) | O_DIRECTORY | O_NOFOLLOW;
+}
+function handleListingPath(fd) {
+  if (process.platform !== "linux") return null;
+  const path = `/proc/self/fd/${fd}`;
+  return existsSync(path) ? path : null;
+}
+function listContainedStateEntries(root, relDir, prefix, hooks) {
+  if (!lexicallyPlain(relDir)) {
+    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
+  }
+  let base;
   try {
-    return { ok: true, names: readdirSync(cursor).filter((name) => name.startsWith(prefix)).sort() };
+    base = realpathSync2(root);
   } catch (err) {
-    if (err.code === "ENOENT") return { ok: true, names: [] };
-    return { ok: false, kind: "failed", path: relDir, detail: `\`${relDir}\` could not be listed: ${messageOf(err)}` };
+    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = relDir.split("/");
+  const before = walkDirectory(base, segments);
+  if (!before.ok) return before;
+  if (before.state === "absent") return { ok: true, names: [] };
+  const verified = before.ids[before.ids.length - 1];
+  const changed = (why) => unsafe(relDir, `\`${relDir}\` changed while it was being listed (${why}); resolver setup state follows no link.`);
+  const failed = (err) => ({
+    ok: false,
+    kind: "failed",
+    path: relDir,
+    detail: `\`${relDir}\` could not be listed: ${messageOf(err)}`
+  });
+  hooks?.afterVerify?.();
+  let fd = null;
+  try {
+    const flags = noFollowDirectoryFlags();
+    if (flags !== null) {
+      try {
+        fd = openSync(before.dir, flags);
+      } catch (err) {
+        const code = err.code;
+        if (code === "ENOENT" || code === "ELOOP" || code === "ENOTDIR") return changed(`it could not be reopened: ${code}`);
+        return failed(err);
+      }
+      let opened;
+      try {
+        opened = fstatSync(fd, { bigint: true });
+      } catch (err) {
+        return failed(err);
+      }
+      if (!opened.isDirectory() || !sameIdentity({ dev: opened.dev, ino: opened.ino }, verified)) {
+        return changed("the opened directory is not the one verified");
+      }
+    }
+    let entries;
+    try {
+      entries = readdirSync((fd !== null ? handleListingPath(fd) : null) ?? before.dir);
+    } catch (err) {
+      if (err.code === "ENOENT") return changed("it disappeared");
+      return failed(err);
+    }
+    const after = walkDirectory(base, segments);
+    if (!after.ok) return changed(after.detail);
+    if (after.state === "absent") return changed("it disappeared");
+    for (let i = 0; i < before.ids.length; i += 1) {
+      if (!sameIdentity(before.ids[i], after.ids[i])) {
+        return changed(`\`${segments.slice(0, i + 1).join("/")}\` is no longer the directory verified`);
+      }
+    }
+    return { ok: true, names: entries.filter((name) => name.startsWith(prefix)).sort() };
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+      }
+    }
   }
 }
 function linkContainedStateFileExclusive(root, fromRel, toRel) {
@@ -24106,7 +24179,7 @@ function linkContainedStateFileExclusive(root, fromRel, toRel) {
 import {
   closeSync as closeSync2,
   constants,
-  fstatSync,
+  fstatSync as fstatSync2,
   lstatSync as lstatSync2,
   openSync as openSync2,
   readFileSync as readFileSync2,
@@ -25643,7 +25716,7 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
     const normalized = normalizeSlashes(path);
     return process.platform === "win32" ? normalized.toLowerCase() : normalized;
   };
-  const sameIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
+  const sameIdentity2 = (left, right) => left.dev === right.dev && left.ino === right.ino;
   let fd = null;
   let targetValidated = false;
   try {
@@ -25685,8 +25758,8 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
       canonicalTarget,
       noFollow === 0 ? constants.O_RDONLY | nonBlock : constants.O_RDONLY | noFollow | nonBlock
     );
-    const opened = fstatSync(fd, { bigint: true });
-    if (!opened.isFile() || !sameIdentity(expected, opened)) {
+    const opened = fstatSync2(fd, { bigint: true });
+    if (!opened.isFile() || !sameIdentity2(expected, opened)) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
     if (opened.size > BigInt(maxBytes)) {
@@ -25695,7 +25768,7 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
     const postOpenTarget = realpathSync3(canonicalCandidate);
     const postOpenStat = statSync2(canonicalCandidate, { bigint: true });
     const postOpenRoot = statSync2(canonicalRoot, { bigint: true });
-    if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity(opened, postOpenStat) || !sameIdentity(rootStat, postOpenRoot)) {
+    if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity2(opened, postOpenStat) || !sameIdentity2(rootStat, postOpenRoot)) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
     const chunks = [];
@@ -25711,8 +25784,8 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
     if (total > maxBytes) {
       return { status: "too-large", path: lexicalPath, content: null };
     }
-    const afterRead = fstatSync(fd, { bigint: true });
-    if (!sameIdentity(opened, afterRead) || afterRead.size !== opened.size) {
+    const afterRead = fstatSync2(fd, { bigint: true });
+    if (!sameIdentity2(opened, afterRead) || afterRead.size !== opened.size) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
     return {
