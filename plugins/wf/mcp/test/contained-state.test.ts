@@ -17,7 +17,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { listContainedStateEntries } from "../src/resolver/contained-state.js";
+import { listContainedStateEntries, setListingTestSeamsForTests } from "../src/resolver/contained-state.js";
 
 const DIR = "_local/resolver";
 const PREFIX = "setup.lock.stale-";
@@ -37,6 +37,60 @@ function write(path: string, content = "x"): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, content);
 }
+
+/** List `DIR` with the listing's test seams installed for this one call. */
+function listWith(
+  root: string,
+  seams: Parameters<typeof setListingTestSeamsForTests>[0],
+): ReturnType<typeof listContainedStateEntries> {
+  setListingTestSeamsForTests(seams);
+  try {
+    return listContainedStateEntries(root, DIR, PREFIX);
+  } finally {
+    setListingTestSeamsForTests({});
+  }
+}
+
+test("a directory whose stat reports no device/inode identity is unsafe, never listed unbound", () => {
+  const s = sandbox();
+  try {
+    write(join(s.root, DIR, `${PREFIX}aaaaaaaaaaaa`));
+    const listed = listWith(s.root, { identity: () => ({ dev: 0n, ino: 0n }) });
+    assert.equal(!listed.ok && listed.kind, "unsafe", JSON.stringify(listed));
+    assert.match(!listed.ok ? listed.detail : "", /no device\/inode identity/);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("with no stat identity, a directory swapped for another real directory is still unsafe", () => {
+  const s = sandbox();
+  try {
+    const dir = join(s.root, DIR);
+    write(join(dir, `${PREFIX}0123456789ab`), "live holder");
+    const listed = listWith(s.root, {
+      identity: () => ({ dev: 0n, ino: 0n }),
+      afterVerify: () => {
+        renameSync(dir, join(s.root, "_local", "resolver-moved"));
+        mkdirSync(dir);
+      },
+    });
+    assert.equal(!listed.ok && listed.kind, "unsafe", JSON.stringify(listed));
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("the test seams are cleared after use", () => {
+  const s = sandbox();
+  try {
+    write(join(s.root, DIR, `${PREFIX}aaaaaaaaaaaa`));
+    listWith(s.root, { identity: () => ({ dev: 0n, ino: 0n }) });
+    assert.deepEqual(listContainedStateEntries(s.root, DIR, PREFIX), { ok: true, names: [`${PREFIX}aaaaaaaaaaaa`] });
+  } finally {
+    s.cleanup();
+  }
+});
 
 test("lists only prefix-matching names, sorted", () => {
   const s = sandbox();
@@ -67,7 +121,7 @@ test("a hook that changes nothing leaves the listing ok", () => {
   try {
     write(join(s.root, DIR, `${PREFIX}aaaaaaaaaaaa`));
     let fired = false;
-    const listed = listContainedStateEntries(s.root, DIR, PREFIX, { afterVerify: () => (fired = true) });
+    const listed = listWith(s.root, { afterVerify: () => (fired = true) });
     assert.equal(fired, true);
     assert.deepEqual(listed, { ok: true, names: [`${PREFIX}aaaaaaaaaaaa`] });
   } finally {
@@ -95,7 +149,7 @@ test("a directory swapped for a symlink after the walk is unsafe, not an outside
     const aside = `${PREFIX}0123456789ab`;
     write(join(dir, aside), "live holder");
     const moved = join(s.root, "_local", "resolver-moved");
-    const listed = listContainedStateEntries(s.root, DIR, PREFIX, {
+    const listed = listWith(s.root, {
       afterVerify: () => {
         renameSync(dir, moved);
         symlinkSync(s.outside, dir);
@@ -115,7 +169,7 @@ test("a directory swapped for a symlink to a populated outside directory is unsa
     const dir = join(s.root, DIR);
     mkdirSync(dir, { recursive: true });
     write(join(s.outside, `${PREFIX}ffffffffffff`));
-    const listed = listContainedStateEntries(s.root, DIR, PREFIX, {
+    const listed = listWith(s.root, {
       afterVerify: () => {
         rmSync(dir, { recursive: true });
         symlinkSync(s.outside, dir);
@@ -134,7 +188,7 @@ test("a directory swapped for a different real directory after the walk is unsaf
     const aside = `${PREFIX}0123456789ab`;
     write(join(dir, aside), "live holder");
     const moved = join(s.root, "_local", "resolver-moved");
-    const listed = listContainedStateEntries(s.root, DIR, PREFIX, {
+    const listed = listWith(s.root, {
       afterVerify: () => {
         renameSync(dir, moved);
         mkdirSync(dir);
@@ -152,7 +206,7 @@ test("an ancestor swapped for a symlink after the walk is unsafe", { skip: noLin
   try {
     const local = join(s.root, "_local");
     write(join(local, "resolver", `${PREFIX}0123456789ab`));
-    const listed = listContainedStateEntries(s.root, DIR, PREFIX, {
+    const listed = listWith(s.root, {
       afterVerify: () => {
         renameSync(local, join(s.outside, "_local"));
         symlinkSync(join(s.outside, "_local"), local);
@@ -169,7 +223,7 @@ test("a directory removed after the walk is unsafe", () => {
   try {
     const dir = join(s.root, DIR);
     mkdirSync(dir, { recursive: true });
-    const listed = listContainedStateEntries(s.root, DIR, PREFIX, {
+    const listed = listWith(s.root, {
       afterVerify: () => rmSync(dir, { recursive: true }),
     });
     assert.equal(!listed.ok && listed.kind, "unsafe", JSON.stringify(listed));

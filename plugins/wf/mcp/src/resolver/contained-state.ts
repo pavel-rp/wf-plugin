@@ -46,6 +46,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
+import { hasStatIdentity } from "./engine.js";
 
 export type ContainedStateInspection =
   | { ok: true; state: "absent" | "file" }
@@ -296,13 +297,29 @@ export type ContainedStateListing =
   | { ok: true; names: string[] }
   | { ok: false; kind: "unsafe" | "failed"; path: string; detail: string };
 
-/** Test seam: `afterVerify` runs between the verifying walk and the listing,
- *  where a concurrent swap of the directory would land. */
-export interface ContainedStateListingHooks {
-  afterVerify?: () => void;
+type DirectoryIdentity = { dev: bigint; ino: bigint };
+
+/** Test seams for the listing, null outside tests: `afterVerify` runs between
+ *  the verifying walk and the listing, where a concurrent swap would land;
+ *  `identity` rewrites each recorded directory identity (e.g. to the `0/0` a
+ *  volume without stat identity reports). */
+let listingAfterVerifyOverride: (() => void) | null = null;
+let listingIdentityOverride: ((id: DirectoryIdentity) => DirectoryIdentity) | null = null;
+
+/** Test seam — install or clear (`null`) the listing overrides above. Not part
+ *  of the resolver's runtime contract. */
+export function setListingTestSeamsForTests(seams: {
+  afterVerify?: (() => void) | null;
+  identity?: ((id: DirectoryIdentity) => DirectoryIdentity) | null;
+}): void {
+  listingAfterVerifyOverride = seams.afterVerify ?? null;
+  listingIdentityOverride = seams.identity ?? null;
 }
 
-type DirectoryIdentity = { dev: bigint; ino: bigint };
+function observedIdentity(stat: { dev: bigint; ino: bigint }): DirectoryIdentity {
+  const id = { dev: stat.dev, ino: stat.ino };
+  return listingIdentityOverride !== null ? listingIdentityOverride(id) : id;
+}
 
 type DirectoryWalk =
   | { ok: true; state: "present"; dir: string; ids: DirectoryIdentity[] }
@@ -328,7 +345,7 @@ function walkDirectory(base: string, segments: string[]): DirectoryWalk {
       return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
     }
     if (!stat.isDirectory()) return unsafe(shown, `\`${shown}\` is not a real directory.`);
-    ids.push({ dev: stat.dev, ino: stat.ino });
+    ids.push(observedIdentity(stat));
   }
   return { ok: true, state: "present", dir: cursor, ids };
 }
@@ -368,12 +385,14 @@ function handleListingPath(fd: number): string | null {
  * listing is `unsafe`, never an `ok` listing of what was swapped in. Where no
  * handle-bound listing exists, the before/after identity check is what binds
  * it; a swap undone before the second walk is outside what that can observe.
+ * Every check rests on device/inode identity, so a directory whose stat reports
+ * none (both `0`) is `unsafe` outright rather than listed unbound — `O_NOFOLLOW`
+ * alone cannot tell one real directory from another.
  */
 export function listContainedStateEntries(
   root: string,
   relDir: string,
   prefix: string,
-  hooks?: ContainedStateListingHooks,
 ): ContainedStateListing {
   if (!lexicallyPlain(relDir)) {
     return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
@@ -388,6 +407,14 @@ export function listContainedStateEntries(
   const before = walkDirectory(base, segments);
   if (!before.ok) return before;
   if (before.state === "absent") return { ok: true, names: [] };
+  const unidentified = before.ids.findIndex((id) => !hasStatIdentity(id));
+  if (unidentified !== -1) {
+    const shown = segments.slice(0, unidentified + 1).join("/");
+    return unsafe(
+      shown,
+      `\`${shown}\` reports no device/inode identity, so its listing cannot be bound to the directory verified.`,
+    );
+  }
   const verified = before.ids[before.ids.length - 1];
   const changed = (why: string) =>
     unsafe(relDir, `\`${relDir}\` changed while it was being listed (${why}); resolver setup state follows no link.`);
@@ -398,7 +425,7 @@ export function listContainedStateEntries(
     detail: `\`${relDir}\` could not be listed: ${messageOf(err)}`,
   });
 
-  hooks?.afterVerify?.();
+  listingAfterVerifyOverride?.();
 
   let fd: number | null = null;
   try {
@@ -417,7 +444,7 @@ export function listContainedStateEntries(
       } catch (err) {
         return failed(err);
       }
-      if (!opened.isDirectory() || !sameIdentity({ dev: opened.dev, ino: opened.ino }, verified)) {
+      if (!opened.isDirectory() || !sameIdentity(observedIdentity(opened), verified)) {
         return changed("the opened directory is not the one verified");
       }
     }

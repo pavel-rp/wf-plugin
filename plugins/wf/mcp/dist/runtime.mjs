@@ -23874,321 +23874,38 @@ import { hostname } from "node:os";
 
 // src/resolver/contained-state.ts
 import {
-  closeSync,
+  closeSync as closeSync2,
   constants as fsConstants,
   existsSync,
-  fstatSync,
+  fstatSync as fstatSync2,
   fsyncSync,
   linkSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  readdirSync,
-  realpathSync as realpathSync2,
-  renameSync,
-  rmSync,
-  writeFileSync
+  lstatSync as lstatSync2,
+  mkdirSync as mkdirSync2,
+  openSync as openSync2,
+  readdirSync as readdirSync2,
+  realpathSync as realpathSync3,
+  renameSync as renameSync2,
+  rmSync as rmSync2,
+  writeFileSync as writeFileSync2
 } from "node:fs";
-import { join } from "node:path";
-import { randomBytes } from "node:crypto";
-function messageOf(err) {
-  return err instanceof Error ? err.message : String(err);
-}
-function unsafe(path, detail) {
-  return { ok: false, kind: "unsafe", path, detail };
-}
-function lexicallyPlain(rel) {
-  if (rel.length === 0 || rel.includes("\0") || rel.includes("\\")) return false;
-  if (rel.startsWith("/") || /^[A-Za-z]:/.test(rel)) return false;
-  return !rel.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
-}
-function inspectContainedStatePath(root, rel) {
-  if (!lexicallyPlain(rel)) {
-    return unsafe(rel, `\`${rel}\` is not a plain workspace-relative path.`);
-  }
-  let cursor;
-  try {
-    cursor = realpathSync2(root);
-  } catch (err) {
-    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
-  }
-  const segments = rel.split("/");
-  for (let i = 0; i < segments.length; i += 1) {
-    cursor = join(cursor, segments[i]);
-    const shown = segments.slice(0, i + 1).join("/");
-    let stat;
-    try {
-      stat = lstatSync(cursor);
-    } catch (err) {
-      if (err.code === "ENOENT") return { ok: true, state: "absent" };
-      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
-    }
-    if (stat.isSymbolicLink()) {
-      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
-    }
-    const terminal = i === segments.length - 1;
-    if (!terminal && !stat.isDirectory()) {
-      return unsafe(shown, `\`${shown}\` is not a real directory.`);
-    }
-    if (terminal && !stat.isFile()) {
-      return unsafe(shown, `\`${shown}\` exists but is not a regular file.`);
-    }
-  }
-  return { ok: true, state: "file" };
-}
-function prepareContainedParent(root, rel) {
-  const before = inspectContainedStatePath(root, rel);
-  if (!before.ok) return before;
-  const segments = rel.split("/");
-  let dir;
-  try {
-    dir = realpathSync2(root);
-  } catch (err) {
-    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
-  }
-  for (let i = 0; i < segments.length - 1; i += 1) {
-    dir = join(dir, segments[i]);
-    const shown = segments.slice(0, i + 1).join("/");
-    try {
-      mkdirSync(dir);
-    } catch (err) {
-      if (err.code !== "EEXIST") {
-        return { ok: false, kind: "failed", path: shown, detail: `\`${shown}\` could not be created: ${messageOf(err)}` };
-      }
-    }
-    let stat;
-    try {
-      stat = lstatSync(dir);
-    } catch (err) {
-      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
-    }
-    if (stat.isSymbolicLink() || !stat.isDirectory()) {
-      return unsafe(shown, `\`${shown}\` is not a real directory; resolver setup state follows no link.`);
-    }
-  }
-  const after = inspectContainedStatePath(root, rel);
-  if (!after.ok) return after;
-  return { ok: true, dir, name: segments[segments.length - 1], state: after.state };
-}
-function writeTempBeside(dir, name, content) {
-  const temp = join(dir, `.${name}.wf-state-${randomBytes(8).toString("hex")}.tmp`);
-  let fd = null;
-  try {
-    fd = openSync(temp, "wx");
-    writeFileSync(fd, content, { encoding: "utf8" });
-    fsyncSync(fd);
-    closeSync(fd);
-    fd = null;
-    return temp;
-  } catch (err) {
-    if (fd !== null) {
-      try {
-        closeSync(fd);
-      } catch {
-      }
-    }
-    try {
-      rmSync(temp, { force: true });
-    } catch {
-    }
-    throw err;
-  }
-}
-function writeContainedStateFile(root, rel, content) {
-  const parent = prepareContainedParent(root, rel);
-  if (!parent.ok) return parent;
-  let temp = null;
-  try {
-    temp = writeTempBeside(parent.dir, parent.name, content);
-    renameSync(temp, join(parent.dir, parent.name));
-    return { ok: true };
-  } catch (err) {
-    if (temp !== null) {
-      try {
-        rmSync(temp, { force: true });
-      } catch {
-      }
-    }
-    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be written: ${messageOf(err)}` };
-  }
-}
-function createContainedStateFileExclusive(root, rel, content) {
-  const parent = prepareContainedParent(root, rel);
-  if (!parent.ok) return parent;
-  if (parent.state === "file") return { ok: false, kind: "exists" };
-  let temp = null;
-  try {
-    temp = writeTempBeside(parent.dir, parent.name, content);
-    linkSync(temp, join(parent.dir, parent.name));
-    return { ok: true };
-  } catch (err) {
-    if (err.code === "EEXIST") return { ok: false, kind: "exists" };
-    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be created: ${messageOf(err)}` };
-  } finally {
-    if (temp !== null) {
-      try {
-        rmSync(temp, { force: true });
-      } catch {
-      }
-    }
-  }
-}
-function removeContainedStateFile(root, rel) {
-  const inspected = inspectContainedStatePath(root, rel);
-  if (!inspected.ok) return inspected;
-  if (inspected.state === "absent") return { ok: true };
-  try {
-    rmSync(join(realpathSync2(root), ...rel.split("/")), { force: true });
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be removed: ${messageOf(err)}` };
-  }
-}
-function renameContainedStateFile(root, rel, toRel) {
-  const from = inspectContainedStatePath(root, rel);
-  if (!from.ok) return from;
-  const to = inspectContainedStatePath(root, toRel);
-  if (!to.ok) return to;
-  if (from.state === "absent") return { ok: true, moved: false };
-  try {
-    const base = realpathSync2(root);
-    renameSync(join(base, ...rel.split("/")), join(base, ...toRel.split("/")));
-    return { ok: true, moved: true };
-  } catch (err) {
-    if (err.code === "ENOENT") return { ok: true, moved: false };
-    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
-  }
-}
-function walkDirectory(base, segments) {
-  let cursor = base;
-  const ids = [];
-  for (let i = 0; i < segments.length; i += 1) {
-    cursor = join(cursor, segments[i]);
-    const shown = segments.slice(0, i + 1).join("/");
-    let stat;
-    try {
-      stat = lstatSync(cursor, { bigint: true });
-    } catch (err) {
-      if (err.code === "ENOENT") return { ok: true, state: "absent" };
-      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
-    }
-    if (stat.isSymbolicLink()) {
-      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
-    }
-    if (!stat.isDirectory()) return unsafe(shown, `\`${shown}\` is not a real directory.`);
-    ids.push({ dev: stat.dev, ino: stat.ino });
-  }
-  return { ok: true, state: "present", dir: cursor, ids };
-}
-function sameIdentity(a, b) {
-  return a.dev === b.dev && a.ino === b.ino;
-}
-function noFollowDirectoryFlags() {
-  const { O_RDONLY, O_DIRECTORY, O_NOFOLLOW } = fsConstants;
-  if (typeof O_DIRECTORY !== "number" || typeof O_NOFOLLOW !== "number") return null;
-  return (O_RDONLY ?? 0) | O_DIRECTORY | O_NOFOLLOW;
-}
-function handleListingPath(fd) {
-  if (process.platform !== "linux") return null;
-  const path = `/proc/self/fd/${fd}`;
-  return existsSync(path) ? path : null;
-}
-function listContainedStateEntries(root, relDir, prefix, hooks) {
-  if (!lexicallyPlain(relDir)) {
-    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
-  }
-  let base;
-  try {
-    base = realpathSync2(root);
-  } catch (err) {
-    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
-  }
-  const segments = relDir.split("/");
-  const before = walkDirectory(base, segments);
-  if (!before.ok) return before;
-  if (before.state === "absent") return { ok: true, names: [] };
-  const verified = before.ids[before.ids.length - 1];
-  const changed = (why) => unsafe(relDir, `\`${relDir}\` changed while it was being listed (${why}); resolver setup state follows no link.`);
-  const failed = (err) => ({
-    ok: false,
-    kind: "failed",
-    path: relDir,
-    detail: `\`${relDir}\` could not be listed: ${messageOf(err)}`
-  });
-  hooks?.afterVerify?.();
-  let fd = null;
-  try {
-    const flags = noFollowDirectoryFlags();
-    if (flags !== null) {
-      try {
-        fd = openSync(before.dir, flags);
-      } catch (err) {
-        const code = err.code;
-        if (code === "ENOENT" || code === "ELOOP" || code === "ENOTDIR") return changed(`it could not be reopened: ${code}`);
-        return failed(err);
-      }
-      let opened;
-      try {
-        opened = fstatSync(fd, { bigint: true });
-      } catch (err) {
-        return failed(err);
-      }
-      if (!opened.isDirectory() || !sameIdentity({ dev: opened.dev, ino: opened.ino }, verified)) {
-        return changed("the opened directory is not the one verified");
-      }
-    }
-    let entries;
-    try {
-      entries = readdirSync((fd !== null ? handleListingPath(fd) : null) ?? before.dir);
-    } catch (err) {
-      if (err.code === "ENOENT") return changed("it disappeared");
-      return failed(err);
-    }
-    const after = walkDirectory(base, segments);
-    if (!after.ok) return changed(after.detail);
-    if (after.state === "absent") return changed("it disappeared");
-    for (let i = 0; i < before.ids.length; i += 1) {
-      if (!sameIdentity(before.ids[i], after.ids[i])) {
-        return changed(`\`${segments.slice(0, i + 1).join("/")}\` is no longer the directory verified`);
-      }
-    }
-    return { ok: true, names: entries.filter((name) => name.startsWith(prefix)).sort() };
-  } finally {
-    if (fd !== null) {
-      try {
-        closeSync(fd);
-      } catch {
-      }
-    }
-  }
-}
-function linkContainedStateFileExclusive(root, fromRel, toRel) {
-  const from = inspectContainedStatePath(root, fromRel);
-  const to = inspectContainedStatePath(root, toRel);
-  if (!from.ok || !to.ok || from.state !== "file" || to.state !== "absent") return false;
-  try {
-    const base = realpathSync2(root);
-    linkSync(join(base, ...fromRel.split("/")), join(base, ...toRel.split("/")));
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { join as join3 } from "node:path";
+import { randomBytes as randomBytes2 } from "node:crypto";
 
 // src/resolver/engine.ts
 import {
-  closeSync as closeSync2,
+  closeSync,
   constants,
-  fstatSync as fstatSync2,
-  lstatSync as lstatSync2,
-  openSync as openSync2,
+  fstatSync,
+  lstatSync,
+  openSync,
   readFileSync as readFileSync2,
   readSync,
-  readdirSync as readdirSync2,
-  realpathSync as realpathSync3,
+  readdirSync,
+  realpathSync as realpathSync2,
   statSync as statSync2
 } from "node:fs";
-import { isAbsolute as isAbsolute3, join as join3, relative, resolve as resolve2, sep } from "node:path";
+import { isAbsolute as isAbsolute3, join as join2, relative, resolve as resolve2, sep } from "node:path";
 import { execFileSync as execFileSync2 } from "node:child_process";
 import { createHash as createHash2 } from "node:crypto";
 
@@ -25627,30 +25344,30 @@ function buildSnapshot(inputs, io) {
 
 // src/resolver/snapshot-store.ts
 import {
-  mkdirSync as mkdirSync2,
+  mkdirSync,
   readFileSync,
-  renameSync as renameSync2,
-  rmSync as rmSync2,
-  writeFileSync as writeFileSync2
+  renameSync,
+  rmSync,
+  writeFileSync
 } from "node:fs";
-import { dirname, join as join2 } from "node:path";
-import { randomBytes as randomBytes2 } from "node:crypto";
+import { dirname, join } from "node:path";
+import { randomBytes } from "node:crypto";
 function snapshotPath(workspaceRoot) {
-  return join2(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
+  return join(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
 }
 function writeSnapshot(workspaceRoot, snapshot) {
   const target = snapshotPath(workspaceRoot);
   const dir = dirname(target);
-  mkdirSync2(dir, { recursive: true });
-  const tmp = join2(dir, `.snapshot.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`);
+  mkdirSync(dir, { recursive: true });
+  const tmp = join(dir, `.snapshot.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
   const json = `${JSON.stringify(snapshot, null, 2)}
 `;
   try {
-    writeFileSync2(tmp, json, { encoding: "utf8" });
-    renameSync2(tmp, target);
+    writeFileSync(tmp, json, { encoding: "utf8" });
+    renameSync(tmp, target);
   } catch (err) {
     try {
-      rmSync2(tmp, { force: true });
+      rmSync(tmp, { force: true });
     } catch {
     }
     throw err;
@@ -25720,7 +25437,7 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
   let fd = null;
   let targetValidated = false;
   try {
-    const canonicalRoot = realpathSync3(root);
+    const canonicalRoot = realpathSync2(root);
     const rootStat = statSync2(canonicalRoot, { bigint: true });
     if (!rootStat.isDirectory()) {
       return { status: "unsafe", path: lexicalPath, content: null };
@@ -25733,11 +25450,11 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
     let cursor = canonicalRoot;
     for (const segment of segments) {
       cursor = resolve2(cursor, segment);
-      if (lstatSync2(cursor).isSymbolicLink()) {
+      if (lstatSync(cursor).isSymbolicLink()) {
         return { status: "unsafe", path: lexicalPath, content: null };
       }
     }
-    const canonicalTarget = realpathSync3(canonicalCandidate);
+    const canonicalTarget = realpathSync2(canonicalCandidate);
     if (!inside(canonicalRoot, canonicalTarget) || comparable(canonicalTarget) !== comparable(canonicalCandidate)) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
@@ -25754,18 +25471,18 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
     const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
-    fd = openSync2(
+    fd = openSync(
       canonicalTarget,
       noFollow === 0 ? constants.O_RDONLY | nonBlock : constants.O_RDONLY | noFollow | nonBlock
     );
-    const opened = fstatSync2(fd, { bigint: true });
+    const opened = fstatSync(fd, { bigint: true });
     if (!opened.isFile() || !sameIdentity2(expected, opened)) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
     if (opened.size > BigInt(maxBytes)) {
       return { status: "too-large", path: lexicalPath, content: null };
     }
-    const postOpenTarget = realpathSync3(canonicalCandidate);
+    const postOpenTarget = realpathSync2(canonicalCandidate);
     const postOpenStat = statSync2(canonicalCandidate, { bigint: true });
     const postOpenRoot = statSync2(canonicalRoot, { bigint: true });
     if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity2(opened, postOpenStat) || !sameIdentity2(rootStat, postOpenRoot)) {
@@ -25784,7 +25501,7 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
     if (total > maxBytes) {
       return { status: "too-large", path: lexicalPath, content: null };
     }
-    const afterRead = fstatSync2(fd, { bigint: true });
+    const afterRead = fstatSync(fd, { bigint: true });
     if (!sameIdentity2(opened, afterRead) || afterRead.size !== opened.size) {
       return { status: "unsafe", path: lexicalPath, content: null };
     }
@@ -25805,7 +25522,7 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
       content: null
     };
   } finally {
-    if (fd !== null) closeSync2(fd);
+    if (fd !== null) closeSync(fd);
   }
 }
 function readContainedCapabilityFile(root, selectedPath, maxBytes) {
@@ -25823,7 +25540,7 @@ function fingerprintContainedCapabilityFile(root, selectedPath, maxBytes) {
 }
 function listFilesOrEmpty(absDir) {
   try {
-    return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+    return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
   } catch {
     return [];
   }
@@ -25856,11 +25573,11 @@ function runPluginList() {
 function resolveSnapshot(opts) {
   const workspaceRoot = normalizeSlashes(opts.workspaceRoot);
   const io = opts.io ?? fsIO;
-  const wfConfigContent = io.readFile(join3(opts.workspaceRoot, "wf.config.js"));
+  const wfConfigContent = io.readFile(join2(opts.workspaceRoot, "wf.config.js"));
   const registryPathValue = extractRegistryPath(wfConfigContent);
-  const registryAbs = join3(opts.workspaceRoot, registryPathValue);
+  const registryAbs = join2(opts.workspaceRoot, registryPathValue);
   const registryContent = io.readFile(registryAbs);
-  const coreConfigAbs = join3(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
+  const coreConfigAbs = join2(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
   const coreConfigContent = registryPathValue === DEFAULT_REGISTRY_RELPATH ? registryContent : io.readFile(coreConfigAbs);
   const pluginListRaw = opts.pluginListRaw !== void 0 ? opts.pluginListRaw : runPluginList();
   const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
@@ -25876,6 +25593,305 @@ function resolveSnapshot(opts) {
     corePluginRoot: opts.corePluginRoot ?? null
   };
   return buildSnapshot(inputs, io);
+}
+
+// src/resolver/contained-state.ts
+function messageOf(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+function unsafe(path, detail) {
+  return { ok: false, kind: "unsafe", path, detail };
+}
+function lexicallyPlain(rel) {
+  if (rel.length === 0 || rel.includes("\0") || rel.includes("\\")) return false;
+  if (rel.startsWith("/") || /^[A-Za-z]:/.test(rel)) return false;
+  return !rel.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+}
+function inspectContainedStatePath(root, rel) {
+  if (!lexicallyPlain(rel)) {
+    return unsafe(rel, `\`${rel}\` is not a plain workspace-relative path.`);
+  }
+  let cursor;
+  try {
+    cursor = realpathSync3(root);
+  } catch (err) {
+    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = rel.split("/");
+  for (let i = 0; i < segments.length; i += 1) {
+    cursor = join3(cursor, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync2(cursor);
+    } catch (err) {
+      if (err.code === "ENOENT") return { ok: true, state: "absent" };
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink()) {
+      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
+    }
+    const terminal = i === segments.length - 1;
+    if (!terminal && !stat.isDirectory()) {
+      return unsafe(shown, `\`${shown}\` is not a real directory.`);
+    }
+    if (terminal && !stat.isFile()) {
+      return unsafe(shown, `\`${shown}\` exists but is not a regular file.`);
+    }
+  }
+  return { ok: true, state: "file" };
+}
+function prepareContainedParent(root, rel) {
+  const before = inspectContainedStatePath(root, rel);
+  if (!before.ok) return before;
+  const segments = rel.split("/");
+  let dir;
+  try {
+    dir = realpathSync3(root);
+  } catch (err) {
+    return unsafe(rel, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    dir = join3(dir, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    try {
+      mkdirSync2(dir);
+    } catch (err) {
+      if (err.code !== "EEXIST") {
+        return { ok: false, kind: "failed", path: shown, detail: `\`${shown}\` could not be created: ${messageOf(err)}` };
+      }
+    }
+    let stat;
+    try {
+      stat = lstatSync2(dir);
+    } catch (err) {
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      return unsafe(shown, `\`${shown}\` is not a real directory; resolver setup state follows no link.`);
+    }
+  }
+  const after = inspectContainedStatePath(root, rel);
+  if (!after.ok) return after;
+  return { ok: true, dir, name: segments[segments.length - 1], state: after.state };
+}
+function writeTempBeside(dir, name, content) {
+  const temp = join3(dir, `.${name}.wf-state-${randomBytes2(8).toString("hex")}.tmp`);
+  let fd = null;
+  try {
+    fd = openSync2(temp, "wx");
+    writeFileSync2(fd, content, { encoding: "utf8" });
+    fsyncSync(fd);
+    closeSync2(fd);
+    fd = null;
+    return temp;
+  } catch (err) {
+    if (fd !== null) {
+      try {
+        closeSync2(fd);
+      } catch {
+      }
+    }
+    try {
+      rmSync2(temp, { force: true });
+    } catch {
+    }
+    throw err;
+  }
+}
+function writeContainedStateFile(root, rel, content) {
+  const parent = prepareContainedParent(root, rel);
+  if (!parent.ok) return parent;
+  let temp = null;
+  try {
+    temp = writeTempBeside(parent.dir, parent.name, content);
+    renameSync2(temp, join3(parent.dir, parent.name));
+    return { ok: true };
+  } catch (err) {
+    if (temp !== null) {
+      try {
+        rmSync2(temp, { force: true });
+      } catch {
+      }
+    }
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be written: ${messageOf(err)}` };
+  }
+}
+function createContainedStateFileExclusive(root, rel, content) {
+  const parent = prepareContainedParent(root, rel);
+  if (!parent.ok) return parent;
+  if (parent.state === "file") return { ok: false, kind: "exists" };
+  let temp = null;
+  try {
+    temp = writeTempBeside(parent.dir, parent.name, content);
+    linkSync(temp, join3(parent.dir, parent.name));
+    return { ok: true };
+  } catch (err) {
+    if (err.code === "EEXIST") return { ok: false, kind: "exists" };
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be created: ${messageOf(err)}` };
+  } finally {
+    if (temp !== null) {
+      try {
+        rmSync2(temp, { force: true });
+      } catch {
+      }
+    }
+  }
+}
+function removeContainedStateFile(root, rel) {
+  const inspected = inspectContainedStatePath(root, rel);
+  if (!inspected.ok) return inspected;
+  if (inspected.state === "absent") return { ok: true };
+  try {
+    rmSync2(join3(realpathSync3(root), ...rel.split("/")), { force: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be removed: ${messageOf(err)}` };
+  }
+}
+function renameContainedStateFile(root, rel, toRel) {
+  const from = inspectContainedStatePath(root, rel);
+  if (!from.ok) return from;
+  const to = inspectContainedStatePath(root, toRel);
+  if (!to.ok) return to;
+  if (from.state === "absent") return { ok: true, moved: false };
+  try {
+    const base = realpathSync3(root);
+    renameSync2(join3(base, ...rel.split("/")), join3(base, ...toRel.split("/")));
+    return { ok: true, moved: true };
+  } catch (err) {
+    if (err.code === "ENOENT") return { ok: true, moved: false };
+    return { ok: false, kind: "failed", path: rel, detail: `\`${rel}\` could not be moved: ${messageOf(err)}` };
+  }
+}
+var listingAfterVerifyOverride = null;
+var listingIdentityOverride = null;
+function observedIdentity(stat) {
+  const id = { dev: stat.dev, ino: stat.ino };
+  return listingIdentityOverride !== null ? listingIdentityOverride(id) : id;
+}
+function walkDirectory(base, segments) {
+  let cursor = base;
+  const ids = [];
+  for (let i = 0; i < segments.length; i += 1) {
+    cursor = join3(cursor, segments[i]);
+    const shown = segments.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync2(cursor, { bigint: true });
+    } catch (err) {
+      if (err.code === "ENOENT") return { ok: true, state: "absent" };
+      return unsafe(shown, `\`${shown}\` cannot be inspected: ${messageOf(err)}`);
+    }
+    if (stat.isSymbolicLink()) {
+      return unsafe(shown, `\`${shown}\` is a symbolic link; resolver setup state follows no link.`);
+    }
+    if (!stat.isDirectory()) return unsafe(shown, `\`${shown}\` is not a real directory.`);
+    ids.push(observedIdentity(stat));
+  }
+  return { ok: true, state: "present", dir: cursor, ids };
+}
+function sameIdentity(a, b) {
+  return a.dev === b.dev && a.ino === b.ino;
+}
+function noFollowDirectoryFlags() {
+  const { O_RDONLY, O_DIRECTORY, O_NOFOLLOW } = fsConstants;
+  if (typeof O_DIRECTORY !== "number" || typeof O_NOFOLLOW !== "number") return null;
+  return (O_RDONLY ?? 0) | O_DIRECTORY | O_NOFOLLOW;
+}
+function handleListingPath(fd) {
+  if (process.platform !== "linux") return null;
+  const path = `/proc/self/fd/${fd}`;
+  return existsSync(path) ? path : null;
+}
+function listContainedStateEntries(root, relDir, prefix) {
+  if (!lexicallyPlain(relDir)) {
+    return unsafe(relDir, `\`${relDir}\` is not a plain workspace-relative path.`);
+  }
+  let base;
+  try {
+    base = realpathSync3(root);
+  } catch (err) {
+    return unsafe(relDir, `the workspace root cannot be canonicalized: ${messageOf(err)}`);
+  }
+  const segments = relDir.split("/");
+  const before = walkDirectory(base, segments);
+  if (!before.ok) return before;
+  if (before.state === "absent") return { ok: true, names: [] };
+  const unidentified = before.ids.findIndex((id) => !hasStatIdentity(id));
+  if (unidentified !== -1) {
+    const shown = segments.slice(0, unidentified + 1).join("/");
+    return unsafe(
+      shown,
+      `\`${shown}\` reports no device/inode identity, so its listing cannot be bound to the directory verified.`
+    );
+  }
+  const verified = before.ids[before.ids.length - 1];
+  const changed = (why) => unsafe(relDir, `\`${relDir}\` changed while it was being listed (${why}); resolver setup state follows no link.`);
+  const failed = (err) => ({
+    ok: false,
+    kind: "failed",
+    path: relDir,
+    detail: `\`${relDir}\` could not be listed: ${messageOf(err)}`
+  });
+  listingAfterVerifyOverride?.();
+  let fd = null;
+  try {
+    const flags = noFollowDirectoryFlags();
+    if (flags !== null) {
+      try {
+        fd = openSync2(before.dir, flags);
+      } catch (err) {
+        const code = err.code;
+        if (code === "ENOENT" || code === "ELOOP" || code === "ENOTDIR") return changed(`it could not be reopened: ${code}`);
+        return failed(err);
+      }
+      let opened;
+      try {
+        opened = fstatSync2(fd, { bigint: true });
+      } catch (err) {
+        return failed(err);
+      }
+      if (!opened.isDirectory() || !sameIdentity(observedIdentity(opened), verified)) {
+        return changed("the opened directory is not the one verified");
+      }
+    }
+    let entries;
+    try {
+      entries = readdirSync2((fd !== null ? handleListingPath(fd) : null) ?? before.dir);
+    } catch (err) {
+      if (err.code === "ENOENT") return changed("it disappeared");
+      return failed(err);
+    }
+    const after = walkDirectory(base, segments);
+    if (!after.ok) return changed(after.detail);
+    if (after.state === "absent") return changed("it disappeared");
+    for (let i = 0; i < before.ids.length; i += 1) {
+      if (!sameIdentity(before.ids[i], after.ids[i])) {
+        return changed(`\`${segments.slice(0, i + 1).join("/")}\` is no longer the directory verified`);
+      }
+    }
+    return { ok: true, names: entries.filter((name) => name.startsWith(prefix)).sort() };
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync2(fd);
+      } catch {
+      }
+    }
+  }
+}
+function linkContainedStateFileExclusive(root, fromRel, toRel) {
+  const from = inspectContainedStatePath(root, fromRel);
+  const to = inspectContainedStatePath(root, toRel);
+  if (!from.ok || !to.ok || from.state !== "file" || to.state !== "absent") return false;
+  try {
+    const base = realpathSync3(root);
+    linkSync(join3(base, ...fromRel.split("/")), join3(base, ...toRel.split("/")));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // src/resolver/workspace-setup.ts
