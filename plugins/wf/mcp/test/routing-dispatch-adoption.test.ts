@@ -228,7 +228,11 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /crash between spawn and response persistence/);
   assert.match(fleet, /awaiting-confirmation.*occupies an in-flight pool slot/);
   assert.match(fleet, /never satisfies a dependency blocker or closeout/);
-  assert.match(fleet, /counting every `dispatched`, `in-flight`, and `awaiting-confirmation` activation/);
+  // WF-955: every live-state enumeration names awaiting-review, so a review wait holds its pool slot.
+  assert.match(fleet, /counting every `dispatched`, `in-flight`, `awaiting-confirmation`, and `awaiting-review` activation \(all occupy capacity\)/);
+  assert.match(fleet, /serialization edge with a `dispatched`, `in-flight`, `awaiting-confirmation`, or `awaiting-review` item/);
+  assert.match(fleet, /every `dispatched`, `in-flight`, `awaiting-confirmation`, and `awaiting-review` activation from it/);
+  assert.doesNotMatch(fleet, /`in-flight`, and `awaiting-confirmation` activation/);
   assert.match(fleet, /After a successful spawn response, persist `agentId`, worktree, and branch/);
   assert.match(fleet, /Activation intent: \*\*`<ACTIVATION-INTENT>`\*\*/);
   assert.match(fleet, /nonterminal scoreboard state to `awaiting-confirmation`/);
