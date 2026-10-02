@@ -69,7 +69,7 @@ check_ship() {  # $1 = ship SKILL.md
 }
 
 check_fleet() {  # $1 = fleet SKILL.md
-  local f="$1" before=$fails report
+  local f="$1" before=$fails report review_seg
   [ -f "$f" ] || { err "fleet skill not found at $f"; return; }
   grep -qF '**Review outcome.**' "$f" || err "fleet: OBSERVE carries no Review outcome step"
   grep -qF 'as `review: <value>`' "$f" || err "fleet: the review outcome is not recorded as a 'review: <value>' row token"
@@ -79,7 +79,10 @@ check_fleet() {  # $1 = fleet SKILL.md
   if [ -z "$report" ]; then
     err "fleet: no tick REPORT line found"
   else
-    printf '%s\n' "$report" | grep -qE -- '— lenses: .* — review: <id> .*\| none`' \
+    # Isolate the review: segment itself — it ends at the next ' — shape:' segment or the closing
+    # backtick — so a later segment's own '| none' can never stand in for the review fallback.
+    review_seg="$(printf '%s\n' "$report" | sed -n 's/.*— lenses: .* — review: \(<id> .*\)$/\1/p' | sed 's/ — shape: .*$//; s/`.*$//')"
+    printf '%s\n' "$review_seg" | grep -qE -- '^<id> .*\| none$' \
       || err "fleet: the tick REPORT line carries no 'review:' segment after 'lenses:' ending in the 'none' fallback"
   fi
   if grep -qiE 'copilot|coderabbit' "$f"; then
@@ -113,6 +116,8 @@ if [ "${1:-}" = "--selftest" ]; then
   { cat "$SHIP"; echo 'The Copilot review is requested here.'; } > "$tmp/ship-noun.md"; seed "ship names a product" defect check_ship "$tmp/ship-noun.md"
   sed 's/ — review: <id> <recorded review summary> | <id> unknown — <reason>, … | none//' "$FLEET" > "$tmp/fleet-seg.md"
   seed "fleet REPORT segment removed" defect check_fleet "$tmp/fleet-seg.md"
+  sed 's/ | <id> unknown — <reason>, … | none — shape:/ | <id> unknown — <reason>, … — shape:/' "$FLEET" > "$tmp/fleet-fb.md"
+  seed "fleet REPORT review fallback dropped" defect check_fleet "$tmp/fleet-fb.md"
   sed 's/as `review: <value>`/as `rev: <value>`/' "$FLEET" > "$tmp/fleet-tok.md"; seed "fleet row token renamed" defect check_fleet "$tmp/fleet-tok.md"
   if [ "$st" -ne 0 ]; then echo "check-review-cause-slots selftest: FAIL"; exit 1; fi
   echo "check-review-cause-slots selftest: PASS — every seeded defect is caught and the clean copies stay silent."
