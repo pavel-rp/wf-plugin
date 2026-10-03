@@ -74,7 +74,7 @@ read of its own. Obtain the operation body via `resolve_content({ workspaceRoot,
 a raw `Read`. On `state: unconfigured`/`unrecoverable`, both operations fall back silently to
 their plain-directory-safe cases — no error, no capability term surfaces. If `wf-resolver` is
 unavailable, stop and report the resolver runtime is not loaded — do not hand-parse the
-registry (WF-272). This audit's core evidence-gathering (diff, commit coordinates, dirty-tree
+registry. This audit's core evidence-gathering (diff, commit coordinates, dirty-tree
 state — "Implementation scope" below) has no delivery operation of its own today, so it is
 gathered directly against the local working tree regardless of resolution state — a documented
 contract-completeness gap, not a workaround.

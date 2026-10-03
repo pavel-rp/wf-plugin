@@ -208,8 +208,7 @@ taxonomy by **phase name / contribution-kind name**, never by heading:
    contributionKind, dispatch, scope }, articles[], provenance, validity }`. The resolver has
    done the registry iteration, per-capability manifest read, and plugin-anchored root
    self-heal; core reads only this metadata. If the `wf-resolver` service is unavailable, stop
-   and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272
-   diagnostics/recovery).
+   and report that the resolver runtime is not loaded — do not hand-parse the registry.
 2. **Collect** only the fragment rows (across the returned `capabilities[]`, preserving
    registry order) whose `phase` is `implement` and whose `contributionKind` is `guidance`.
    Ignore all other rows for this firing.

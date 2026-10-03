@@ -1,6 +1,7 @@
 # Certified commit — contract & rationale
 
 **Version:** 1.0.0 (WF-818)
+**Ops doc version history (`certified-commit.ops.md`):** 1.0.0 (WF-818 — the certified-commit record, the drift ledger, and the carry-forward / scoped re-verify rule)
 **Model:** claude-opus-5-5
 
 The paired reference for `certified-commit.ops.md`. **Never read at runtime** — the ops doc carries

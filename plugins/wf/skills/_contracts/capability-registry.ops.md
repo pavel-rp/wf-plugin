@@ -1,6 +1,6 @@
 # Capability registry — runtime ops
 
-**Version:** 1.18.2 — per-change history lives in `capability-registry.contract.md`.
+**Version:** 1.18.2
 **Role:** the runtime-read half of the v2 core↔capability port — every schema, guard, error path, outcome mapping, and degradation rule a running skill follows. Self-sufficient at one level: no step below requires opening any further file.
 **Pair (flat sibling, read directly when needed):** `invocation-runtime.ops.md` — the phase-firing / provider-resolution procedure.
 **Reference (rationale, history, authoring guidance, validation detail — never read at boot):** `capability-registry.contract.md`.
