@@ -94,7 +94,7 @@ When `--steps` is provided, only the specified steps are executed (plus STEP-001
 
 ## Safety Rules (NON-NEGOTIABLE)
 
-`/wf:implement` is the only wf:* skill that intentionally modifies source code outside `_local/`. The constraints below scope what that authorization covers.
+Modifying source code outside `_local/` is this skill's designated job. The constraints below scope what that authorization covers.
 
 **Allowed:**
 
@@ -117,11 +117,11 @@ When `--steps` is provided, only the specified steps are executed (plus STEP-001
 
 ## Phase 1: Branch Gate
 
-Before touching any code, verify the current branch is correct for this task — but only when a delivery provider is registered. `implement` is the one designated source-mutating skill, so this gate degrades gracefully rather than erroring out in bare-core mode: a missing delivery capability is not a reason to block an otherwise-safe implementation run.
+Before touching any code, verify the current branch is correct for this task — but only when a delivery provider is registered. `implement` is a designated source-mutating skill, so this gate degrades gracefully rather than erroring out in bare-core mode: a missing delivery capability is not a reason to block an otherwise-safe implementation run.
 
 ### Direct provider resolution (how `current-branch-query` and the wf:branch subagent's `branch-create` are reached)
 
-Reached by calling the bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Resolve the `delivery` surface once here, then forward that record to the `wf:branch` subagent the gate procedure below spawns, so it consumes the record instead of re-resolving. `state: unconfigured` means no capability owns the `delivery` surface — the gate degrades to a no-op (below). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
+Reached by calling the bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Resolve the `delivery` surface once here, then forward that record to the `wf:branch` subagent the gate procedure below spawns, so it consumes the record instead of re-resolving. `state: unconfigured` means no capability owns the `delivery` surface — the gate degrades to a no-op (below). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry.
 
 **Gate procedure:**
 

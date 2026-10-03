@@ -112,7 +112,7 @@ on the record's `owner` and fragment `ref`) and follow it in this skill's own co
 invoke the ops — never a raw `Read` of the path (the metadata queries return only paths/metadata;
 the body comes from `resolve_content({ workspaceRoot, ... })`). If the
 `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded —
-do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
+do not hand-parse the registry as a fallback.
 
 **`tt` branches on the record's `state` itself — it does not read the change set and inspect
 the return to guess whether a provider exists.** The `state` (`ok` vs
@@ -208,8 +208,7 @@ taxonomy by **phase name / contribution-kind name**, never by heading:
    contributionKind, dispatch, scope }, articles[], provenance, validity }`. The resolver has
    done the registry iteration, per-capability manifest read, and plugin-anchored root
    self-heal; core reads only this metadata. If the `wf-resolver` service is unavailable, stop
-   and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272
-   diagnostics/recovery).
+   and report that the resolver runtime is not loaded — do not hand-parse the registry.
 2. **Collect** only the fragment rows (across the returned `capabilities[]`, preserving
    registry order) whose `phase` is `implement` and whose `contributionKind` is `guidance`.
    Ignore all other rows for this firing.

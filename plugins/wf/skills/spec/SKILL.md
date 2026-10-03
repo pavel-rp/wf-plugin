@@ -80,7 +80,7 @@ Always runs first unless `00_reqs.md` already exists in the task folder.
 
 ### Direct provider resolution (how `get`/`update` are reached)
 
-Every tracker operation below (`get`, `update`) is reached by calling the bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "tracker" })` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }` for the `tracker` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Obtain each op's body through the resolver's `resolve_content({ workspaceRoot, ... })` content surface (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to dispatch `get`/`update` — never a raw `Read` of the path (the metadata queries return only paths/metadata; the body comes from `resolve_content({ workspaceRoot, ... })`). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
+Every tracker operation below (`get`, `update`) is reached by calling the bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "tracker" })` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }` for the `tracker` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Obtain each op's body through the resolver's `resolve_content({ workspaceRoot, ... })` content surface (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to dispatch `get`/`update` — never a raw `Read` of the path (the metadata queries return only paths/metadata; the body comes from `resolve_content({ workspaceRoot, ... })`). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback.
 
 Reproduce degradation from the record's `state`:
 
@@ -261,10 +261,7 @@ Write `01_spec.md` in the task folder using the template below.
 - **Explicit scope boundaries.** State what is IN and what is OUT.
 - **Constraint-based framing.** State constraints alongside the objective, not separately.
 - **Reference code, don't describe it.** Point to existing files as examples of patterns to follow.
-- **Spec sizing by complexity:**
-  - `S` — 100-200 words
-  - `M` — 300-500 words
-  - `L` — 500-1000 words
+- **Size the spec to the task's complexity:** an `S` spec is a few short paragraphs; an `M` spec gives each section a short paragraph; an `L` spec covers every success criterion and constraint without drifting into the How.
 - **Focus on What & Why.** Leave the How to `/wf:plan`.
 - **Clean of Q&A.** Resolved questions become confident statements.
 

@@ -1,6 +1,6 @@
 # Certified commit — ops
 
-**Version:** 1.0.0 (WF-818 — the certified-commit record, the drift ledger, and the carry-forward / scoped re-verify rule)
+**Version:** 1.0.0
 **Model:** claude-opus-5-5
 
 The runtime doc every **guarded push path** follows before a pushed head is taken past verification.

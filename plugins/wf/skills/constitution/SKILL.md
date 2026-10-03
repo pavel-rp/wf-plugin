@@ -185,7 +185,7 @@ taxonomy by **contribution-kind name** (`article`), never by heading:
    carrying its composed **`articles[]`** metadata (the declared non-negotiable principles).
    The resolver has done the registry iteration and per-capability manifest read; core reads
    only this metadata. If the `wf-resolver` service is unavailable, stop and report that the
-   resolver runtime is not loaded (WF-272 diagnostics/recovery).
+   resolver runtime is not loaded.
 2. **Collect** each capability's `articles[]` entries.
 3. **Aggregate provenance-tagged.** Record each capability's articles under that capability's
    `name`. Because every article is tagged with its source, registry order is **cosmetic** for

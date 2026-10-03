@@ -74,7 +74,7 @@ read of its own. Obtain the operation body via `resolve_content({ workspaceRoot,
 a raw `Read`. On `state: unconfigured`/`unrecoverable`, both operations fall back silently to
 their plain-directory-safe cases — no error, no capability term surfaces. If `wf-resolver` is
 unavailable, stop and report the resolver runtime is not loaded — do not hand-parse the
-registry (WF-272). This audit's core evidence-gathering (diff, commit coordinates, dirty-tree
+registry. This audit's core evidence-gathering (diff, commit coordinates, dirty-tree
 state — "Implementation scope" below) has no delivery operation of its own today, so it is
 gathered directly against the local working tree regardless of resolution state — a documented
 contract-completeness gap, not a workaround.
@@ -229,7 +229,7 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    articles[], provenance, validity }`. The resolver has done the registry iteration,
    per-capability manifest read, and plugin-anchored root self-heal. If the `wf-resolver`
    service is unavailable, stop and report that the resolver runtime is not loaded — do
-   not hand-parse the registry (WF-272 diagnostics/recovery).
+   not hand-parse the registry.
 2. **Collect** the fragment rows whose `phase` is `verify` and `contributionKind` is
    `finding`, in registry order.
 3. **Dispatch each** on its `dispatch` metadata (the metadata queries return only
@@ -413,7 +413,7 @@ the capability- and adversarial-findings lines, the top next actions, and the co
 `/wf:verify-fix` suggestion with its inclusion test — lives at `chat-summary.md`, obtained via
 `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-spec`,
 `ref: chat-summary.md`), never a raw `Read` of the plugin-cache path. Read only on this write
-path; follow it, emit with placeholders substituted, target ~15 lines, trimming detail not items.
+path; follow it, emit with placeholders substituted, keeping every item and trimming detail.
 
 ### Record the phase-completion receipt
 
