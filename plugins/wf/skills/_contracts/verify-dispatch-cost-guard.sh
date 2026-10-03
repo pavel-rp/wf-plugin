@@ -21,10 +21,10 @@ report_fail() {
 }
 
 gate_line="$(grep -n 'optional contributor gate \*\*before any routing or' "$VERIFY" | cut -d: -f1)"
-task_line="$(grep -n 'otherwise invoke one Task' "$VERIFY" | cut -d: -f1)"
+task_line="$(grep -n 'otherwise invoke one Agent' "$VERIFY" | cut -d: -f1)"
 
 if [ -z "$gate_line" ] || [ -z "$task_line" ] || [ "$gate_line" -ge "$task_line" ]; then
-  report_fail "verify-spec must apply the optional contributor gate before Task dispatch"
+  report_fail "verify-spec must apply the optional contributor gate before Agent dispatch"
 fi
 
 if ! grep -q 'resolve_profile({ workspaceRoot, capability: <source-capability> })' "$VERIFY"; then
@@ -138,7 +138,7 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
-printf 'PASS: caller-side lens gate precedes Task dispatch\n'
+printf 'PASS: caller-side lens gate precedes Agent dispatch\n'
 printf 'PASS: round-aware dispatch fields and lens mandates are present\n'
 printf 'PASS: Round context block precedes and stays outside the return template\n'
 printf 'PASS: five lens agents perform zero finding-contract/profile fetches\n'

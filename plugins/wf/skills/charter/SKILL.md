@@ -169,7 +169,7 @@ independentReview: true, returnContract: "judgment", requestedParallelism: 1 }`,
 `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact
 operational record separately from the review log's `**Audited by:**` attribution. Hard-stop
 on `status: stop` or non-null `diagnostic`; otherwise obey `executionShape` exactly, invoke
-one isolated Task, pass the model selector only when non-null, and preserve inherited effort. Phase 5 remains the sole retry owner: retain clean/sufficient
+one isolated Agent, pass the model selector only when non-null, and preserve inherited effort. Phase 5 remains the sole retry owner: retain clean/sufficient
 results and submit only contract-defined insufficiency through `postAttempt` within the
 existing revision cap.
 

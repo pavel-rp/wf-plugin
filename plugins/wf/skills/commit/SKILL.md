@@ -39,7 +39,7 @@ selector-support facts `supportsModelSelector: true` and `supportsEffortSelector
 Emit the compact operational record separately from commit message and artifact attribution.
 If `status: stop` or `diagnostic` is non-null, emit `COMMIT — Error` without delegation.
 Otherwise obey `executionShape` exactly; this evidence selects `isolated`, so invoke one
-Task, passing the model selector only when non-null and preserving inherited effort.
+Agent, passing the model selector only when non-null and preserving inherited effort.
 The wrapper preserves the child result contract and never reruns a sufficient commit.
 
 Invoke the **Agent** tool with `subagent_type: wf:commit`, passing:

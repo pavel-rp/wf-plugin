@@ -24,7 +24,7 @@ core-article rewrite is gated by is [`obligation-inventory.md`](obligation-inven
 The non-negotiable principles this project's workflow holds itself to. **Composed, not
 baked** — core process articles + each registered capability's non-negotiables + the
 project's own clauses, each tagged with its source. The SessionStart hook injects this
-record into every session as standing instructions. Re-run `/wf:constitution` to refresh after a registry or project-clause change.
+record into every top-level session as standing instructions. Re-run `/wf:constitution` to refresh after a registry or project-clause change.
 
 ## Precedence
 

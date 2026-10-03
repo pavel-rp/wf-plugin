@@ -870,7 +870,7 @@ selftest() {
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
 ## Procedure
 Before the first bundled resolver MCP call, run `pwd -P` and retain it as `workspaceRoot`.
-Call `resolve_routing` with `workspaceRoot: workspaceRoot`, `role: "demo"`, `unitIds: ["demo:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null. Invoke the **Task** tool with `subagent_type: wf:demo`.
+Call `resolve_routing` with `workspaceRoot: workspaceRoot`, `role: "demo"`, `unitIds: ["demo:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null. Invoke the **Agent** tool with `subagent_type: wf:demo`.
 EOF
   cat > "$tmp/pass.tsv" <<'EOF'
 demo	included	plugins/wf/skills/demo/SKILL.md	wf:demo	demo	model=true;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
@@ -905,14 +905,14 @@ Call `resolve_routing` with
 `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
 `supportsModelSelector: true`, and
 `supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null.
-Invoke the **Task** tool with `subagent_type: wf:demo`.
+Invoke the **Agent** tool with `subagent_type: wf:demo`.
 EOF
   # A documented multiline call continuation binds to its immediate dispatch.
   fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null || rc=1
 
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
 ## Procedure
-Call `resolve_routing` with `role: "demo"`, `unitIds: ["demo:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; later in the same paragraph say `workspaceRoot: workspaceRoot`. Invoke the **Task** tool with `subagent_type: wf:demo`.
+Call `resolve_routing` with `role: "demo"`, `unitIds: ["demo:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; later in the same paragraph say `workspaceRoot: workspaceRoot`. Invoke the **Agent** tool with `subagent_type: wf:demo`.
 EOF
   # A workspaceRoot mention after the role/call cannot backfill that invocation.
   fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
@@ -924,29 +924,29 @@ Call `resolve_routing` with `workspaceRoot: workspaceRoot`, `role: "demo"`, `uni
 
 This unrelated prose discusses another operation and carries no routing continuation.
 
-Invoke the **Task** tool with `subagent_type: wf:demo`.
+Invoke the **Agent** tool with `subagent_type: wf:demo`.
 EOF
   # Arbitrary prose consumes the decision; it cannot authorize a later dispatch.
   fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
   mv "$tmp/demo-single-line-route.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
 
   cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-routed.bak"
-  printf '\nYou may invoke the **Task** tool with `subagent_type: wf:demo`.\n' >> "$tmp/plugins/wf/skills/demo/SKILL.md"
+  printf '\nYou may invoke the **Agent** tool with `subagent_type: wf:demo`.\n' >> "$tmp/plugins/wf/skills/demo/SKILL.md"
   cp "$tmp/pass.tsv" "$tmp/two-task-rows.tsv"
   sed 's/^demo/inventory-second/' "$tmp/pass.tsv" >> "$tmp/two-task-rows.tsv"
-  # A same-heading sibling Task occurrence needs its own local routing decision.
+  # A same-heading sibling Agent occurrence needs its own local routing decision.
   fail=0; scan "$tmp" "$tmp/two-task-rows.tsv" >/dev/null 2>&1 && rc=1
   mv "$tmp/demo-routed.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
   cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-wrong-role.bak"
   cat >> "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
-Call `resolve_routing` with top-level `role: "wrong"` and nested context `{ role: "demo" }`, complete evidence, and normal stop handling. Invoke the **Task** tool with `subagent_type: wf:demo`.
+Call `resolve_routing` with top-level `role: "wrong"` and nested context `{ role: "demo" }`, complete evidence, and normal stop handling. Invoke the **Agent** tool with `subagent_type: wf:demo`.
 EOF
   # A target token after an unrelated decision cannot launder that decision's wrong role.
   fail=0; scan "$tmp" "$tmp/two-task-rows.tsv" >/dev/null 2>&1 && rc=1
   mv "$tmp/demo-wrong-role.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
   cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-single-line.bak"
   sed 's/subagent_type: wf:demo/subagent_type: wf:demo and subagent_type: wf:demo/' "$tmp/plugins/wf/skills/demo/SKILL.md" > "$tmp/plugins/wf/skills/demo/tmp" && mv "$tmp/plugins/wf/skills/demo/tmp" "$tmp/plugins/wf/skills/demo/SKILL.md"
-  # Even two inventory rows cannot authorize two Task dispatches from one routing decision.
+  # Even two inventory rows cannot authorize two Agent dispatches from one routing decision.
   fail=0; scan "$tmp" "$tmp/two-task-rows.tsv" >/dev/null 2>&1 && rc=1
   mv "$tmp/demo-single-line.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
 
@@ -956,7 +956,7 @@ EOF
   cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-valid.bak"
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
 ## Execute
-You may invoke the **Task** tool with `subagent_type: wf:hidden`.
+You may invoke the **Agent** tool with `subagent_type: wf:hidden`.
 EOF
   fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
@@ -966,12 +966,12 @@ EOF
   fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
 ## Execute
-You may invoke the **Task** tool manually with `subagent_type: wf:hidden`.
+You may invoke the **Agent** tool manually with `subagent_type: wf:hidden`.
 EOF
   fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
 ## Execute
-Invoke the **Task** tool manually with `subagent_type: wf:hidden`.
+Invoke the **Agent** tool manually with `subagent_type: wf:hidden`.
 EOF
   fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'

@@ -118,7 +118,7 @@ export const INVOCATION_AXIS = {
    *  reference to resolve. The leading look-behind keeps a path segment
    *  (`.../skills/wf:x`) or a longer token from matching mid-string. */
   skillToken: "(?<![\\w./-])/(wf(?:-[a-z0-9][a-z0-9-]*)?):([a-z][a-z0-9-]*)",
-  /** `subagent_type: wf:<agent>` — the Task-tool dispatch declaration, with or
+  /** `subagent_type: wf:<agent>` — the Agent-tool dispatch declaration, with or
    *  without backticks around the value. */
   agentToken: "subagent_type:?\\s*[`'\"]?(wf(?:-[a-z0-9][a-z0-9-]*)?):([a-z][a-z0-9-]*)",
 } as const;
@@ -158,7 +158,7 @@ export interface ReferenceCheckOptions {
  *
  * The guard classifies line-wise because grep does; government is really a
  * sentence relation, and a whole line routinely carries two independent
- * clauses ("You are invoked only via the Task tool. There is no `/wf:x` slash
+ * clauses ("You are invoked only via the Agent tool. There is no `/wf:x` slash
  * command."). Splitting on sentence-final punctuation followed by whitespace
  * keeps `.ops.md`, `SKILL.md`, and version tokens intact, because those carry
  * no space after the dot.
@@ -265,7 +265,7 @@ export function validateReferences(
       //     line-wise because grep does; "governs" is really a sentence
       //     relation, and the live counter-example needs it:
       //     `plugins/wf/agents/phase-runner.md` line 12 reads "You are invoked
-      //     only via the **Task** tool from `wf:run`. There is no
+      //     only via the **Agent** tool from `wf:run`. There is no
       //     `/wf:phase-runner` slash command, and a user should never invoke
       //     you directly." The first sentence's "invoked" governs nothing here,
       //     and the second sentence NEGATES the token's existence — its own

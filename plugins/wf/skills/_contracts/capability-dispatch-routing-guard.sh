@@ -71,7 +71,7 @@ for base in scan_roots:
             executable = (
                 re.search(r"subagent_type: wf-[a-z0-9-]+:[a-z0-9-]+", line)
                 or re.search(r"(?:invoke|re-invoke).*?/wf-(?:audit|browser-qa|angular|host):[a-z0-9-]+.*?Skill", line, re.I)
-                or re.search(r"(?:invoke|dispatch).*?Task.*?subagent_type: <[^>]+>", line, re.I)
+                or re.search(r"(?:invoke|dispatch).*?(?:Task|Agent).*?subagent_type: <[^>]+>", line, re.I)
             )
             prose = re.search(r"normally invoked|caller hands|dispatch target of|fragment.*names|user-facing entry|to compose a process-retrospective", line, re.I)
             if executable and not prose and "<!-- capability-route:" not in line:
@@ -150,10 +150,22 @@ PY
     printf 'capability-dispatch-routing-guard: missing-marker fixture passed unexpectedly\n' >&2; exit 1
   fi
   cp "$ROOT/plugins/wf/skills/qa-auto/SKILL.md" "$tmp/plugins/wf/skills/qa-auto/SKILL.md" || exit 1
-  printf '\nInvoke the Task tool with `subagent_type: wf-rogue:unrouted`.\n' >> "$tmp/plugins/wf-browser-qa/skills/qa-engine/SKILL.md"
-  if CAPABILITY_DISPATCH_ROOT="$tmp" CAPABILITY_DISPATCH_INVENTORY="$tmp/inventory.tsv" run_guard >/dev/null 2>&1; then
-    printf 'capability-dispatch-routing-guard: rogue-dispatch fixture passed unexpectedly\n' >&2; exit 1
-  fi
+  # Each rogue fixture is injected on its own into a pristine copy, so every one must fail
+  # the guard by itself. The out-of-scope packs keep "Task tool" wording while wf names the
+  # Agent tool, so both wordings stay covered — concrete targets and placeholder targets.
+  engine="plugins/wf-browser-qa/skills/qa-engine/SKILL.md"
+  for rogue in \
+    'Invoke the Task tool with `subagent_type: wf-rogue:unrouted`.' \
+    'Invoke the Agent tool with `subagent_type: wf-rogue:unrouted`.' \
+    'Invoke the Task tool with subagent_type: <rogue-target>.' \
+    'Invoke the Agent tool with subagent_type: <rogue-target>.'; do
+    cp "$ROOT/$engine" "$tmp/$engine" || exit 1
+    printf '\n%s\n' "$rogue" >> "$tmp/$engine"
+    if CAPABILITY_DISPATCH_ROOT="$tmp" CAPABILITY_DISPATCH_INVENTORY="$tmp/inventory.tsv" run_guard >/dev/null 2>&1; then
+      printf 'capability-dispatch-routing-guard: rogue-dispatch fixture passed unexpectedly: %s\n' "$rogue" >&2; exit 1
+    fi
+  done
+  cp "$ROOT/$engine" "$tmp/$engine" || exit 1
   printf 'capability-dispatch-routing-guard: self-test passed\n'
   exit 0
 fi

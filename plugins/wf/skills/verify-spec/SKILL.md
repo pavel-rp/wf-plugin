@@ -265,7 +265,7 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    independentReview: true, returnContract: "judgment", requestedParallelism: 1 }`.
    Include `actualModel` only when exposed and emit the compact operational record
    separately from report attribution. A `status: stop`, diagnostic, malformed derived
-   role, or non-`isolated` shape is a hard stop before Task; otherwise invoke one Agent
+   role, or non-`isolated` shape is a hard stop before Agent; otherwise invoke one Agent
    with `subagent_type: <agent>`, passing the artifact under audit, the **Round context**
    block below when `N >= 2`, **and the following
    finding contract inline in the dispatch prompt** (identical bytes to every enabled
