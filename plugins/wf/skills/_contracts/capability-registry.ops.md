@@ -29,7 +29,7 @@ Rules a boot follows:
 
 ## The `## Plugin Roots` mapping
 
-A second table (`| Plugin | Root |`) co-located with the registry. `Plugin` = the `plugin:` token's `<plugin-name>`, verbatim. `Root` = that plugin's install root — absolute or repo-relative, forward slashes only; a backslash or a `..` segment is invalid (validator-enforced). Per-machine, gitignored, written by the pack's own init skill — **core only reads it, never writes another plugin's root**. An absent/empty table only means no plugin-anchored row can resolve; repo-relative rows are unaffected.
+A second table (`| Plugin | Root |`) co-located with the registry. `Plugin` = the `plugin:` token's `<plugin-name>`, verbatim. `Root` = that plugin's install root — absolute or repo-relative, forward slashes only; a backslash or a `..` segment is invalid (validator-enforced). Per-machine, gitignored. **Writer:** the resolver's `apply_install` writes this table and the `## Capabilities` rows when `/wf:init` applies a confirmed plan; a pack's own init skill is an alias that enters that same `/wf:init` flow. Every other core skill only reads it and never writes a plugin's root. An absent/empty table only means no plugin-anchored row can resolve; repo-relative rows are unaffected.
 
 ## Recorded-root-first resolution with install-manifest self-heal
 
@@ -126,7 +126,7 @@ The commit path fires the `pre-commit` phase **immediately before it records a c
 
 ## The constitution composition rule
 
-Compose provenance-tagged domain-free core articles plus every active capability's `article:` manifest keys (keys, never fragment rows). Project clauses override capability clauses; conflicting capability clauses fail validation with both offenders named. Establish at setup, consult as `guidance` at `spec`, and enforce as `finding`s at `verify` — never as a per-ticket phase.
+Compose provenance-tagged domain-free core articles plus every active capability's `article:` manifest keys (keys, never fragment rows). Project clauses override capability clauses; conflicting capability clauses fail validation with both offenders named. Establish it at setup into `_local/constitution.md`, never as a per-ticket phase. No phase skill reads it: the SessionStart hook injects the composed record into every top-level session as standing instructions, and `/wf:fleet` carries it explicitly to worktree shippers, where that hook does not fire.
 
 ## Manifest schema v2 (the capability side, at the contract level)
 
