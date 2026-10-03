@@ -200,7 +200,15 @@ def ref_value(win, form):
             j += 1
         value = win[i:j].strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1].strip()
+            # A quoted value, decoded as the quoted-value branch below decodes it:
+            # `\` + that quote or `\` + `\` is the escaped character.
+            q, inner, out, k = value[0], value[1:-1], [], 0
+            while k < len(inner):
+                if inner[k] == "\\" and k + 1 < len(inner) and inner[k + 1] in (q, "\\"):
+                    k += 1
+                out.append(inner[k])
+                k += 1
+            value = "".join(out).strip()
         return value
     if i < len(win) and win[i] in QUOTES:
         q, out, j = win[i], [], i + 1
@@ -656,7 +664,8 @@ def selftest():
         # mid-word apostrophe before the call's `)` must not swallow it. In a
         # backtick-list call, a ref written outside its own span follows the same
         # quoted / unquoted rules: a quoted `a)b.md` is whole, an unquoted one
-        # stops at `,`.
+        # stops at `,`. A quoted value inside its own span decodes `\"` like any
+        # other quoted value.
         put("plugins/wf/skills/rho/SKILL.md",
             "Obtain it (class: references-template, skill: rho, ref: \"a (b).md\").\n"
             "resolve_content({ workspaceRoot, class: \"references-template\", skill: \"rho\", ref: it's.md })\n"
@@ -664,10 +673,11 @@ def selftest():
             "Read (class: references-template, skill: rho, ref: w.md, the template's copy) and "
             "(class: references-template, skill: rho, ref: x.md).\n"
             "Mixed (`class: references-template`, `skill: rho`, ref: \"a)b.md\") and "
-            "(`class: references-template`, `skill: rho`, ref: m.md, x).\n")
+            "(`class: references-template`, `skill: rho`, ref: m.md, x).\n"
+            "Span (`class: references-template`, `skill: rho`, `ref: \"q\\\"t.md\"`).\n")
         tree, _ = scan(tmp)
         rho = {r for c, _, r in tree if c == "wf/skills/rho"}
-        if rho != {"a (b).md", "it's.md", "o'k.md", "w.md", "x.md", "a)b.md", "m.md"}:
+        if rho != {"a (b).md", "it's.md", "o'k.md", "w.md", "x.md", "a)b.md", "m.md", "q\"t.md"}:
             print(f"SELFTEST FAIL — quoted-prose and apostrophe refs derived {sorted(rho)}", file=sys.stderr)
             failed += 1
         if failed:
