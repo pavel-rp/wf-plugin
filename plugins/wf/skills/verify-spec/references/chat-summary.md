@@ -49,5 +49,5 @@ Print, in this order:
   cited `file:line`. Omit on PASS, when every finding is UNVERIFIABLE, structural, or
   vaguely `Expected` — and whenever in doubt.
 
-Target ~15 lines total. If the summary grows past that, trim detail, not items — the user can
-open the file for the rest.
+Keep it scannable: every item stays listed, carrying only the detail a reader needs to act —
+the user can open the file for the rest.

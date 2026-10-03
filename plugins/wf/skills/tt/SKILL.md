@@ -112,7 +112,7 @@ on the record's `owner` and fragment `ref`) and follow it in this skill's own co
 invoke the ops — never a raw `Read` of the path (the metadata queries return only paths/metadata;
 the body comes from `resolve_content({ workspaceRoot, ... })`). If the
 `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded —
-do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
+do not hand-parse the registry as a fallback.
 
 **`tt` branches on the record's `state` itself — it does not read the change set and inspect
 the return to guess whether a provider exists.** The `state` (`ok` vs

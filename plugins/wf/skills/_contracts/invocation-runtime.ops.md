@@ -1,6 +1,6 @@
 # Capability invocation runtime — runtime ops
 
-**Version:** 1.9.0 (WF-208; WF-209 — run-scoped provider forwarding; WF-302 — the bundled-doc content resolution surface; WF-304 — fragment-body dispatch routed through that surface; WF-396 — evidence-selected execution shape; WF-397 — parent-owned bounded escalation; WF-399 — mandatory fixed core-dispatch adoption and compact operational record; WF-496 — the authoritative-`unitCount` rule, the bounded-metadata rejection, and the independent-axes reading; WF-497 — the model tier as one escalation lever rather than the gate itself; WF-943 — a caller that cannot await its children)
+**Version:** 1.9.0 — per-change history lives in `invocation-runtime.contract.md`.
 **Role:** the runtime-read half of the invocation runtime — the exact procedure a core skill follows to fire an SDD phase or to resolve a provider surface, with every guard, no-op case, and fail-safe inline. One level deep: no step below requires opening anything beyond this file and its flat sibling below.
 **Pair (flat sibling, read directly when needed):** `capability-registry.ops.md` — the registry/mapping schemas, the recorded-root-first self-heal algorithm, the surface operation sets, and the degradation rules this procedure resolves against.
 **Reference (rationale, history, v1 lineage, worked demonstrations — never read at boot):** `invocation-runtime.contract.md`.

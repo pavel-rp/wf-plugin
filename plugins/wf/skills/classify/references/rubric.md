@@ -1,6 +1,6 @@
 # classify rubric — subagent execution
 
-The complete rubric the `wf:classify` **subagent** runs. It is the single source of truth for the type buckets, decision rules, confidence anchors, and output shape. The subagent (`agents/classify.md`) boots from **this file alone** — it reads no other file as part of its boot, so a spawn no longer eagerly loads the full caller-facing `skills/classify/SKILL.md`. The host LLM running `/wf:classify` directly does **not** read this file; it stops at the skill's Phase 2 and delegates here.
+The complete rubric the `wf:classify` **subagent** runs. It is the single source of truth for the type buckets, decision rules, confidence anchors, and output shape. The subagent (`agents/classify.md`) boots from **this file alone** — it reads no other file as part of its boot, so a spawn never loads the full caller-facing `skills/classify/SKILL.md`. The host LLM running `/wf:classify` directly does **not** read this file; it stops at the skill's Phase 2 and delegates here.
 
 ## Contents
 
