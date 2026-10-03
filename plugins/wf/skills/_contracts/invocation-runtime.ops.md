@@ -25,7 +25,7 @@ Three contract rules govern how a call is composed and how its answer is read:
 On `status: dispatch`, obey `executionShape` exactly while preserving the role's existing failure and output contract:
 
 - **`inline`** — execute the unit in the caller context; do not spawn.
-- **`isolated`** — invoke one Task subagent and forward only its declared final block.
+- **`isolated`** — invoke one Agent subagent and forward only its declared final block.
 - **`bounded-parallel`** — dispatch every independent unit, run no more than `effectiveParallelism` Tasks concurrently, and restore deterministic input order before aggregation. The resolver caps concurrency by unit count, the positive caller bound, and a core maximum of four. Never parallelize dependent work.
 
 Pass `model.value` / `effort.value` only when non-null; null preserves inheritance. Preserve the role's shipped model and effort defaults, and retain actual-model attribution on authored artifacts. For `subagent: <agent>` metadata, validate the token as a registered Task target and derive the routing role from its final colon-delimited slug; never hardcode a capability name in core. A malformed derived role, unavailable required selector, or execution shape the dispatch surface cannot perform stops before Task; a genuinely unavailable optional contributor follows its pre-existing no-op contract. A routed `/wf:index` Skill invocation is wrapper-mediated and must not be bypassed with a direct pack-owned `wf:index` Task.
@@ -66,7 +66,7 @@ Select only the fragment rows whose `phase` equals the firing phase; ignore all 
 | Fragment `dispatch` | Core action |
 |---------------------|-------------|
 | `inline: <rel-path>` | Obtain the fragment body through the resolver **content surface** — call `resolve_content` with `workspaceRoot: <current Agent/session absolute workspace directory>`, `class: fragment`, `capability:` this row's capability name, and `ref: <rel-path>` (forward-slash, **relative to the capability's registry path**) — and follow the returned body in-context; return the result in the contribution kind's generic shape. **Never a raw `Read`/`Glob` of the path** (see §"Content resolution surface"). No subagent. |
-| `subagent: <agent>` | Invoke the Task tool with `subagent_type: <agent>`, passing the artifact under review and the kind's generic shape; only the agent's final block returns. |
+| `subagent: <agent>` | Invoke the Agent tool with `subagent_type: <agent>`, passing the artifact under review and the kind's generic shape; only the agent's final block returns. |
 | *(no matching row for the phase)* | No-op — the capability contributes the phase's declared empty result. |
 | *(row present, `dispatch` neither `inline:` nor `subagent:`)* | No-op (fail-safe) — never guess a malformed kind. |
 
@@ -86,7 +86,7 @@ The `delivery` and `tracker` `provider` surfaces are invoked **whenever a core s
 1. **Registry iteration** — unchanged (step 1 above, including both `Path` shapes and the self-heal).
 2. **Per-capability manifest read** — unchanged (step 2).
 3. **Scope-equality filter** (replaces per-phase collection): select the row(s) where `contribution-kind = provider` **and** `scope = delivery` (or `scope = tracker`), across the whole registry, **regardless of the row's `phase` value** — the phase there is a registration anchor for the validator, not a filter condition.
-4. **Per-fragment dispatch** — unchanged (step 4): `inline:` obtains the body through `resolve_content` (`workspaceRoot: <current Agent/session absolute workspace directory>`, `class: fragment`) and follows it, or `subagent:` via the Task tool. The provider fragment body (the `delivery` / `tracker` operation set) is served by the content surface, **never raw-read** — see §"Content resolution surface".
+4. **Per-fragment dispatch** — unchanged (step 4): `inline:` obtains the body through `resolve_content` (`workspaceRoot: <current Agent/session absolute workspace directory>`, `class: fragment`) and follows it, or `subagent:` via the Agent tool. The provider fragment body (the `delivery` / `tracker` operation set) is served by the content surface, **never raw-read** — see §"Content resolution surface".
 5. **Aggregation — skipped.** Validated partitioned ownership guarantees at most one match registry-wide; the resolved fragment (or the unconfigured no-op below) *is* the result.
 
 **Unconfigured case** — the filter matches zero rows: structurally the same "zero matching contributors" shape as the no-op path below (scope-filtered instead of phase-filtered). What that no-op resolves to operationally per surface — the plain-directory read fallbacks, the "no delivery provider registered" write statement, the silent local-only `T<NNN>` tracker fallback — is stated in `capability-registry.ops.md` under the two surface sections.

@@ -84,7 +84,7 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 - **Edit source files, but only** at `file:line` locations cited in the loaded `04_verify.md`.
 - Write `{fix-log-dir}05_verify-fix.md` and rotate into `{fix-log-dir}05_verify-fix.history.md` (see "The fix-log location" — `{task-root}/{task-id}/`, or the sibling of the override path).
 - Read-only resolution via `current-branch-query` and `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for branch gating, id inference, and the staleness check. Working-tree/diff dirty-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
-- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits.
+- Invoke the **Agent** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits.
 
 ### Forbidden
 

@@ -35,7 +35,7 @@ to invoke a domain hook in the Claude Code skill substrate, where there is **no 
 container** to inject an implementation. It introduces **no new runtime**: the mechanism
 is built entirely from primitives every `wf:*` skill already uses — reading
 `_local/config.md`, reading a file at a contracted path, and invoking a subagent by
-`subagent_type` via the Task tool (the established Pattern C delegation).
+`subagent_type` via the Agent tool (the established Pattern C delegation).
 
 The mechanism is a **hybrid manifest**. Core resolves the active capability's folder from
 two config keys, reads a contracted manifest in that folder that maps each hook to one of
@@ -120,7 +120,7 @@ The manifest maps each hook name it wires to **exactly one** dispatch kind. Form
     manifest-relative `./`). So `inline: hooks/rule-audit.md` resolves to
     `{domain-path}/hooks/rule-audit.md`.
   - `subagent: <agent-name>` — a generically-named subagent the core **invokes via the
-    Task tool** (`subagent_type: <agent-name>`). The heavy work runs in isolated context;
+    Agent tool** (`subagent_type: <agent-name>`). The heavy work runs in isolated context;
     only the agent's final block returns to the caller.
 - A hook a capability does not fill is simply **absent** from the manifest. Absence is not
   an error — core treats an unmapped hook exactly like the no-op path (§4). A capability
@@ -150,7 +150,7 @@ the row's dispatch kind:
 | Manifest row | Core action |
 |--------------|-------------|
 | `inline: <relative-path>` | Read `{domain-path}/<relative-path>` and **follow it in-context**: the reference doc instructs the core what to assert/produce, and the core returns the result in the hook's generic shape (from `core-extension.contract.md`). No subagent is spawned. |
-| `subagent: <agent-name>` | Invoke the Task tool with `subagent_type: <agent-name>`, passing the artifact under review and the hook's generic shape. The subagent runs in isolated context and returns the hook's result block. |
+| `subagent: <agent-name>` | Invoke the Agent tool with `subagent_type: <agent-name>`, passing the artifact under review and the hook's generic shape. The subagent runs in isolated context and returns the hook's result block. |
 | *(hook name absent from manifest)* | No-op path (§4) — the hook produces its declared empty result. |
 | *(row present, kind neither `inline:` nor `subagent:`)* | No-op path (§4, fail-safe) — core does not guess a malformed kind. |
 
@@ -249,7 +249,7 @@ between them — discovery, read, dispatch, no-op — with no new vocabulary.
 ## What this contract is NOT
 
 - It is **not** a dispatcher, registry service, or build step. The "runtime" is three
-  existing substrate primitives: config read, file read, Task-tool subagent invocation.
+  existing substrate primitives: config read, file read, Agent-tool subagent invocation.
 - It is **not** a validator. Checking that a manifest maps only frozen hook names, or that
   a capability's slots are well-formed, is WF-2's concern.
 - It is **not** a capability. It names zero domains. The `plugins/wf-caps/capabilities/migration/` references are

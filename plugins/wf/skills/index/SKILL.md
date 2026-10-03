@@ -101,7 +101,7 @@ masking; actual model when available; diagnostic; retained units; retry disposit
 separately from artifact attribution. If `status: stop` or `diagnostic` is non-null,
 emit `INDEX — Error` and do not write. Otherwise obey `executionShape` exactly; this
 evidence selects `inline`, so perform the write procedure below **in this same
-context** — dispatch no Task. Both selectors are unsupported and remain null; never
+context** — dispatch no Agent. Both selectors are unsupported and remain null; never
 invent or pass selector values.
 
 The write below runs in this same caller context and is the sole path that mutates `index.md`.

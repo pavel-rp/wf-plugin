@@ -4,7 +4,7 @@ description: Audits a feature charter and its sub-task decomposition as one arti
 user-invocable: false
 ---
 
-> **Dispatch & attribution.** You are dispatched by the `/wf:charter` host skill via the Task tool as an isolated subagent — you cannot ask the user (a question becomes a `route: user` entry in your output). Stamp your report with the current model id from your system prompt (the `Model:` field in the output block below), writing `unknown` only if it is genuinely unavailable — never a guess. Everything below is your role contract; follow it exactly.
+> **Dispatch & attribution.** You are dispatched by the `/wf:charter` host skill via the Agent tool as an isolated subagent — you cannot ask the user (a question becomes a `route: user` entry in your output). Stamp your report with the current model id from your system prompt (the `Model:` field in the output block below), writing `unknown` only if it is genuinely unavailable — never a guess. Everything below is your role contract; follow it exactly.
 
 # charter-reviewer — role prompt
 

@@ -8,7 +8,7 @@ allowed-tools: [Read, Task, Bash, Skill]
 
 User-facing slash command for committing the current task changes with a concise, auto-generated message. The implementation lives entirely in the `wf:commit` subagent (`agents/commit.md`), which loads its procedure from a reference this skill serves through `resolve_content`; this skill body is a thin entry point that exists only for direct user invocation.
 
-**Other wf:* skills that need to commit MUST invoke the **Task** tool with `subagent_type: wf:commit` — never the `/wf:commit` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern avoids. The subagent is self-sufficient: it resolves config, gates the branch, reads the diff, authors the message, commits through the active delivery provider, optionally pushes, and updates `index.md` — all in its own isolated context, so the (potentially large) diff never reaches the caller.
+**Other wf:* skills that need to commit MUST invoke the **Agent** tool with `subagent_type: wf:commit` — never the `/wf:commit` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern avoids. The subagent is self-sufficient: it resolves config, gates the branch, reads the diff, authors the message, commits through the active delivery provider, optionally pushes, and updates `index.md` — all in its own isolated context, so the (potentially large) diff never reaches the caller.
 
 ---
 
@@ -42,13 +42,13 @@ Otherwise obey `executionShape` exactly; this evidence selects `isolated`, so in
 Task, passing the model selector only when non-null and preserving inherited effort.
 The wrapper preserves the child result contract and never reruns a sufficient commit.
 
-Invoke the **Task** tool with `subagent_type: wf:commit`, passing:
+Invoke the **Agent** tool with `subagent_type: wf:commit`, passing:
 
 - `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
 - `push` — `true` if `--push` was passed, else `false`.
 - `staged` — `true` if `--staged` was passed, else `false`.
 
-This is a **direct invocation** — the top of its own delivery chain — so **no forwarded resolution record is passed**; the `wf:commit` subagent self-resolves the `delivery` surface once via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query and forwards the record to any `wf:branch` it nests (`invocation-runtime.ops.md` §"Run-scoped provider forwarding"). When another `wf:*` skill invokes `wf:commit` via the **Task** tool as part of a larger run, that parent forwards the record instead and the subagent consumes it.
+This is a **direct invocation** — the top of its own delivery chain — so **no forwarded resolution record is passed**; the `wf:commit` subagent self-resolves the `delivery` surface once via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query and forwards the record to any `wf:branch` it nests (`invocation-runtime.ops.md` §"Run-scoped provider forwarding"). When another `wf:*` skill invokes `wf:commit` via the **Agent** tool as part of a larger run, that parent forwards the record instead and the subagent consumes it.
 
 **When the caller cannot await children.** If the running agent's own dispatch brief declares that it cannot await its children, obey the `isolated` answer per `invocation-runtime.ops.md` §"Resolver call root" (its **Caller cannot await children** paragraph) instead of the dispatch above. This is a writing unit, so it runs in this context, recorded `inline — caller cannot await`. Follow the same procedure the subagent loads, obtained via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: commit`, `ref: procedure.md`), with the inputs above, and emit its Final Output block. Carry out its loader steps yourself. For its branch loader step, follow the branch procedure the same way (`class: references-template`, `skill: branch`, `ref: procedure.md`), forwarding the `delivery` record, and hand its block back. For its index loader step, invoke `/wf:index {task-id} commit "<summary>"` through the Skill tool with the summary the procedure names.
 

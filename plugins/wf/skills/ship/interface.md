@@ -51,7 +51,7 @@ drift check (`certified-commit.ops.md`) on every head Phase 4.2 pushes and once
 before every Phase 5 `/wf:tf` — appending a `carry-forward` row to the
 task folder's `04_drift.md` and invoking `/wf:verify-spec` through the **Skill**
 tool at most once per drift event, only on a `reverify` outcome; dispatch the
-`wf:context-distiller` agent (`MODE: ci`) via the **Task** tool inside Phase 4.2
+`wf:context-distiller` agent (`MODE: ci`) via the **Agent** tool inside Phase 4.2
 only; and — **the single source-write exception** — apply inside Phase 4.2 only
 the minimal fix a `CI DISTILL` block classed `code` names, at the `Location` it
 names and only when that `Location` passes the **write-target test** (resolves

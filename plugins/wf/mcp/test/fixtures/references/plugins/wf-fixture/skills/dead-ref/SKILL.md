@@ -15,5 +15,5 @@ Invoke `/wf-fixture:tc` to transcribe the change set, then continue.
 
 ## Phase 2
 
-Invoke the Task tool with `subagent_type: wf-fixture:ghost-runner` and forward
+Invoke the Agent tool with `subagent_type: wf-fixture:ghost-runner` and forward
 its final block.

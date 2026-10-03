@@ -994,7 +994,7 @@ contract and the runtime own the rest):
   - `dispatch` — how core reaches the fragment: `inline: <rel-path>` (a reference
     doc core **reads and follows in-context**, forward-slash, relative to the
     capability's path) **or** `subagent: <agent>` (a generically-named subagent
-    core invokes via the Task tool for heavy work).
+    core invokes via the Agent tool for heavy work).
   - `scope` — **required only for partitioned kinds**: a `surface` enum token for
     `provider`; a `source→target` token pair for `artifact`; a
     `<skill>.<point> <merge-policy>` compound for `slot`. Empty (`—`) for

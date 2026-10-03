@@ -21,7 +21,7 @@ interview → writer → decomposer → reviewer ─┬─ CLEAN or accepted war
                                             └─ no progress → stop honestly; rounds exhausted → the cap gate, interactive only (extend / accept / stop) — headless → Blocked
 ```
 
-- Three roles run as isolated subagents dispatched via the **Task** tool — `subagent_type: wf:charter-writer`, `wf:charter-decomposer`, `wf:charter-reviewer`. The host (this skill) owns the interview, routing, user escalation, and publish — subagents cannot ask the user.
+- Three roles run as isolated subagents dispatched via the **Agent** tool — `subagent_type: wf:charter-writer`, `wf:charter-decomposer`, `wf:charter-reviewer`. The host (this skill) owns the interview, routing, user escalation, and publish — subagents cannot ask the user.
 - All state lives in the charter folder's files, re-read from disk each iteration — the loop survives `/clear` and resumes from artifacts.
 - **Publish happens only at convergence — never mid-loop.** The interview→writer→decomposer→reviewer loop iterates purely on the local charter files; nothing reaches the tracker until Phase 6, and only once. Every id the tracker mints is written back to the local artifacts immediately, so a publish that dies part-way resumes idempotently.
 - Terminal statuses: `Converged`, `Converged with warnings`, `Needs input`, `Blocked`. Every pass ends with the `CHARTER — <status>` block (bottom of this file) as the very last output.
@@ -66,7 +66,7 @@ Before the first bundled resolver MCP call, run `pwd -P` once and retain the abs
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
 - Write and edit files only inside `{task-root}` (and its charter / sub-task folders).
-- Dispatch the three role subagents via the **Task** tool; ask the user via `AskUserQuestion` (host only).
+- Dispatch the three role subagents via the **Agent** tool; ask the user via `AskUserQuestion` (host only).
 - Invoke `/wf:index` (the sole `wf:*` skill this one may call) to maintain per-folder indexes.
 - Reach the **`tracker` provider** through direct provider resolution for the abstract contract operations `get`, `create_umbrella`, `create_child`, `update`, `list_children`, `post_comment` — and **only** for adoption (Phase 0) and publish (Phase 6, at convergence). These are the sole external calls besides `/wf:index`; no tracker is ever named.
 
@@ -131,11 +131,11 @@ independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`
 `supportsModelSelector: true` and `supportsEffortSelector: false`. Emit the compact operational record separately from
 artifact `**Model:**` attribution. Hard-stop before work on `status: stop` or non-null
 `diagnostic`; otherwise obey `executionShape` exactly (this evidence selects `isolated`),
-invoke one Task, pass the model selector only when non-null, and preserve inherited effort. The host validates the
+invoke one Agent, pass the model selector only when non-null, and preserve inherited effort. The host validates the
 returned block and artifact; only a contract-defined insufficient result may be submitted
 as `postAttempt` for one parent-owned retry, with sufficient work retained.
 
-Invoke the **Task** tool, `subagent_type: wf:charter-writer`, passing (fill the placeholders; paths absolute, forward slashes):
+Invoke the **Agent** tool, `subagent_type: wf:charter-writer`, passing (fill the placeholders; paths absolute, forward slashes):
 
 > Charter folder: `<abs-folder>`. Mode: `<initial | revision>`. For revision mode, apply these findings and user answers: `<the routed findings + any new clarification answers, verbatim>`. Return only the final block your role contract defines. When a `granted, consumed: no` entry is on record for this dispatch (`## Growth authorizations` in `03_review-log.md`), state it: `Authorized: add exactly one new OUT for <gap>.`
 
@@ -153,7 +153,7 @@ operational record, hard-stop on `status: stop` or non-null `diagnostic`, obey
 `executionShape` exactly, pass the model selector only when non-null, and preserve inherited
 effort. The host retains valid decomposition work and owns any bounded `postAttempt` retry.
 
-Same shape — invoke the **Task** tool, `subagent_type: wf:charter-decomposer`:
+Same shape — invoke the **Agent** tool, `subagent_type: wf:charter-decomposer`:
 
 > Charter folder: `<abs-folder>`. Mode: `<initial | revision>`. For revision mode, apply these findings: `<the routed findings, verbatim>`. Return only the final block your role contract defines. When a `granted, consumed: no` entry is on record for this dispatch, state it: `Authorized: add exactly one new SUB for <gap>.`
 
@@ -173,7 +173,7 @@ one isolated Task, pass the model selector only when non-null, and preserve inhe
 results and submit only contract-defined insufficiency through `postAttempt` within the
 existing revision cap.
 
-Invoke the **Task** tool, `subagent_type: wf:charter-reviewer`:
+Invoke the **Agent** tool, `subagent_type: wf:charter-reviewer`:
 
 > Charter folder: `<abs-folder>`. Round: `<N>`. Mandate: `<full-audit|verification>`. For `verification`, also: snapshot pair `<the two resolved paths>`. Return only the final block your role contract defines.
 

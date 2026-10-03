@@ -41,7 +41,7 @@ outcome, follow the served body as prose in this skill's own context, which
 authorizes **exactly** the operations that body names (a bound fill may perform
 contract-bound provider writes; an unfilled, unresolved, or refused slot
 authorizes none); dispatch
-the **Task** tool to the `wf:branch` subagent for the Phase 0.5 branch gate and
+the **Agent** tool to the `wf:branch` subagent for the Phase 0.5 branch gate and
 to the `wf:classify` subagent for Phase 0.7 type resolution, each behind its own
 routing decision made in the body.
 

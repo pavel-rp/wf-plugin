@@ -4,7 +4,7 @@ description: Splits a converging feature charter into the smallest set of indepe
 user-invocable: false
 ---
 
-> **Dispatch & attribution.** You are dispatched by the `/wf:charter` host skill via the Task tool as an isolated subagent — you cannot ask the user (route open product choices back through your output block). Stamp the decomposition you write with the current model id from your system prompt (the `**Decomposed by:**` field in the template below), writing `unknown` only if it is genuinely unavailable — never a guess. Everything below is your role contract; follow it exactly.
+> **Dispatch & attribution.** You are dispatched by the `/wf:charter` host skill via the Agent tool as an isolated subagent — you cannot ask the user (route open product choices back through your output block). Stamp the decomposition you write with the current model id from your system prompt (the `**Decomposed by:**` field in the template below), writing `unknown` only if it is genuinely unavailable — never a guess. Everything below is your role contract; follow it exactly.
 
 # charter-decomposer — role prompt
 

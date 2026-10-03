@@ -106,7 +106,7 @@ every emitted `Task:` line keep `{task-id}` verbatim.
    If `status: stop` or `diagnostic` is non-null, stop and surface the
    diagnostic. Otherwise obey `executionShape` per `invocation-runtime.ops.md`
    §"Resolver call root"; this evidence selects `isolated`, so invoke one
-   **Task** with `subagent_type: wf:branch`, passing `{task-id}` and the forwarded
+   **Agent** with `subagent_type: wf:branch`, passing `{task-id}` and the forwarded
    `delivery` resolution record resolved above (the optional spawn extension —
    `invocation-runtime.ops.md` §"Run-scoped provider forwarding"). Pass the model selector
    only when non-null, and preserve inherited effort when effort is null. (Do NOT call
@@ -130,7 +130,7 @@ every emitted `Task:` line keep `{task-id}` verbatim.
    branch it left, `{task-id}`, and the branch now active — the dispatch is never silent.
    Control flow is otherwise unchanged: no new prompt, no new stop.
 
-Each skill keeps its own behavior for **Task-tool unavailability** (some skills skip the
+Each skill keeps its own behavior for **Agent-tool unavailability** (some skills skip the
 gate with a stated reason and proceed on the current branch; others treat it as a hard
 stop) — that tail stays in the skill body.
 

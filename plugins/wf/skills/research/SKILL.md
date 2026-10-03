@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task, Skill, WebSearch, Web
 
 One step before `/wf:charter`: where `charter` turns a feature idea into an umbrella charter, `research` grounds the idea in evidence first. It frames the topic as answerable research questions and surfaces the assumptions behind them, gathers external and local evidence breadth-first through parallel isolated gatherers — searching for failures and reversals as deliberately as for successes — grades every source and claim, verifies each load-bearing citation against a fetched page, vetoes options that break a hard constraint, has an independent challenger argue against the leading option, and then issues a recommendation with an explicit practicality verdict. When the verdict is **Practical** (or **Practical — spike first**), it seeds a charter folder holding only `00_intake.md` — which `/wf:charter` resumes directly at its writer phase — so the charter is traceable back to its evidence. The research itself never writes or runs code and never runs another pipeline phase.
 
-- Two roles run as isolated subagents dispatched via the **Task** tool — `wf:research-gatherer` (one per research question) and `wf:research-challenger`. The host (this skill) owns the interview, local evidence, verification, the verdict, and the intake — subagents cannot ask the user.
+- Two roles run as isolated subagents dispatched via the **Agent** tool — `wf:research-gatherer` (one per research question) and `wf:research-challenger`. The host (this skill) owns the interview, local evidence, verification, the verdict, and the intake — subagents cannot ask the user.
 
 **Model:** claude-opus-5
 
@@ -52,7 +52,7 @@ Before the first bundled resolver MCP call, run `pwd -P` and use the returned ab
 
 - Read any file in the workspace; `Glob`/`Grep` for a bounded local evidence scan (Phase 2).
 - `WebSearch` and `WebFetch`, in this context and in dispatched subagents.
-- Dispatch the `wf:research-gatherer` and `wf:research-challenger` subagents via the Task tool.
+- Dispatch the `wf:research-gatherer` and `wf:research-challenger` subagents via the Agent tool.
 - Write and edit files only under `{task-root}/<research-id>__<slug>/`, and create exactly one new `{task-root}/<charter-id>__<slug>/00_intake.md` in Phase 7.
 - Invoke `/wf:index` via the Skill tool — the only `wf:*` skill this one may call.
 
@@ -174,7 +174,7 @@ Raw pages stay in the gatherers' contexts and never reach this one. The gatherer
 
 Immediately before the gatherer execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role: "research-gatherer"`, `unitIds` — one canonical `<research-id>:RQ<n>` token per research question, in question order — `shapeEvidence: { workSurface: "external-context", atomicity: "composite", unitCount: <number of research questions>, unitsIndependent: true, ambiguity: "material", risk: "low", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: <number of research questions> }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact operational record separately from artifact `**Researched by:**` attribution. Hard-stop before work on `status: stop` or non-null `diagnostic`; otherwise obey `executionShape` exactly — `bounded-parallel` runs at most `effectiveParallelism` gatherers at once, in question order — pass the model selector only when non-null, and preserve inherited effort. The host evaluates each returned block against its fixed status token and required fields. When any unit is insufficient, submit one `postAttempt` with top-level `sufficient: false` and `signals: ["failed-validation"]`, whose `units` report **every** unit of the retained decision — `sufficient: true` with `signals: []` for each block that is `COMPLETE` or `INSUFFICIENT`, `sufficient: false` with `signals: ["failed-validation"]` for each that is missing, `ERROR`, or backed by no fetched source — then re-dispatch only the `retry.unitIds` the resolver returns, once, each with the remaining third of its question's budget, and with sufficient units retained; a gatherer never replaces itself.
 
-Invoke the **Task** tool once per routed unit, `subagent_type: wf:research-gatherer`, passing (fill the placeholders; paths absolute, forward slashes):
+Invoke the **Agent** tool once per routed unit, `subagent_type: wf:research-gatherer`, passing (fill the placeholders; paths absolute, forward slashes):
 
 > Research: `<research-id>`. Question: `RQ<n>` — Population `<text>`, Intervention `<text>`, Comparison `<text>`, Outcome `<text>`, Context `<text>`. Tests assumptions: `<ids with their text>`. Local evidence: `<the brief's ## Local evidence, verbatim>`. Effort tier: `<tier>` — `<n>` searches, `<n>` fetches. Reference scales: `<this skill's Reference scales section, verbatim>`. Return only the final block your role contract defines.
 
@@ -237,7 +237,7 @@ Immediately before the challenger execution, call `resolve_routing` with `worksp
 
 **Resume:** when `02_verdict.md` already holds `## Challenge` while `**Challenge:**` still reads `pending`, the challenge was recorded before an interruption — never dispatch again or add a second `## Challenge`; confirm each accepted change it names is applied, apply any that is not, and continue at step 4.
 
-Invoke the **Task** tool, `subagent_type: wf:research-challenger`, passing:
+Invoke the **Agent** tool, `subagent_type: wf:research-challenger`, passing:
 
 > Findings: `<abs path to 01_findings.md>`. Verdict: `<abs path to 02_verdict.md>`. Budget: `<searches>` searches, `<fetches>` fetches. Reference scales: `<this skill's Reference scales section, verbatim>`. Return only the final block your role contract defines.
 

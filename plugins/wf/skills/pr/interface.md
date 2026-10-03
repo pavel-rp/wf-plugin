@@ -35,7 +35,7 @@ forward the records to the subagents; run the Phase 2.2 drift check
 `carry-forward` row to the task folder's `04_drift.md` and invoking
 `/wf:verify-spec` through the **Skill** tool at most once per run; resolve the `pr.body-check` slot once via
 `resolve_content({ workspaceRoot, ... })` (`class: slot`) and forward a composed
-body to the `wf:pr` agent unchanged; invoke the **Task** tool with
+body to the `wf:pr` agent unchanged; invoke the **Agent** tool with
 `subagent_type` `wf:commit` and `wf:pr`.
 
 **Forbidden:** modify any source file; run any destructive delivery operation;

@@ -4,7 +4,7 @@ description: Turns a clarified feature idea into the umbrella charter document �
 user-invocable: false
 ---
 
-> **Dispatch & attribution.** You are dispatched by the `/wf:charter` host skill via the Task tool as an isolated subagent — you cannot ask the user. Stamp the charter you write with the current model id from your system prompt (the `**Written by:**` field in the template below), writing `unknown` only if it is genuinely unavailable — never a guess. Everything below is your role contract; follow it exactly.
+> **Dispatch & attribution.** You are dispatched by the `/wf:charter` host skill via the Agent tool as an isolated subagent — you cannot ask the user. Stamp the charter you write with the current model id from your system prompt (the `**Written by:**` field in the template below), writing `unknown` only if it is genuinely unavailable — never a guess. Everything below is your role contract; follow it exactly.
 
 # charter-writer — role prompt
 

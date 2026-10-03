@@ -6,7 +6,7 @@ allowed-tools: [Read, Write, Edit, Task, Bash, Skill]
 
 # /wf:pr — Push, then open a PR from the task's wf artifacts
 
-Opens a PR for the current task through the project's active delivery provider. This skill is a **light orchestrator**, not a pure thin wrapper: it makes two host-level **Task** calls — first `wf:commit` (to commit + push), then `wf:pr` (to compose the body and create the PR). The orchestration lives in the host (not inside a subagent) on purpose: it keeps every nested **Task** call at the single level of depth this library has proven (host → agent → agent), while the heavy context (the full diff, all artifacts) still stays entirely inside the two subagents. The host only ever sees two short result blocks.
+Opens a PR for the current task through the project's active delivery provider. This skill is a **light orchestrator**, not a pure thin wrapper: it makes two host-level **Agent** calls — first `wf:commit` (to commit + push), then `wf:pr` (to compose the body and create the PR). The orchestration lives in the host (not inside a subagent) on purpose: it keeps every nested **Agent** call at the single level of depth this library has proven (host → agent → agent), while the heavy context (the full diff, all artifacts) still stays entirely inside the two subagents. The host only ever sees two short result blocks.
 
 **How a PR is opened:** core opens and detects pull requests through the project's active **delivery provider** — it does not know or name which concrete tool implements that. The work item is linked through the active tracker capability's `attach_link` operation, when one is registered — a side-effecting embed of the tracker's own work-item link form (core doesn't know or name that concrete form, and the operation returns nothing observable), which the tracker attaches when the PR merges; with no tracker registered, the body carries no work-item link at all. Prerequisite: a delivery provider must be registered, and its underlying tool authenticated, before this operation can succeed.
 
@@ -42,7 +42,7 @@ Confirm the project is initialized by querying the bundled `wf-resolver` MCP ser
 - Read the task folder; obtain config via the `wf-resolver` `resolve_config({ workspaceRoot, ... })` query.
 - Read-only resolution for ID/branch inference (`workspace-root-resolve` via `resolve_config({ workspaceRoot, ... })` `workspaceRoot`, `current-branch-query` via `resolve_provider({ workspaceRoot, surface: "delivery" })`).
 - Resolve providers once for the run (Phase 1.5): call `resolve_provider({ workspaceRoot, surface: "delivery" })` and `resolve_provider({ workspaceRoot, surface: "tracker" })` on the `wf-resolver` service — metadata records only; the diff and PR body stay inside the subagents.
-- Invoke the **Task** tool with `subagent_type` `wf:commit` and `wf:pr`.
+- Invoke the **Agent** tool with `subagent_type` `wf:commit` and `wf:pr`.
 - Run the Phase 2.2 drift check (`certified-commit.ops.md`, via `resolve_content`, `class: contract`): read the task folder's `04_verify.md` and `04_drift.md`, append a `carry-forward` row to `04_drift.md` — the only file this host writes, and only inside the task folder — and invoke `/wf:verify-spec` through the **Skill** tool at most once per run, only on a `reverify` outcome.
 - Resolve the declared `pr.body-check` slot (Phase 2.5) once via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: pr`, `point: body-check`) and, only on a `composed` outcome, forward the served body to the `wf:pr` agent unchanged.
 
@@ -79,7 +79,7 @@ operational record separately from commit or artifact attribution. Hard-stop on 
 stop` or non-null `diagnostic`; otherwise obey `executionShape` exactly, pass the model
 selector only when non-null, and preserve inherited effort.
 
-Then invoke the **Task** tool with `subagent_type: wf:commit`, passing `id: {task-id}` (or omit `id` when unset, so `wf:commit` infers from the task branch name), `push: true`, `staged: false`, **and the forwarded `delivery` resolution record from Phase 1.5** (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:commit` and the `wf:branch` it may nest consume it instead of re-resolving.
+Then invoke the **Agent** tool with `subagent_type: wf:commit`, passing `id: {task-id}` (or omit `id` when unset, so `wf:commit` infers from the task branch name), `push: true`, `staged: false`, **and the forwarded `delivery` resolution record from Phase 1.5** (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:commit` and the `wf:branch` it may nest consume it instead of re-resolving.
 
 Gate on its `COMMIT —` block:
 
@@ -122,11 +122,11 @@ validation: "mechanical", contextIsolation: "required", independentReview: false
 returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
 `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit its own compact operational record; provider records remain forwarded
 unchanged and are never absorbed into routing metadata. On `status: stop` or non-null
-`diagnostic`, stop before PR creation. Otherwise obey `executionShape` exactly, invoke one isolated Task, pass the model selector only
+`diagnostic`, stop before PR creation. Otherwise obey `executionShape` exactly, invoke one isolated Agent, pass the model selector only
 when non-null, and preserve inherited effort. Retain a sufficient result; any
 bounded retry is parent-owned and accepts only contract-defined insufficiency.
 
-Invoke the **Task** tool with `subagent_type: wf:pr`, passing:
+Invoke the **Agent** tool with `subagent_type: wf:pr`, passing:
 
 - `id` — `{task-id}` (omit when unset — the subagent infers it from the current branch)
 - `draft` — `true` if `--draft` was passed, else `false`
