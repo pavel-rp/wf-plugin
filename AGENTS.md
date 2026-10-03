@@ -11,7 +11,8 @@ The two rules that govern everything else: **core names zero stack/domain/projec
 ## Write scope
 
 **Never write outside `_local/`.** The only exceptions are the source-mutating skills
-(`implement`, `verify-fix`, `qa-followup`), `qa-host`, `ship` (scoped: its Phase 4.2
+(`implement`, `lite`, `verify-fix`, `qa-followup`), `tt` (scoped: test files only),
+`qa-host`, `ship` (scoped: its Phase 4.2
 CI-remediation loop only), and `add-term` (scoped: the authoring glossary file only).
 Temporary and scratch files go under `_local/scratch/` — never the repo root, a system temp
 directory, or anywhere alongside tracked files.

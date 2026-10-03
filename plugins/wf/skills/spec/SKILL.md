@@ -261,7 +261,7 @@ Write `01_spec.md` in the task folder using the template below.
 - **Explicit scope boundaries.** State what is IN and what is OUT.
 - **Constraint-based framing.** State constraints alongside the objective, not separately.
 - **Reference code, don't describe it.** Point to existing files as examples of patterns to follow.
-- **Size the spec to the task's complexity:** an `S` spec is a few short paragraphs; an `L` spec covers every success criterion and constraint without drifting into the How.
+- **Size the spec to the task's complexity:** an `S` spec is a few short paragraphs; an `M` spec gives each section a short paragraph; an `L` spec covers every success criterion and constraint without drifting into the How.
 - **Focus on What & Why.** Leave the How to `/wf:plan`.
 - **Clean of Q&A.** Resolved questions become confident statements.
 
