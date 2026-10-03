@@ -34,7 +34,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 - A fixed **SDD phase spine** — `spec → plan → tasks → implement → verify → qa` — each phase a gated, human-approved markdown artifact feeding the next.
 - A **capability registry** (default `_local/config.md`). Core iterates it; it never names a capability or assumes how many exist. Empty registry = fully generic core.
 - Capabilities attach **prose fragments** to phases, typed by a fixed contribution taxonomy.
-- A composed **constitution** of non-negotiable principles, established at setup, enforced at `verify`.
+- A composed **constitution** of non-negotiable principles, established at setup and injected into every session as standing instructions.
 - Composition is **runtime inline-prose injection — no codegen, no compile step.** Core re-reads the registry every run.
 
 > v1→v2 is in flight — the v2 composition mechanism has shipped; residual v1 skill bodies are still migrating. Build new things to the v2 shape; generalise v1 code toward it **staged, never big-bang** (§7). Status, history, and the reference `migration` adapter example: [`docs/authoring-notes.md`](docs/authoring-notes.md) · [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -65,13 +65,15 @@ Phases are the **injection points**. A capability touches only the phases it has
 
 - **aggregate** — follow every contributor in **registry order** (general → specific; most-specific wins last on additive guidance).
 - **partition** — only the *owning* capability applies; overlapping ownership is a registry-validation error. `provider` partitions by a `surface` token; `artifact` by a `source→target` pair.
-- `finding`/`scenario`/`article` carry provenance, so order is cosmetic.
+- `finding`/`scenario` carry provenance, so order is cosmetic.
 
-**The registry** lives at `wf.config.js` `registryPath` (default `_local/config.md`), a `## Capabilities` table of `Capability | Path`. A `Path` is a repo-relative folder or a `plugin:<name>/<rel-path>` token resolved through a per-machine, gitignored `## Plugin Roots` map written by each pack's `init`. Table order = injection order.
+There are seven contribution kinds: the six above (`guidance`, `artifact`, `task-list`, `finding`, `scenario`, `provider`) plus **`slot`**, which targets a per-skill composition point (`<skill>.<point>`, merge policy `replace` or `append`) rather than a phase. `article` is **not** a kind: a constitution clause is declared with the `article:` manifest key, never as a fragments-table row.
+
+**The registry** lives at `wf.config.js` `registryPath` (default `_local/config.md`), a `## Capabilities` table of `Capability | Path`. A `Path` is a repo-relative folder or a `plugin:<name>/<rel-path>` token resolved through a per-machine, gitignored `## Plugin Roots` map. The resolver's `apply_install` writes both tables when `/wf:init` applies a plan; each pack's `init` skill is an alias that enters that same `/wf:init` flow. Table order = injection order.
 
 **Capability kinds:** `adapter` (fragments only, no skills), `feature` (own skills/agents, may also attach fragments), `both`. Features compose **natively** (plugin install); fragments compose **via the registry** at runtime.
 
-**The constitution** is composed not authored: core process articles + each registered capability's non-negotiables + the project's own clauses, aggregated by `/wf:constitution` (auto-invoked by `init`). Consulted as guidance at `spec`, enforced as findings at `verify`. **Precedence: project clauses override capability clauses**; a contradiction between two capabilities' articles is a registry-validation error.
+**The constitution** is composed not authored: core process articles + each registered capability's non-negotiables + the project's own clauses, aggregated by `/wf:constitution` (auto-invoked by `init`) into `_local/constitution.md`. No phase skill reads it: the plugin's SessionStart hook injects the composed record into every top-level session, so it binds every phase as standing instructions, and `/wf:fleet` carries it explicitly to worktree shippers, where that hook does not fire. **Precedence: project clauses override capability clauses**; a contradiction between two capabilities' articles is a registry-validation error.
 
 **For the full taxonomy, manifest schema v2, aggregation semantics, and registry validation → invoke `/wf-author-caps:authoring-taxonomy`.**
 

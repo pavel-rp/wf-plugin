@@ -8,6 +8,10 @@ This procedure is generic: it names no concrete pack. The invoking init supplies
 `## Parameters` below; everything else is identical across packs, so a rename or a new
 pack never re-drifts a copied spine.
 
+**Writer:** the resolver's `apply_install` writes the `## Capabilities` rows and the
+`## Plugin Roots` rows when `/wf:init` applies a confirmed plan, and every pack init skill
+is an alias of `/wf:init` that enters that same flow.
+
 **Reference:** rationale, history, and authoring detail live in the paired
 `pack-onboarding` reference doc — never read at boot.
 

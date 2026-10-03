@@ -13,11 +13,11 @@ registered capability contributes its own non-negotiables, and the project contr
 own clauses. They are recorded together with **provenance** (which source each article came
 from) and a fixed **precedence rule**: project clauses override capability clauses.
 
-This skill **establishes the record**; it does not consume or enforce it. The constitution is
-**intended to be consulted as guidance at `spec`** and **enforced as `finding`s at `verify`**
-— but that consumption wiring is owned by **other tasks** (spec-consultation by the runtime /
-`spec` phase, WF-22; verify enforcement via the `verify` finding-aggregation, WF-7) and is
-**not yet active**. This skill only writes the record. It is **not a per-ticket phase**: you
+This skill **establishes the record**; it does not consume or enforce it. No phase skill reads
+the record either: the plugin's SessionStart hook injects the composed `_local/constitution.md`
+into every top-level session, so it binds every phase as standing instructions, and
+`/wf:fleet` carries it explicitly to worktree shippers, where that hook does not fire. This
+skill only writes the record. It is **not a per-ticket phase**: you
 run it once at setup (auto-invoked by `/wf:init`) and re-run it only when the registry or the
 project's own clauses change.
 
@@ -43,8 +43,8 @@ from the registry.
 
 **Don't use it when:**
 
-- You want to *check* code against the constitution — that belongs to the `verify` phase
-  (`/wf:verify-spec`), not this skill (that consumption wiring is future work, see the intro).
+- You want to *check* code against the constitution — this skill writes the record and checks
+  nothing; the record reaches every session through the SessionStart hook (see the intro).
 - You're working a single ticket — the constitution is established once, not per-task.
 
 ---
@@ -227,7 +227,7 @@ State the precedence rule in the constitution record itself:
   precedence over any capability's article, regardless of registry order. (This is distinct
   from registry order, which only sequences additive guidance elsewhere.)
 - **A capability-vs-capability contradiction is a registry-validation error**, not resolved
-  here — it fails the registry validation (owned by WF-2 / WF-28), both offenders named. Only
+  here — the registry validator rejects it, both offenders named. Only
   the project may resolve a contradiction, via rule above. This skill **references** that rule;
   it does not implement the validator.
 
@@ -374,7 +374,7 @@ no manual step is required (use `/wf:resolve refresh` only to force the rebuild 
 - **Table order = injection order** (general → specific). For the constitution this is
   cosmetic (articles are provenance-tagged); it is load-bearing for additive guidance phases.
 - If a row's `Path` has no `manifest.md`, leave the row but note it in the chat summary — the
-  registry validator (WF-2 / WF-28) is the gate, not this skill.
+  registry validator is the gate, not this skill.
 
 If `init` already populated this table, leave the rows intact and only normalise the header
 shape if needed. Never invent capability rows.
@@ -402,7 +402,7 @@ the registry.
 - **A capability resolves as invalid** (its `manifest.md` unreadable — `resolve_registry({ workspaceRoot, ... })` marks
   it with an invalid `validity` and empty `articles[]`). Compose the rest; record that
   capability with no articles and note it in the chat summary. The registry validator
-  (WF-2 / WF-28) is the gate for malformed registries — this skill does not STOP on it.
+  is the gate for malformed registries — this skill does not STOP on it.
 - **`establish` passed but the constitution already exists.** Stop and tell the user to re-run
   with no argument (which updates). Don't clobber.
 - **`update` passed but no constitution exists.** Stop and tell the user to run with no
