@@ -12,5 +12,5 @@ Invoke `/wf-fixture:prose` to gather the prose shapes, then run
 
 ## Phase 2
 
-Invoke the Task tool with `subagent_type: wf-fixture:helper` and forward its
+Invoke the Agent tool with `subagent_type: wf-fixture:helper` and forward its
 final block unchanged.

@@ -77,7 +77,7 @@ token, zero or multiple folder matches) leaves `<id>` unresolved — a non-fatal
 - Read the change set through the **delivery** surface (read-only) — `branch-changes-read`
   and, for id inference, `current-branch-query`.
 - Fire the `implement` phase to aggregate test-authoring `guidance` (read-only fragment
-  following, or a `subagent:` dispatch via the **Task** tool).
+  following, or a `subagent:` dispatch via the **Agent** tool).
 - **Create or modify test files** — the only files `tt` writes — at whatever location and
   in whatever naming the discovered conventions (refined by aggregated guidance) dictate.
 - Run the authored tests via the project's test-invocation convention (Phase 5).
@@ -218,7 +218,7 @@ taxonomy by **phase name / contribution-kind name**, never by heading:
    - `inline: <rel-path>` → obtain the fragment body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`,
      the capability name, `ref: <rel-path>`) and **follow it in-context**, applying its authoring
      idioms.
-   - `subagent: <agent>` → invoke the **Task** tool with `subagent_type: <agent>`, passing
+   - `subagent: <agent>` → invoke the **Agent** tool with `subagent_type: <agent>`, passing
      the change set and coverage plan; apply the guidance its final block returns.
 4. **Aggregate additively in registry order.** `guidance` composes on top of the
    discover-and-match default; a **later** (more-specific) contributor **wins** on any

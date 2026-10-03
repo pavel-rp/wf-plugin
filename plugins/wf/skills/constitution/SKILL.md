@@ -44,7 +44,7 @@ from the registry.
 **Don't use it when:**
 
 - You want to *check* code against the constitution — this skill writes the record and checks
-  nothing; the record reaches every session through the SessionStart hook (see the intro).
+  nothing; the record reaches every top-level session through the SessionStart hook (see the intro).
 - You're working a single ticket — the constitution is established once, not per-task.
 
 ---
@@ -460,7 +460,7 @@ Articles: <9 core> + <capability articles present | none (core-only)> + <project
 Registry: <comma-separated capability names | none (core-only)>
 File:     _local/constitution.md
 Size:     <length> characters — exceeds the 40000-character SessionStart ceiling; only the first 40000 characters are injected at session start
-Next:     review _local/constitution.md and add any project clauses with /wf:constitution <clause text>; then /wf:spec <id> to start a task (the SessionStart hook injects the constitution into every session as standing instructions).
+Next:     review _local/constitution.md and add any project clauses with /wf:constitution <clause text>; then /wf:spec <id> to start a task (the SessionStart hook injects the constitution into every top-level session as standing instructions).
 ```
 
 **Size ceiling.** The `Size:` line is **conditional**: it appears only when the written record

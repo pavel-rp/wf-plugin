@@ -71,7 +71,7 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` by ca
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference and branch gating. Diff-based changed-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
-- Invoke the **Task** tool for `wf:branch` (branch gate); invoke `/wf:index` through the **Skill** tool (index update — its wrapper writes `index.md` inline).
+- Invoke the **Agent** tool for `wf:branch` (branch gate); invoke `/wf:index` through the **Skill** tool (index update — its wrapper writes `index.md` inline).
 - Write `06_qa.md` ONLY inside the resolved task folder (`{task-root}/{task-id}/`).
 
 **Forbidden:**
@@ -92,7 +92,7 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` by ca
 
 3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{task-id}`. Run `/wf:spec {task-id}` first to fetch requirements."
 
-4. **Branch gate.** Gate on the task branch per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{task-id}` and `{numeric-id}` (from step 1) for the branch-name match; on the bare-core skip, report it and continue to step 5. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch)." and continue to step 5.
+4. **Branch gate.** Gate on the task branch per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{task-id}` and `{numeric-id}` (from step 1) for the branch-name match; on the bare-core skip, report it and continue to step 5. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Agent tool unavailable to invoke wf:branch (proceeding on the current branch)." and continue to step 5.
 
 5. **Resolve scope.** Default `full`. Accept `smoke`, `happy`, `full` — anything else stops with "Unknown scope: `<value>`. Use one of: smoke, happy, full."
 
@@ -223,12 +223,12 @@ parameters:
   paths/metadata only; the fragment body comes from the resolver's `resolve_content({ workspaceRoot, ... })`
   content surface, read prompt-free in this skill's own context): `inline: <rel-path>` →
   obtain the fragment body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`, the capability name,
-  `ref: <rel-path>`) and follow it in-context; `subagent: <agent>` → invoke the **Task**
+  `ref: <rel-path>`) and follow it in-context; `subagent: <agent>` → invoke the **Agent**
   tool with `subagent_type: <agent>`. When the running agent's own dispatch brief declares
   it cannot await its children, a `subagent:` row obeys `invocation-runtime.ops.md`
   §"Resolver call root" (its **Caller cannot await children** paragraph) instead of the
-  Task: it has no declared hand-back boundary, so it runs in this context through one of
-  that rule's two forms, or stops `blocked` with the rule's named reason — never a Task
+  Agent: it has no declared hand-back boundary, so it runs in this context through one of
+  that rule's two forms, or stops `blocked` with the rule's named reason — never an Agent
   this skill cannot await.
 - **Generic shape produced:** each contributed scenario in the same `TC-NNN` /
   `Validates:` contract as Phase 3, numbered in the **global** sequence.

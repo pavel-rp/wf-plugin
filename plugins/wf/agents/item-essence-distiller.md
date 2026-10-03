@@ -1,6 +1,6 @@
 ---
 name: item-essence-distiller
-description: Distils one work item into a short meaning-bearing headline plus an essence body of at most 20 words saying, in plain language, why that item ranked where it did — reading the item's description in its own isolated context so the caller never ingests it. Read-only and analysis-only; it never re-ranks and never writes on any surface. Invoked via the Task tool by a skill that must say what a listed item is and why it is listed without paying the description's context cost.
+description: Distils one work item into a short meaning-bearing headline plus an essence body of at most 20 words saying, in plain language, why that item ranked where it did — reading the item's description in its own isolated context so the caller never ingests it. Read-only and analysis-only; it never re-ranks and never writes on any surface. Invoked via the Agent tool by a skill that must say what a listed item is and why it is listed without paying the description's context cost.
 argument-hint: 'an ITEM line (the item id), a TITLE line (its existing title source), and a RANKING line (the ranking inputs already computed for it)'
 ---
 

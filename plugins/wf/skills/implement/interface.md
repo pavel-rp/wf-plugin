@@ -48,7 +48,7 @@ one call per marker, and once per checkpoint for `implement.milestone` — and,
 only on a `composed` outcome, follow the served body as prose in this skill's own
 context, which authorizes **exactly** the operations that body names (a bound
 fill may perform contract-bound provider writes; an unfilled, unresolved, or
-refused slot authorizes none); dispatch the **Task** tool to the `wf:branch`
+refused slot authorizes none); dispatch the **Agent** tool to the `wf:branch`
 subagent for the Phase 1 branch gate, behind its own routing decision made in the
 body.
 

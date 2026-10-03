@@ -26,7 +26,7 @@ Before calling a resolver MCP tool, run `pwd -P` in the current Agent/session an
 
 **Why a writing unit's procedure is a skill-served reference.** An agent body is never read by another agent (`out4-skill-read-guard.sh`'s rule, generalised), so a thin wrapper whose whole procedure lived in its agent file left a cannot-await caller nothing it could follow. Each such unit therefore keeps its procedure in a `references/procedure.md` owned by its skill, served by `resolve_content`; the agent file is a thin loader of that reference, and the caller-context path loads the same bytes, so the two paths cannot drift. Steps that route or invoke another unit stay out of the reference as named **loader steps**: the agent keeps its routed dispatch in its own file, where the dispatch-inventory guard sees it, and the skill's pointer states what a cannot-await caller does in its place. That keeps every executable dispatch in a file the guard scans, and keeps the "never read an agent body" rule unbroken.
 
-**The Skill-tool arm, and why the rule has a stop.** Some children already load their procedure by invoking a skill: a phase runner invokes the phase's own skill, and an engine agent runs its engine skill. For these the caller-context form is that same skill, invoked through the Skill tool with the same inputs. No reference is needed, because the skill body is the procedure and the harness loads it by invocation, not by a file read. If that invocation fails, the caller stops `blocked` and names the skill. It never falls back to the Task it cannot await, which would strand the work silently. A unit that has neither form, skill-served reference or skill, also stops `blocked` and names the agent token. So does a reference that exists but that `resolve_content` does not return `served`; that stop names the skill and the ref. This case deliberately overrides the content surface's usual "continue" on an `unresolved` local read. The procedure body *is* the unit here, so continuing without it would run nothing and report something. With all three stops the rule is total: every child a cannot-await caller can reach has a defined outcome, including children added after this contract. The procedure references this contract introduced are commit, branch and pr (owned by their skills), the context distiller (owned by `ship`) and the critic (owned by `verify-spec`).
+**The Skill-tool arm, and why the rule has a stop.** Some children already load their procedure by invoking a skill: a phase runner invokes the phase's own skill, and an engine agent runs its engine skill. For these the caller-context form is that same skill, invoked through the Skill tool with the same inputs. No reference is needed, because the skill body is the procedure and the harness loads it by invocation, not by a file read. If that invocation fails, the caller stops `blocked` and names the skill. It never falls back to the Agent it cannot await, which would strand the work silently. A unit that has neither form, skill-served reference or skill, also stops `blocked` and names the agent token. So does a reference that exists but that `resolve_content` does not return `served`; that stop names the skill and the ref. This case deliberately overrides the content surface's usual "continue" on an `unresolved` local read. The procedure body *is* the unit here, so continuing without it would run nothing and report something. With all three stops the rule is total: every child a cannot-await caller can reach has a defined outcome, including children added after this contract. The procedure references this contract introduced are commit, branch and pr (owned by their skills), the context distiller (owned by `ship`) and the critic (owned by `verify-spec`).
 
 **Why the orchestrator validates a handed-back unit against its own registry.** The request artifact is written by the caller, so its agent tokens are caller-supplied. The orchestrator dispatches only tokens that match a `subagent:` dispatch in its own resolved registry and takes the role from that token. A request can therefore never widen what the orchestrator runs.
 
@@ -57,7 +57,7 @@ substrate used, generalised from one manifest to N:
 
 1. read the registry at its `registryPath`-resolved location (default `_local/config.md` — the same file every skill reads as its first step; see § "1. Registry iteration");
 2. read a file at a contracted, forward-slash path;
-3. invoke a subagent by `subagent_type` via the Task tool (the established Pattern C delegation).
+3. invoke a subagent by `subagent_type` via the Agent tool (the established Pattern C delegation).
 
 **Decision B — runtime inline-prose injection, no codegen and no compile step.**
 Composition is reading the registry and following fragments in-context; there is no
@@ -112,7 +112,7 @@ greppable section below.
 1. **Registry iteration** — walk the `## Capabilities` rows at the `registryPath`-resolved location (default `_local/config.md`), in registry order (general → specific).
 2. **Per-capability manifest read** — for each row, read the contracted manifest at `<path>/manifest.md`.
 3. **Per-phase fragment collection** — select the manifest's fragment rows whose `phase` equals the firing phase.
-4. **Per-fragment dispatch** — for each collected fragment, dispatch on its `dispatch` kind: `inline: <rel-path>` (read-and-follow) or `subagent: <agent>` (Task tool).
+4. **Per-fragment dispatch** — for each collected fragment, dispatch on its `dispatch` kind: `inline: <rel-path>` (read-and-follow) or `subagent: <agent>` (Agent tool).
 5. **Aggregation** — combine the contributors per the firing contribution kind's policy.
 
 ---
@@ -250,7 +250,7 @@ kinds** the v1 substrate used, unchanged:
 | Fragment `dispatch` | Core action |
 |---------------------|-------------|
 | `inline: <rel-path>` | Call `resolve_content` with `workspaceRoot: <current Agent/session absolute workspace directory>`, `class: fragment`, the capability name, and `<rel-path>` (forward-slash, relative to the capability's registry path); follow the served body in-context. Never raw-read the resolved plugin-cache path. No subagent is spawned. |
-| `subagent: <agent>` | Invoke the Task tool with `subagent_type: <agent>`, passing the artifact under review and the kind's generic shape. The heavy work runs in isolated context; only the agent's final block returns to the caller. |
+| `subagent: <agent>` | Invoke the Agent tool with `subagent_type: <agent>`, passing the artifact under review and the kind's generic shape. The heavy work runs in isolated context; only the agent's final block returns to the caller. |
 | *(no matching row for the phase)* | No-op — this capability contributes the phase's declared empty result (§ no-op path). |
 | *(row present, `dispatch` neither `inline:` nor `subagent:`)* | No-op (fail-safe) — core does not guess a malformed kind (§ fail-safe). |
 
@@ -340,7 +340,7 @@ primitives verbatim and skips the other two:
    conditions here.)
 4. **Per-fragment dispatch** — unchanged (primitive 4): `inline:` calls
    `resolve_content` with `workspaceRoot: <current Agent/session absolute workspace directory>`
-   and `class: fragment`, then follows the served body; `subagent:` invokes the Task tool.
+   and `class: fragment`, then follows the served body; `subagent:` invokes the Agent tool.
 5. ~~Aggregation~~ — **skipped**. Partitioned ownership (enforced by the
    validator, WF-2's registry pass / WF-28) guarantees **at most one** row can
    match the scope-equality filter registry-wide, so there is nothing to
@@ -556,7 +556,7 @@ it depends only on the registry rows and the fixed manifest path.
 2. **Manifest read + collection.** Each capability's manifest has a fragment row for
    `verify` under the `finding` kind. Each becomes a contributor.
 3. **Dispatch.** Core dispatches each fragment per its `dispatch` kind (`inline:`
-   read-and-follow, or `subagent:` via the Task tool).
+   read-and-follow, or `subagent:` via the Agent tool).
 4. **Aggregation.** `finding` aggregates with **provenance**: core renders **both**
    capabilities' findings, each **tagged with its source capability**. Because the
    tags carry attribution, registry order here is cosmetic. Core never names either
@@ -610,7 +610,7 @@ dispatch, aggregation, no-op — with no new vocabulary.
 
 - It is **not** a dispatcher, registry service, aggregator service, composer, or build
   step. The "runtime" is the three existing substrate primitives: config read, file
-  read, Task-tool subagent invocation. There is **no codegen and no compile step** —
+  read, Agent-tool subagent invocation. There is **no codegen and no compile step** —
   composition is runtime inline-prose injection, picked up on the next run.
 - It is **not** a validator. Checking that a registry is well-formed (unique names,
   existing paths, non-overlapping ownership, non-contradictory articles, valid

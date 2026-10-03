@@ -1,6 +1,6 @@
 ---
 name: context-distiller
-description: Distils bulk delivery output — a failing CI log or a batch of PR review-comment bodies — into a compact, deterministic, structured verdict, reading the bulk in its own isolated context so the caller never ingests it. Read-only and analysis-only. Invoked via the Task tool by any skill that must reason over bulk delivery output (e.g. a PR-review loop or a retrospective report) without paying the bulk's context cost.
+description: Distils bulk delivery output — a failing CI log or a batch of PR review-comment bodies — into a compact, deterministic, structured verdict, reading the bulk in its own isolated context so the caller never ingests it. Read-only and analysis-only. Invoked via the Agent tool by any skill that must reason over bulk delivery output (e.g. a PR-review loop or a retrospective report) without paying the bulk's context cost.
 argument-hint: 'a MODE line (MODE: ci | MODE: review) followed by the bulk reference or blob to distil'
 ---
 

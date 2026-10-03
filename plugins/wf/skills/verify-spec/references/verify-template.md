@@ -277,14 +277,14 @@ The same value is echoed verbatim by the chat summary's `Lenses:` line, the `VER
 
 - **`<e>` expected** — every row collected for this phase that the contributor gate left
   enabled. A row the gate skipped was deliberately disabled and is not expected; a row with a
-  malformed `dispatch`, or whose Task target is unavailable, is expected.
+  malformed `dispatch`, or whose Agent target is unavailable, is expected.
 - **`<c>` completed** — expected rows that delivered a well-formed block through their declared
   dispatch: an `inline:` row whose body was followed in-context, a `subagent:` row whose own
-  isolated Task returned, or — at the review boundary (`review-boundary.md`) — a `subagent:` row
+  isolated Agent returned, or — at the review boundary (`review-boundary.md`) — a `subagent:` row
   whose block the caller's own isolated child returned and recorded for the audited tree. A clean
   block with an empty `findings:` list is completed.
 - **`<i>` inline** — `subagent:` rows whose rubric the verifying agent executed in its own context
-  instead of an isolated Task (for example, because it could not dispatch one). They count in
+  instead of an isolated Agent (for example, because it could not dispatch one). They count in
   `<e>` and **never** in `<c>`: a rubric the auditing agent applies to its own work is not an
   independent lens run. Each is also recorded under Coverage as `run inline, not independent`.
 

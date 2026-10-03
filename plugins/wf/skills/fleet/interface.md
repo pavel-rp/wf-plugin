@@ -56,7 +56,7 @@ that point only authorizes exactly the operations that body names: the delivery 
 request, exporting its merge commit to the fixed `_local/scratch/wf-sweep-merged-ref` so
 verification never reads the orchestrator's own checkout), the tracker write `create_child`
 (tracker mode only, at most 10 per swept pull request),
-one `wf:context-distiller` Task dispatch per swept pull request, and `Read`/`Grep` of a source file at a review-supplied
+one `wf:context-distiller` Agent dispatch per swept pull request, and `Read`/`Grep` of a source file at a review-supplied
 anchor plus six `Bash` purposes the served body names (claim verification is not among
 them — the served body requires the `Grep` tool for that) — the served body's scratch safety
 check (one read-only stat of the fixed `_local/scratch/` path and each existing component

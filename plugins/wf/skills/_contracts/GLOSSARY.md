@@ -107,7 +107,7 @@ check: avoid-term
 evidence: plugins/wf/skills/_contracts/capability-registry.contract.md — spells "capability" throughout, never the clipped form; the observed confusion is the fixtures folder literally named `caps/` (plugins/wf/skills/_contracts/registry-fixtures/caps/), which trains the abbreviation into compound nouns
 
 ### term: subagent
-definition: An agent file under a plugin's agents/ folder, invoked through the Task tool as subagent_type.
+definition: An agent file under a plugin's agents/ folder, invoked through the Agent tool as subagent_type.
 avoid: sub-agent, sub agent
 pattern: [Ss]ub[- ][Aa]gents?([^a-zA-Z-]|$)
 except: none

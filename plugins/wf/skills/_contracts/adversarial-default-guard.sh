@@ -9,7 +9,7 @@
 #      classes, the two-sided citation rule, and the explicit suppression list.
 #   2. The pass reports rather than gates — no new stop, prompt, or gate — and the
 #      grepped `VERIFY —` final-output block shape is unchanged.
-#   3. The pass adds no dispatch: it names no Task/subagent invocation of its own,
+#   3. The pass adds no dispatch: it names no Agent/subagent invocation of its own,
 #      so verify-dispatch-cost-guard.sh's invariants cannot be weakened by it.
 #   4. The pass names no capability, and the three fixtures exist and carry their
 #      declared markers (empty registry with zero rows; a defect-bearing change
@@ -286,8 +286,8 @@ if [ -z "$section" ]; then
 fi
 
 case "$section" in
-  *'subagent_type'*|*'Task tool'*|*'invoke one Task'*|*'resolve_routing'*)
-    report_fail "the lean adversarial pass must add no routing or Task dispatch" ;;
+  *'subagent_type'*|*'Agent tool'*|*'invoke one Agent'*|*'Task tool'*|*'invoke one Task'*|*'resolve_routing'*)
+    report_fail "the lean adversarial pass must add no routing or Agent dispatch" ;;
 esac
 
 # "Closed at two classes" must be ENFORCED, not merely asserted in prose — otherwise a
@@ -362,8 +362,8 @@ done
 
 # It compares two sets already in hand — it must not acquire dispatch of its own either.
 case "$recon" in
-  *'subagent_type'*|*'Task tool'*|*'invoke one Task'*|*'resolve_routing'*)
-    report_fail "the reconciliation rule must add no routing or Task dispatch" ;;
+  *'subagent_type'*|*'Agent tool'*|*'invoke one Agent'*|*'Task tool'*|*'invoke one Task'*|*'resolve_routing'*)
+    report_fail "the reconciliation rule must add no routing or Agent dispatch" ;;
 esac
 
 # Obligation 1: the reconciliation may only ever act on the CORE side. Without this the
@@ -727,7 +727,7 @@ fi
 
 printf 'PASS: lean adversarial pass present — both classes, two-sided citation, suppression list\n'
 printf 'PASS: pass reports without gating; VERIFY block shape unchanged\n'
-printf 'PASS: pass adds no routing or Task dispatch and names no capability\n'
+printf 'PASS: pass adds no routing or Agent dispatch and names no capability\n'
 printf 'PASS: empty-registry, defect-bearing and defect-free fixtures intact\n'
 printf 'PASS: reconciliation is one-directional, dispatch-free and names no capability\n'
 printf 'PASS: both overlap outcomes pinned; a failed contributor withdraws nothing\n'

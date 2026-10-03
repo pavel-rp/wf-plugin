@@ -29552,7 +29552,7 @@ var INVOCATION_AXIS = {
    *  reference to resolve. The leading look-behind keeps a path segment
    *  (`.../skills/wf:x`) or a longer token from matching mid-string. */
   skillToken: "(?<![\\w./-])/(wf(?:-[a-z0-9][a-z0-9-]*)?):([a-z][a-z0-9-]*)",
-  /** `subagent_type: wf:<agent>` — the Task-tool dispatch declaration, with or
+  /** `subagent_type: wf:<agent>` — the Agent-tool dispatch declaration, with or
    *  without backticks around the value. */
   agentToken: "subagent_type:?\\s*[`'\"]?(wf(?:-[a-z0-9][a-z0-9-]*)?):([a-z][a-z0-9-]*)"
 };
