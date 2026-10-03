@@ -17,10 +17,23 @@
 #
 # WHAT A CALL SITE IS. Any occurrence of the class token `references-template` in
 # a `plugins/*/skills/**/*.md` or `plugins/*/agents/*.md` file whose call text —
-# from the token to the first closing `)` or `}` (bounded) — names a `ref:` ending
-# in `.md`. The `ref` is a relative path and may nest under `references/`
-# (`sub/t.md`), exactly as the resolver's `isSafeRelPath` admits; a ref the
-# resolver refuses (absolute, or a `.`, `..` or empty segment) is not a read. The
+# from the token to the first closing `)` or `}` outside a backtick span (backtick
+# list) or a quoted value (object literal and prose), bounded — names a `ref:`
+# ending in `.md`. The ref's stop set is chosen by where the ref sits. Whole-token
+# parsing is guaranteed for a ref inside its own backtick span (`ref: …`, up to the
+# closing backtick — the same set a §4.4 token admits) and for a quoted value in
+# EVERY form, a backtick-list call included (up to its closing quote, escaped
+# quotes honoured): there `sub/my template.md`,
+# `sub/a (b).md` and `sub/a,b.md` are each one ref. A quote opens a value only
+# where a value begins — after `:`, `,`, `(`, `{` or `[` (whitespace between
+# allowed) — so an apostrophe inside a word or an unquoted value is a literal
+# character (`ref: it's.md` is `it's.md`). An UNQUOTED object-literal or prose ref
+# ends at `,`, `"`, a backtick, `)`, `}` or line end, so a file name holding one of
+# those must be quoted in those forms. A ref holding a backtick or `|`, which no
+# §4.4 cell can carry, is a violation. It is a relative path and may nest under `references/` (`sub/t.md`), judged whole by the
+# resolver's `isSafeRelPath` rules: backslashes normalise to `/`, and a ref the
+# resolver refuses (empty, `/`- or drive-rooted, or a `.`, `..` or empty segment)
+# is not a read — nor is any suffix of it. The
 # `skill:` key names the owning skill; `plugin:` (omitted for core) must equal the
 # consumer's own plugin. Both syntaxes the tree uses are parsed — backtick lists
 # and object literals, wrapped across lines or not. A mention that names no `.md`
@@ -33,8 +46,10 @@
 #
 # §4.4 ROW SHAPE. `| \`<consumer>\` | \`a.md\`, \`b.md\` (<owner-skill>) |` — a
 # template without a parenthesised owner belongs to the consumer skill itself; an
-# agent row, or a read of another skill's template, must name the owner. A template
-# may be a nested path (`sub/t.md`); a row naming an unsafe path is a violation.
+# agent row, or a read of another skill's template, must name the owner. Every
+# backtick token in the cell is a template, taken whole; it may be a nested path
+# (`sub/t.md`) or hold a space. A token that is not a `.md` path, or that the
+# resolver's path rules refuse, is a violation — never skipped or partly matched.
 #
 # Only the references class is enforced. The inventory's other four classes are
 # the dated C011 baseline and are deliberately not checked here.
@@ -62,12 +77,38 @@ python3 - "$ROOT" "$@" <<'PY'
 import os, re, sys, shutil, tempfile
 
 TOKEN = "references-template"
-# `plugin:` and `skill:` are single segments; `ref:` is a relative path that may
-# nest under `references/` (`sub/t.md`), so it admits `/`. Its safety is judged
-# afterwards by safe_ref(), never by the pattern.
-KEY = re.compile(r"\b(plugin|skill):\s*[\"`]?\s*([A-Za-z0-9_.-]+)")
-REF = re.compile(r"\bref:\s*[\"`]?\s*([A-Za-z0-9_./-]+)")
-ITEM = re.compile(r"`([A-Za-z0-9_./-]+\.md)`(?:\s*\(([A-Za-z0-9_-]+)\))?")
+# `plugin:` and `skill:` are single segments. `ref:` is a relative path that may
+# nest (`sub/t.md`). ref_value() chooses its stop set by the call form
+# call_window() reads off the class token, and takes the WHOLE token in the two
+# forms that delimit it:
+#   - inside its own backtick span (`ref: …`): up to the span's closing backtick or
+#     line end — exactly the set a §4.4 backtick token admits (bar `|`, reported
+#     below);
+#   - a quoted value ("…", '…' or `…`) in any form, a backtick-list call
+#     included: up to its closing quote, `\` + that quote or `\` + `\` read as
+#     the escaped character.
+# An UNQUOTED literal or prose value is not delimited, so it ends at `,`, `"`, a
+# backtick, `)`, `}` or line end: a file name holding one of those must be quoted
+# in those forms (the self-test pins this). An apostrophe inside an unquoted value
+# is part of it. The call window ends at the first `)`/`}` outside a span or a
+# quoted value, in every form, so a paren or brace inside a quoted ref never
+# truncates it. The token's safety is judged
+# afterwards by safe_ref(); a token holding a character no §4.4 cell can carry
+# (a backtick or `|`) is reported, never silently left unmatched.
+KEY = re.compile(r"\b(plugin|skill):\s*[\"'`]?\s*([A-Za-z0-9_.-]+)")
+REF = re.compile(r"\bref:\s*")
+QUOTES = "\"'`"
+ROW_INEXPRESSIBLE = "`|"
+# Outside a span or string, a quote opens a value only after one of these (the
+# previous non-space character; "" is the window start). Mid-word it is literal.
+VALUE_START = ("", ":", ",", "(", "{", "[")
+# A §4.4 cell is parsed as WHOLE backtick tokens, each optionally followed by its
+# `(owner)`; every token is judged whole by parse_doc(), never a matched suffix. A
+# token admits every character but a backtick, a newline and `|` (the row is split
+# into cells on `|` first) — the backtick-list set ref_value() admits, less `|`,
+# which scan() therefore reports on the call-site side instead of dropping.
+ITEM = re.compile(r"`([^`\n]*)`(?:\s*\(([A-Za-z0-9_-]+)\))?")
+DRIVE = re.compile(r"[A-Za-z]:")
 COUNTS = re.compile(r"(\d+)\s+templates\s*\|\s*(\d+)\s+consumers\s*\((\d+)\s+template reads\)")
 WINDOW = 400
 
@@ -76,9 +117,111 @@ class Harness(Exception):
     pass
 
 
+def norm_ref(ref):
+    """The resolver's normalizeSlashes: every backslash becomes `/`."""
+    return ref.replace("\\", "/")
+
+
 def safe_ref(ref):
-    """Mirror the resolver's isSafeRelPath: relative, no `.`, `..` or empty segment."""
-    return bool(ref) and not ref.startswith("/") and all(s not in ("", ".", "..") for s in ref.split("/"))
+    """Mirror the resolver's isSafeRelPath: non-empty; after backslash
+    normalisation neither `/`-rooted nor drive-letter-rooted (`C:`); and no `.`,
+    `..` or empty segment."""
+    n = norm_ref(ref)
+    if not n or n.startswith("/") or DRIVE.match(n):
+        return False
+    return all(s not in ("", ".", "..") for s in n.split("/"))
+
+
+def _scan(win, form, upto=None):
+    """Walk a call window past its head character, tracking backtick spans (the
+    list form) and quoted values (every form; a quote opens one only where a value
+    begins — VALUE_START — and backslash escapes are honoured inside it).
+    With `upto` unset, return the index of the first `)`/`}` outside any span or
+    quoted value (None when there is none). With `upto` set, return the span or
+    quote character open at that index (None when outside both)."""
+    state, esc, prev = None, False, ""  # prev: last non-space char outside both
+    for i in range(1 if form != "prose" else 0, len(win)):
+        if upto is not None and i == upto:
+            return state
+        c = win[i]
+        if state is None:
+            if c in ")}" and upto is None:
+                return i
+            if form == "list" and c == "`":
+                state = c
+            elif c in QUOTES and prev in VALUE_START:
+                state = c
+            if not c.isspace():
+                prev = c
+        elif state != "`" and esc:
+            esc = False
+        elif state != "`" and c == "\\":
+            esc = True
+        elif c == state:
+            state = None
+            prev = c
+    return None
+
+
+def call_window(text, start):
+    """(window, form): the call text after the class token and the call's form,
+    read off the character that closes the token itself.
+      - `list`    — a backtick closes it (`class: references-template`, …);
+      - `literal` — a quote closes it (class: "references-template", …);
+      - `prose`   — anything else.
+    In every form the call ends at the first `)`/`}` outside a backtick span (list
+    form) or a quoted value. A quote opens one only where a value begins
+    (VALUE_START), so an apostrophe inside a word or an unquoted ref
+    (`ref: it's.md`) opens nothing; backslash escapes are honoured inside a quoted
+    value, never inside a backtick span.
+    Only characters after the token are read, so nothing before it on the line
+    (an apostrophe, an earlier span) can shift the window. Bounded by WINDOW."""
+    win = text[start:start + WINDOW]
+    head = win[:1]
+    form = "list" if head == "`" else "literal" if head in ("\"", "'") else "prose"
+    # The head character closes the token's own span, so _scan starts outside any
+    # span, just past it.
+    end = _scan(win, form)
+    return (win if end is None else win[:end]), form
+
+
+def ref_value(win, form):
+    """The ref token of a call window, surrounding whitespace trimmed — whole
+    inside its own backtick span and as a quoted value in any form; an unquoted
+    value ends at its first stop character (see the REF comment above)."""
+    m = REF.search(win)
+    if not m:
+        return ""
+    i = m.end()
+    if form == "list" and _scan(win, form, upto=m.start()) == "`":
+        # `ref: …` sits inside its own backtick span: up to that span's close.
+        j = i
+        while j < len(win) and win[j] not in "`\n":
+            j += 1
+        value = win[i:j].strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            # A quoted value, decoded as the quoted-value branch below decodes it:
+            # `\` + that quote or `\` + `\` is the escaped character.
+            q, inner, out, k = value[0], value[1:-1], [], 0
+            while k < len(inner):
+                if inner[k] == "\\" and k + 1 < len(inner) and inner[k + 1] in (q, "\\"):
+                    k += 1
+                out.append(inner[k])
+                k += 1
+            value = "".join(out).strip()
+        return value
+    if i < len(win) and win[i] in QUOTES:
+        q, out, j = win[i], [], i + 1
+        while j < len(win) and win[j] not in (q, "\n"):
+            if win[j] == "\\" and j + 1 < len(win) and win[j + 1] in (q, "\\"):
+                j += 1
+            out.append(win[j])
+            j += 1
+        return "".join(out).strip()
+    j = i
+    while j < len(win) and win[j] not in ",\"`\n":
+        j += 1
+    return win[i:j].strip()
 
 
 def consumer_of(rel):
@@ -109,19 +252,20 @@ def scan(root):
                 text = fh.read()
             for m in re.finditer(re.escape(TOKEN), text):
                 start = m.end()
-                win = text[start:start + WINDOW]
-                cut = [i for i in (win.find(")"), win.find("}")) if i >= 0]
-                if cut:
-                    win = win[:min(cut)]
+                win, form = call_window(text, start)
                 keys = {}
                 for k, v in KEY.findall(win):
                     keys.setdefault(k, v)
-                refm = REF.search(win)
-                ref = refm.group(1) if refm else ""
+                ref = ref_value(win, form)
                 if not ref.endswith(".md") or not safe_ref(ref):
-                    # Not a template read: no `.md` ref, or a path the resolver refuses.
+                    # Not a template read: no `.md` ref, or a path the resolver
+                    # refuses — judged on the whole token, never a suffix of it.
                     continue
+                ref = norm_ref(ref)
                 line = text.count("\n", 0, m.start()) + 1
+                if any(ch in ref for ch in ROW_INEXPRESSIBLE):
+                    errors.append(f"{rel}:{line}: call site names ref {ref!r} holding a backtick or `|`, which a §4.4 row cannot express")
+                    continue
                 owner = keys.get("skill")
                 if not owner:
                     errors.append(f"{rel}:{line}: call site names ref {ref} but no skill")
@@ -167,9 +311,14 @@ def parse_doc(doc):
         if not items:
             errors.append(f"§4.4 row names no template: {consumer}")
         for ref, owner in items:
-            if not safe_ref(ref):
-                errors.append(f"§4.4 row names an unsafe template path (absolute, or a '.', '..' or empty segment): {consumer} → {ref}")
+            ref = ref.strip()
+            if not ref.endswith(".md"):
+                errors.append(f"§4.4 row names a token that is not a .md template: {consumer} → `{ref}`")
                 continue
+            if not safe_ref(ref):
+                errors.append(f"§4.4 row names an unsafe template path (absolute, drive-rooted, or a '.', '..' or empty segment): {consumer} → {ref}")
+                continue
+            ref = norm_ref(ref)
             if not owner:
                 if parts[1] != "skills":
                     errors.append(f"§4.4 agent row must name the owning skill for {ref}: {consumer}")
@@ -189,8 +338,10 @@ def parse_doc(doc):
     return rows, counts, errors
 
 
-def evaluate(root, doc, quiet=False):
+def evaluate(root, doc, quiet=False, sink=None):
     def say(msg):
+        if sink is not None:
+            sink.append(msg)
         if not quiet:
             print(msg)
 
@@ -286,21 +437,29 @@ def selftest():
         failed = 0
 
         def run(cases):
+            # Each case is (doc, want[, remove[, expect]]): `expect`, when given, is
+            # the substring the ONLY violation reported must carry, so the case
+            # fails on its own condition alone rather than on a side effect.
             nonlocal failed
-            for name, (body, want, remove) in cases.items():
+            for name, case in cases.items():
+                body, want, remove, expect = (tuple(case) + (None, None))[:4]
                 put(f"{name}.md", body)
                 moved = None
                 if remove:
                     moved = os.path.join(tmp, remove) + ".away"
                     os.rename(os.path.join(tmp, remove), moved)
+                said = []
                 try:
-                    got = evaluate(tmp, os.path.join(tmp, f"{name}.md"), quiet=True)
+                    got = evaluate(tmp, os.path.join(tmp, f"{name}.md"), quiet=True, sink=said)
                 except Harness as e:
                     got = f"harness error ({e})"
                 if moved:
                     os.rename(moved, os.path.join(tmp, remove))
                 if got != want:
-                    print(f"SELFTEST FAIL — '{name}' returned {got}, expected {want}", file=sys.stderr)
+                    print(f"SELFTEST FAIL — '{name}' returned {got}, expected {want}: {said}", file=sys.stderr)
+                    failed += 1
+                elif expect is not None and (len(said) != 1 or expect not in said[0]):
+                    print(f"SELFTEST FAIL — '{name}' reported {said}, expected exactly one violation naming '{expect}'", file=sys.stderr)
                     failed += 1
 
         run(cases)
@@ -338,13 +497,205 @@ def selftest():
             "unsafe-row": (doc([alpha, gamma, "| `wf/skills/epsilon` | `sub/nested.md`, `../escape.md` |", zeta],
                                "5 templates | 4 consumers (5 template reads)"), 1, None),
         })
+
+        # Whole ref tokens (WF-936). safe_ref() first, one assertion per
+        # isSafeRelPath rule: accepted shapes, then each refusal on its own.
+        for ref, want in (("t.md", True), ("sub/t.md", True), ("sub/my template.md", True),
+                          ("sub\\t.md", True), ("", False), ("/abs.md", False), ("\\abs.md", False),
+                          ("C:x.md", False), ("c:/x.md", False), ("./t.md", False), ("a/../t.md", False),
+                          ("..\\t.md", False), ("a//t.md", False), ("sub/", False)):
+            if safe_ref(ref) != want:
+                print(f"SELFTEST FAIL — safe_ref({ref!r}) returned {not want}, expected {want}", file=sys.stderr)
+                failed += 1
+
+        # Call sites whose ref holds a space — backtick-list form, a double-quoted
+        # object literal, and a single-quoted one — must be derived WHOLE; a
+        # backslash-separated ref normalises onto the same read. A drive-rooted
+        # and a backslash-escape ref are refused whole — neither they nor any
+        # suffix of them (`x.md`) may count as a read.
+        put("plugins/wf/skills/eta/SKILL.md",
+            "Obtain it via (`class: references-template`, `skill: eta`, `ref: sub/my template.md`).\n"
+            "Or (`class: references-template`, `skill: eta`, `ref: sub\\my template.md`).\n"
+            "Never (`class: references-template`, `skill: eta`, `ref: C:x.md`).\n"
+            "Nor (`class: references-template`, `skill: eta`, `ref: ..\\x.md`).\n")
+        put("plugins/wf/skills/eta/references/sub/my template.md", "t\n")
+        put("plugins/wf-x/agents/theta.md",
+            "resolve_content({ workspaceRoot, class: \"references-template\", plugin: \"wf-x\",\nskill: \"delta\", ref: \"spaced dir/t t.md\" })\n"
+            "resolve_content({ workspaceRoot, class: 'references-template', plugin: 'wf-x', skill: 'delta', ref: 'single q.md' })\n")
+        put("plugins/wf-x/skills/delta/references/spaced dir/t t.md", "t\n")
+        put("plugins/wf-x/skills/delta/references/single q.md", "t\n")
+
+        tree, _ = scan(tmp)
+        want_in = {("wf/skills/eta", "eta", "sub/my template.md"),
+                   ("wf-x/agents/theta", "delta", "spaced dir/t t.md"),
+                   ("wf-x/agents/theta", "delta", "single q.md")}
+        eta_reads = {r for c, _, r in tree if c == "wf/skills/eta"}
+        if not want_in <= tree or eta_reads != {"sub/my template.md"}:
+            print(f"SELFTEST FAIL — whole-token scan derived {sorted(tree)}", file=sys.stderr)
+            failed += 1
+
+        eta = "| `wf/skills/eta` | `sub/my template.md` |"
+        theta = "| `wf-x/agents/theta` | `single q.md` (delta), `spaced dir/t t.md` (delta) |"
+        whole = "8 templates | 6 consumers (8 template reads)"
+        run({
+            "spaced-sound": (doc([alpha, gamma, eps, zeta, eta, theta], whole), 0),
+            "spaced-backslash-row-sound": (doc([alpha, gamma, eps, zeta, "| `wf/skills/eta` | `sub\\my template.md` |",
+                                                theta], whole), 0),
+            "spaced-missing-row": (doc([alpha, gamma, eps, zeta, theta], "7 templates | 5 consumers (7 template reads)"),
+                                   1, None, "TREE ⊄ DOC: wf/skills/eta reads eta/references/sub/my template.md"),
+            "spaced-missing-agent-row": (doc([alpha, gamma, eps, zeta, eta], "6 templates | 5 consumers (6 template reads)"),
+                                         1, None, None),
+            "drive-letter-row": (doc([alpha, gamma, eps, zeta, "| `wf/skills/eta` | `sub/my template.md`, `C:x.md` |",
+                                      theta], whole), 1, None, "unsafe template path"),
+            "backslash-row": (doc([alpha, gamma, eps, zeta, "| `wf/skills/eta` | `sub/my template.md`, `a\\..\\b.md` |",
+                                   theta], whole), 1, None, "unsafe template path"),
+            "non-md-row": (doc([alpha, gamma, eps, zeta, "| `wf/skills/eta` | `sub/my template.md`, `notes.txt` |",
+                                theta], whole), 1, None, "not a .md template"),
+        })
+
+        # Quote-aware call window: a `)` or `}` inside a quoted span must not end
+        # the call — a backtick-list ref holding parens and an object-literal ref
+        # holding parens and braces are derived whole. Text before the class token
+        # (an apostrophe in a word, or one right after a closing backtick) must not
+        # shift the window: the ref-less pointer's window has to end at its own
+        # `)`, or it would swallow the next line's `ref:` and derive a read iota
+        # never makes.
+        put("plugins/wf/skills/iota/SKILL.md",
+            "The skill's `iota`'s rationale lives in (`class: references-template`, `skill: iota`) — never read here.\n"
+            "Obtain (`class: references-template`, `skill: beta`, `ref: shared.md`) and "
+            "(`class: references-template`, `skill: iota`, `ref: sub/paren (x).md`).\n")
+        put("plugins/wf/skills/iota/references/sub/paren (x).md", "t\n")
+        put("plugins/wf-x/agents/kappa.md",
+            "resolve_content({ workspaceRoot, class: \"references-template\", plugin: \"wf-x\", "
+            "skill: \"delta\", ref: \"q (1) {b}.md\" })\n")
+        put("plugins/wf-x/skills/delta/references/q (1) {b}.md", "t\n")
+
+        tree, _ = scan(tmp)
+        iota_reads = {(o, r) for c, o, r in tree if c == "wf/skills/iota"}
+        if iota_reads != {("beta", "shared.md"), ("iota", "sub/paren (x).md")} \
+                or ("wf-x/agents/kappa", "delta", "q (1) {b}.md") not in tree:
+            print(f"SELFTEST FAIL — quote-aware window derived {sorted(tree)}", file=sys.stderr)
+            failed += 1
+
+        iota = "| `wf/skills/iota` | `sub/paren (x).md`, `shared.md` (beta) |"
+        kappa = "| `wf-x/agents/kappa` | `q (1) {b}.md` (delta) |"
+        base6 = [alpha, gamma, eps, zeta, eta, theta]
+        run({
+            "paren-sound": (doc(base6 + [iota, kappa], "10 templates | 8 consumers (11 template reads)"), 0),
+            "paren-missing-row": (doc(base6 + ["| `wf/skills/iota` | `shared.md` (beta) |", kappa],
+                                      "9 templates | 8 consumers (10 template reads)"),
+                                  1, None, "TREE ⊄ DOC: wf/skills/iota reads iota/references/sub/paren (x).md"),
+            "brace-missing-row": (doc(base6 + [iota], "9 templates | 7 consumers (10 template reads)"),
+                                  1, None, "TREE ⊄ DOC: wf-x/agents/kappa reads delta/references/q (1) {b}.md"),
+        })
+
+        # REF/ITEM stop-set parity: a backtick-list ref holding a comma (with and
+        # without a following space) ends only at its closing backtick, and a
+        # double-quoted ref honours an escaped quote — each derived whole and
+        # matched by the row token naming it. A quoted ref holding `|` or a
+        # backtick, which no §4.4 cell can carry, is reported, never dropped.
+        put("plugins/wf/skills/lambda/SKILL.md",
+            "Obtain (`class: references-template`, `skill: lambda`, `ref: sub/a,b.md`) and "
+            "(`class: references-template`, `skill: lambda`, `ref: sub/a, b.md`).\n")
+        put("plugins/wf/skills/lambda/references/sub/a,b.md", "t\n")
+        put("plugins/wf/skills/lambda/references/sub/a, b.md", "t\n")
+        put("plugins/wf-x/agents/mu.md",
+            'resolve_content({ workspaceRoot, class: "references-template", plugin: "wf-x", '
+            'skill: "delta", ref: "q\\"t.md" })\n')
+        put("plugins/wf-x/skills/delta/references/q\"t.md", "t\n")
+
+        tree, _ = scan(tmp)
+        if {r for c, _, r in tree if c == "wf/skills/lambda"} != {"sub/a,b.md", "sub/a, b.md"} \
+                or ("wf-x/agents/mu", "delta", "q\"t.md") not in tree:
+            print(f"SELFTEST FAIL — stop-set parity scan derived {sorted(tree)}", file=sys.stderr)
+            failed += 1
+
+        lam = "| `wf/skills/lambda` | `sub/a, b.md`, `sub/a,b.md` |"
+        mu = "| `wf-x/agents/mu` | `q\"t.md` (delta) |"
+        base8 = base6 + [iota, kappa]
+        parity = "13 templates | 10 consumers (14 template reads)"
+        run({
+            "comma-sound": (doc(base8 + [lam, mu], parity), 0),
+            "comma-missing-row": (doc(base8 + ["| `wf/skills/lambda` | `sub/a, b.md` |", mu],
+                                      "12 templates | 10 consumers (13 template reads)"),
+                                  1, None, "TREE ⊄ DOC: wf/skills/lambda reads lambda/references/sub/a,b.md"),
+            "escaped-quote-missing-row": (doc(base8 + [lam], "12 templates | 9 consumers (13 template reads)"),
+                                          1, None, "TREE ⊄ DOC: wf-x/agents/mu reads delta/references/q\"t.md"),
+        })
+        for name, ref in (("pipe-ref", "p|q.md"), ("backtick-ref", "b`t.md")):
+            put("plugins/wf-x/agents/nu.md",
+                'resolve_content({ workspaceRoot, class: "references-template", plugin: "wf-x", '
+                f'skill: "delta", ref: "{ref}" }})\n')
+            run({name: (doc(base8 + [lam, mu], parity), 1, None, "which a §4.4 row cannot express")})
+        os.remove(os.path.join(tmp, "plugins/wf-x/agents/nu.md"))
+
+        # An object literal written inside an inline-code span that wraps across
+        # lines is still the literal form: its string quotes delimit the ref, and
+        # the span's backticks do not swallow them.
+        put("plugins/wf/skills/omicron/SKILL.md",
+            "The content lives at `o t.md`, obtained via\n"
+            "`resolve_content({ workspaceRoot, class: \"references-template\", skill:\n"
+            "\"omicron\", ref: \"o t.md\" })` — never a raw read.\n")
+        put("plugins/wf/skills/omicron/references/o t.md", "t\n")
+        omi = "| `wf/skills/omicron` | `o t.md` |"
+        run({
+            "code-span-literal-sound": (doc(base8 + [lam, mu, omi], "14 templates | 11 consumers (15 template reads)"), 0),
+            "code-span-literal-missing-row": (doc(base8 + [lam, mu], parity), 1, None,
+                                              "TREE ⊄ DOC: wf/skills/omicron reads omicron/references/o t.md"),
+        })
+
+        # The documented unquoted contract: an UNQUOTED object-literal ref is not
+        # delimited, so it ends at `,` or at the call's `)` — `sub/a,b.md` and
+        # `sub/a (b).md` written unquoted are not derived as reads (neither whole
+        # nor as a prefix), which is why the header requires quoting them there.
+        put("plugins/wf/skills/pi/SKILL.md",
+            "resolve_content({ workspaceRoot, class: \"references-template\", skill: \"pi\", ref: sub/a,b.md })\n"
+            "resolve_content({ workspaceRoot, class: \"references-template\", skill: \"pi\", ref: sub/a (b).md })\n")
+        tree, _ = scan(tmp)
+        if any(c == "wf/skills/pi" for c, _, _ in tree):
+            print(f"SELFTEST FAIL — unquoted literal refs derived {sorted(r for c, _, r in tree if c == 'wf/skills/pi')}; "
+                  "the documented contract says an unquoted ref ends at `,` / `)`", file=sys.stderr)
+            failed += 1
+
+        # A quoted value is whole in every form, prose included, and a quote opens
+        # a value only where one begins: a quoted prose ref holding parens is
+        # derived whole; an unquoted ref holding an apostrophe (object literal and
+        # prose) is derived whole, the apostrophe opening no string; and a
+        # mid-word apostrophe before the call's `)` must not swallow it. In a
+        # backtick-list call, a ref written outside its own span follows the same
+        # quoted / unquoted rules: a quoted `a)b.md` is whole, an unquoted one
+        # stops at `,`. A quoted value inside its own span decodes `\"` like any
+        # other quoted value.
+        put("plugins/wf/skills/rho/SKILL.md",
+            "Obtain it (class: references-template, skill: rho, ref: \"a (b).md\").\n"
+            "resolve_content({ workspaceRoot, class: \"references-template\", skill: \"rho\", ref: it's.md })\n"
+            "Then (class: references-template, skill: rho, ref: o'k.md).\n"
+            "Read (class: references-template, skill: rho, ref: w.md, the template's copy) and "
+            "(class: references-template, skill: rho, ref: x.md).\n"
+            "Mixed (`class: references-template`, `skill: rho`, ref: \"a)b.md\") and "
+            "(`class: references-template`, `skill: rho`, ref: m.md, x).\n"
+            "Span (`class: references-template`, `skill: rho`, `ref: \"q\\\"t.md\"`).\n")
+        tree, _ = scan(tmp)
+        rho = {r for c, _, r in tree if c == "wf/skills/rho"}
+        if rho != {"a (b).md", "it's.md", "o'k.md", "w.md", "x.md", "a)b.md", "m.md", "q\"t.md"}:
+            print(f"SELFTEST FAIL — quoted-prose and apostrophe refs derived {sorted(rho)}", file=sys.stderr)
+            failed += 1
         if failed:
             print(f"content-read-references-inventory-guard: self-test FAILED ({failed} case(s))", file=sys.stderr)
             return 1
         print("content-read-references-inventory-guard: self-test passed — four planted drifts rejected "
               "(missing row, stale row, absent template, wrong §5 count), the sound fixture accepted, "
               "and the ref-less pointer ignored; nested refs derived whole, a nested row's absence, "
-              "mismatch or missing template rejected, an unsafe row rejected, and unsafe refs ignored.")
+              "mismatch or missing template rejected, an unsafe row rejected, and unsafe refs ignored; "
+              "safe_ref() agrees with isSafeRelPath on every rule, spaced and quoted refs derived whole "
+              "and matched, a missing spaced row rejected, drive-rooted and backslash refs refused whole, "
+              "and drive-rooted, backslash-escape and non-.md row tokens each rejected on their own; "
+              "quoted refs holding parens or braces derived whole and their missing rows rejected, "
+              "and text before the class token kept from shifting the window; comma-bearing backtick-list "
+              "refs, an escaped-quote ref and an object literal inside a wrapped code span derived whole and "
+              "their missing rows rejected, refs holding `|` or a backtick reported as inexpressible, and "
+              "the documented unquoted-literal stop at `,` / `)` pinned; a quoted prose ref holding parens "
+              "and unquoted refs holding an apostrophe derived whole, a mid-word apostrophe opening no string, and a backtick-list call's quoted or unquoted ref outside its own span read by the same rules.")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

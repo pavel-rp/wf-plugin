@@ -325,7 +325,7 @@ fi
 echo ""
 echo "=== References inventory guard — seeded self-test (content-read-references-inventory-guard.sh --selftest) ==="
 if bash "$DIR/../content-read-references-inventory-guard.sh" --selftest; then
-  printf 'PASS: %s\n' "references inventory guard self-test (four planted drifts rejected, sound fixture accepted)"
+  printf 'PASS: %s\n' "references inventory guard self-test (planted drifts and unsafe or partial ref tokens rejected, sound fixtures accepted)"
   pass=$((pass + 1))
 else
   printf 'FAIL: %s\n' "references inventory guard self-test"

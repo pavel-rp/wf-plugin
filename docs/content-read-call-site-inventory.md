@@ -292,7 +292,14 @@ reads.
 > this table. `--print` emits the derived rows, so a new call site is recorded by regenerating
 > this table, never by hand-editing a count. A call site is any `references-template` occurrence
 > in a `plugins/*/skills/**` or `plugins/*/agents/*` file whose call names a `.md` `ref:`; a call
-> written in a skill's own `references/*` file counts for that skill.
+> written in a skill's own `references/*` file counts for that skill. This table's templates, and
+> refs written in the backtick-list form or as a quoted value in any form (prose included), are
+> parsed as whole tokens (a space, comma or paren is part of the path). A quote opens a value only
+> where one begins (after `:`, `,`, `(`, `{` or `[`), so an apostrophe inside an unquoted ref is part
+> of it (`ref: it's.md`); an unquoted object-literal or prose ref ends at `,`, `"`, a backtick, `)`,
+> `}` or line end, so quote a file name holding one of those. Every token is judged
+> by the resolver's own `isSafeRelPath` rules; a table token that is not a safe `.md` path, or a
+> ref holding a backtick or `|` (which no table cell can carry), fails the guard.
 
 | Consumer | Template(s) read |
 |---|---|
