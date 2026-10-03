@@ -96,7 +96,7 @@ citation, or no parseable block at all — is malformed.
 
 ## Malformed or failed dispatch
 
-The Task erroring outright, returning no block, or returning a block that fails the parsing
+The Agent erroring outright, returning no block, or returning a block that fails the parsing
 contract above — and, at the critic boundary (`critic-boundary.md`), a hand-back that went
 unrecorded, was recorded `failed`, carried a malformed block, or no longer matches the candidate
 set — are the same outcome from the caller's side: **the critic did not run**, and **every
@@ -121,7 +121,7 @@ The report's `**Critic:**` header reads `not run — <reason>` for the batch.
 `UNVERIFIABLE` is not a dispatch failure — the critic ran, read the evidence, and made a
 considered call that it cannot be confirmed or refuted from static reading. That candidate
 demotes to `warn` (§"Verdict block" above; `verify-spec/SKILL.md` §"The blocking set"). Only the
-dispatch-level failure (Task error, no block, or a block failing the parsing contract) triggers
+dispatch-level failure (Agent error, no block, or a block failing the parsing contract) triggers
 the fail-closed path.
 
 ## Worked example

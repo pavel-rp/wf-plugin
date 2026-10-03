@@ -84,7 +84,7 @@ skills grep it.
 
 The cost concern is real and was raised as a high risk: a default that runs on every task
 must not make `verify` materially more expensive. Dispatching the pass to a subagent would
-have added a routing decision, a Task spawn, and a fresh context to fill with the diff —
+have added a routing decision, a Agent spawn, and a fresh context to fill with the diff —
 per run, on every task, including the overwhelming majority that carry neither defect
 class.
 
@@ -92,7 +92,7 @@ Running inline over the diff the audit has already gathered adds none of those. 
 keeps the pass structurally outside the invariants
 `plugins/wf/skills/_contracts/verify-dispatch-cost-guard.sh` protects: every one of them
 constrains the *contributor dispatch* path — the contributor gate preceding any routing or
-Task call, caller-side profile resolution, and the inlined finding contract. A pass that
+Agent call, caller-side profile resolution, and the inlined finding contract. A pass that
 performs no dispatch cannot weaken a guarantee about how dispatch is performed.
 
 For the same reason the pass is strictly additive to whatever contributors are registered

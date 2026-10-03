@@ -113,7 +113,7 @@ every emitted `Task:` line keep `{task-id}` verbatim.
    `/wf:branch` — that loads its `SKILL.md` into this skill's context. The subagent is
    self-sufficient.) When the running agent's own dispatch brief declares it cannot await
    its children, obey the `isolated` answer per that section's **Caller cannot await
-   children** paragraph instead of the Task. The branch gate is a writing unit, so follow
+   children** paragraph instead of the Agent. The branch gate is a writing unit, so follow
    the branch procedure in this context, recorded `inline — caller cannot await`: obtain it
    via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill:
    branch`, `ref: procedure.md`), run it with `{task-id}` and the `delivery` record, and for

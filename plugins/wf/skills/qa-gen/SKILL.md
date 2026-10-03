@@ -227,8 +227,8 @@ parameters:
   tool with `subagent_type: <agent>`. When the running agent's own dispatch brief declares
   it cannot await its children, a `subagent:` row obeys `invocation-runtime.ops.md`
   §"Resolver call root" (its **Caller cannot await children** paragraph) instead of the
-  Task: it has no declared hand-back boundary, so it runs in this context through one of
-  that rule's two forms, or stops `blocked` with the rule's named reason — never a Task
+  Agent: it has no declared hand-back boundary, so it runs in this context through one of
+  that rule's two forms, or stops `blocked` with the rule's named reason — never an Agent
   this skill cannot await.
 - **Generic shape produced:** each contributed scenario in the same `TC-NNN` /
   `Validates:` contract as Phase 3, numbered in the **global** sequence.

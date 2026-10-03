@@ -74,7 +74,7 @@ dispatcher needs and nothing it must infer:
 **Unit:** verify:<source-capability>:<role>
 
 ~~~text
-<the exact dispatch prompt this agent would have sent the row's Task>
+<the exact dispatch prompt this agent would have sent the row's Agent>
 ~~~
 ```
 
@@ -118,7 +118,7 @@ role:
 
 | Manifest says | File | Row counts as |
 |---|---|---|
-| `returned` | readable, and its block is well-formed against the generic finding contract | **completed** — the block is that row's return, validated and aggregated exactly like a Task return |
+| `returned` | readable, and its block is well-formed against the generic finding contract | **completed** — the block is that row's return, validated and aggregated exactly like an Agent return |
 | `returned` | missing, unreadable, or malformed | expected, not completed — reason `block unreadable` / `malformed block` |
 | `failed — <reason>` | — | expected, not completed — reason as recorded |
 | no row for this role | — | expected, not completed — reason `not in manifest` |

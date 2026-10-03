@@ -116,7 +116,7 @@ The record is this request's only when `<dir>/<T>/r<N>/critic/manifest.md` exist
 
 | Manifest says | File | Batch outcome |
 |---|---|---|
-| `returned` | `critic.md` readable, a well-formed `CRITIC —` block per `critic-verdict.md` §"Parsing contract" | **ran — independent, via hand-back**: apply each verdict exactly as for a Task return |
+| `returned` | `critic.md` readable, a well-formed `CRITIC —` block per `critic-verdict.md` §"Parsing contract" | **ran — independent, via hand-back**: apply each verdict exactly as for an Agent return |
 | `returned` | missing, unreadable, or malformed | fail-close, `not run — malformed verdict` |
 | `failed — <reason>` | — | fail-close, `not run — <reason>` |
 | unparseable | — | fail-close, `not run — manifest unreadable` |
