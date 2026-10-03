@@ -159,8 +159,9 @@ The `Path` column accepts two token shapes; **both resolve at runtime** (WF-99):
    inside a *sibling* plugin (core reaching a capability that ships in a separate pack
    plugin) cannot be resolved from it — core has no `<plugin-name>` → install-root
    map of its own. The `## Plugin Roots` mapping supplies exactly that datum: it is
-   written by a **pack-owned init skill**, which runs with *its* `${CLAUDE_PLUGIN_ROOT}`
-   equal to the pack's install root and records it. Core then reads a generic
+   written by the resolver's `apply_install` when `/wf:init` applies a confirmed plan
+   (a pack's own init skill is an alias that enters that same flow), recording each
+   discovered pack's install root. Every other core skill then reads a generic
    `<plugin-name>` → root table and resolves any plugin-anchored `Path` from it,
    naming no concrete plugin.
 
@@ -209,12 +210,12 @@ Mapping semantics:
    guard; forward slashes only). Registry validation (WF-2's registry pass / WF-28)
    enforces this `Root` shape.
 
-3. **Per-machine, gitignored, pack-written.** Because a `Root` is an absolute
+3. **Per-machine, gitignored, written by `apply_install`.** Because a `Root` is an absolute
    machine-specific path, the mapping belongs under `_local/` (already gitignored) and
-   is **never** committed to `wf.config.js` or the registry `Path` column. A
-   **pack-owned init skill** writes and refreshes each row (its own install root can
-   move between machines / upgrades); **core never writes another plugin's root** — it
-   only reads the table. When the registry is relocated to a **committed** file via
+   is **never** committed to `wf.config.js` or the registry `Path` column. The
+   resolver's `apply_install` writes and refreshes each row when `/wf:init` (or a pack's
+   init alias) applies a plan (an install root can move between machines / upgrades);
+   **every other core skill never writes a plugin's root** — it only reads the table. When the registry is relocated to a **committed** file via
    `registryPath`, the machine-specific `## Plugin Roots` table must stay gitignored
    (keep it in `_local/`); the default location already is.
 
@@ -311,8 +312,8 @@ another plugin's root.
 The mapping names **no** concrete plugin or capability; it is the generic
 `<plugin-name>` → root shape every pack's install root plugs into. Its location and
 shape are fixed here (a downstream-visible contract, like a phase name); executing the
-resolution is owned by the runtime (`invocation-runtime.ops.md`), writing it by a
-pack-owned init skill, and checking it by the validator.
+resolution is owned by the runtime (`invocation-runtime.ops.md`), writing it by the
+resolver's `apply_install`, and checking it by the validator.
 
 ---
 

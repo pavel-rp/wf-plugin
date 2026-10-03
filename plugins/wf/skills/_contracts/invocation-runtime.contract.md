@@ -150,7 +150,8 @@ change to how the registry is read. The registry shape and column meaning are fi
   selection), **in-memory only**. This runtime **executes** that algorithm; it does not
   redefine it. The mapping supplies the `<plugin-name>` → install-root datum
   `${CLAUDE_PLUGIN_ROOT}` alone could not (it resolves only to the *executing* plugin's
-  root); the mapping is written by a pack-owned init skill, core only reads it. A
+  root); the mapping is written by the resolver's `apply_install` when `/wf:init` (or a
+  pack's init alias) applies a plan, and every other core skill only reads it. A
   plugin-anchored `Path` whose `<plugin-name>` has **no** `## Plugin Roots` row is
   **unmapped**, and a mapped row where **neither** the recorded root **nor** the
   self-heal yields a readable manifest is **unrecoverable** → in both cases the row

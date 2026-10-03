@@ -460,7 +460,7 @@ Articles: <9 core> + <capability articles present | none (core-only)> + <project
 Registry: <comma-separated capability names | none (core-only)>
 File:     _local/constitution.md
 Size:     <length> characters — exceeds the 40000-character SessionStart ceiling; only the first 40000 characters are injected at session start
-Next:     review _local/constitution.md and add any project clauses with /wf:constitution <clause text>; then /wf:spec <id> to start a task (the constitution is intended for consultation at spec and enforcement at verify once that wiring lands).
+Next:     review _local/constitution.md and add any project clauses with /wf:constitution <clause text>; then /wf:spec <id> to start a task (the SessionStart hook injects the constitution into every session as standing instructions).
 ```
 
 **Size ceiling.** The `Size:` line is **conditional**: it appears only when the written record
