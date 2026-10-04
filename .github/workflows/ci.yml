@@ -110,6 +110,14 @@ jobs:
         # containment guard, and the usage-vs-mismatch exit vocabulary. Non-zero exit fails the job.
         run: bash plugins/wf-sandbox-testing/experiments/engine/selfcheck.sh
 
+      - name: tui-kit tests
+        # The tui-kit pack is independent of the workflow plugin and ships no
+        # capabilities/*/fixtures/run.sh, so the convention-discovery glob below
+        # never reaches it. It is named here so its node:test suite (pure-function
+        # kit tests, no mod and no host runtime) gates every PR. Node presence is
+        # confirmed by the step above. Non-zero exit fails the job.
+        run: bash plugins/tui-kit/tests/run.sh
+
       - name: Each capability's fixture suite
         # Discover every capability fixtures suite by convention — never name a
         # specific capability, so any future capability that ships a fixtures

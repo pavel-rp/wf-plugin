@@ -5,6 +5,7 @@ Claude Code marketplace hosting the `wf` core plugin and its capability packs:
 - **[wf](plugins/wf/)** — the domain-free Spec-Driven Development spine: a `wf:*` skill chain for spec → plan → implement → verify → QA → commit/PR, carrying zero stack, domain, or project knowledge.
 - **[wf-browser-qa](plugins/wf-browser-qa/)** — the standalone browser-QA feature pack: a stack-agnostic browser-automation QA engine (`qa-execution` engine provider) that core's `/wf:qa-auto` dispatches to.
 - **[wf-node-ts](plugins/wf-node-ts/)** — the standalone Node/TypeScript stack pack: a dependency-free unit-test harness for pure TS helpers (`implement`-phase test-authoring guidance).
+- **[tui-kit](plugins/tui-kit/)** — a host-free terminal UI kit for Claude Code mods, independent of wf: semantic colour tokens mapped to the host's theme keys, an accessibility profile, `NO_COLOR`/`FORCE_COLOR` handling, control-sequence sanitising, and a status badge rendered to plain text, ANSI and markdown, shipped as a copy-in template.
 - **[wf-audit](plugins/wf-audit/)** — the standalone audit + self-review pack: five domain-free adversarial `verify` lenses plus an optional composite retrospective, co-located with the `pre-commit` self-review lens that reuses the audit correctness rubric.
 
 ## Install

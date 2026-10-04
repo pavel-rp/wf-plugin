@@ -1,0 +1,17 @@
+{
+  "name": "tui-kit",
+  "version": "0.1.0",
+  "description": "Host-free terminal UI kit for Claude Code mods, shipped as a copy-in template of pure ES modules: semantic colour tokens mapped to the host's theme-key names (adaptive and complete variants, derived shades, remappable tier colours), an accessibility profile built from plain host values, NO_COLOR/FORCE_COLOR handling, control-sequence sanitising, and a status badge rendered to plain text, ANSI and markdown from one definition. Ships no hooks, skills or agents; installing it changes nothing until a mod copies the kit in.",
+  "author": {
+    "name": "Pavel Kalabin",
+    "url": "https://github.com/pavel-rp"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "tui",
+    "tokens",
+    "accessibility",
+    "no-color",
+    "mods"
+  ]
+}
