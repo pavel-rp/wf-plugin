@@ -140,6 +140,18 @@ test('a C1-introduced escape string closed by ESC \\ keeps the text after it', (
   assert.equal(sanitizeText('a\u009d0;t\u0007VISIBLE'), 'aVISIBLE');
 });
 
+test('a long unterminated run of C1 string introducers is sanitized in linear time', () => {
+  for (const intro of ['\u009d', '\u0090', '\u0098', '\u009e', '\u009f']) {
+    // the run is closed by an ESC that starts a CSI, not a string terminator
+    const input = `a${intro.repeat(40000)}\u001b[m tail`;
+    const start = performance.now();
+    const out = sanitizeText(input);
+    const elapsed = performance.now() - start;
+    assert.equal(out, 'a tail');
+    assert.ok(elapsed < 50, `40000 introducers took ${elapsed.toFixed(1)} ms`);
+  }
+});
+
 test('a hand-built definition whose label sanitizes to empty is refused in every format', () => {
   for (const format of ['plain', 'ansi', 'markdown']) {
     assert.throws(

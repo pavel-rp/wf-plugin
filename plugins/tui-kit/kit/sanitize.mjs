@@ -12,10 +12,13 @@
 //   ESC \ or ST 0x9c (or to end of input)
 // Running this pass first means a 7-bit ESC \ terminator is never stripped on its
 // own before the string it closes is matched.
+// A string body never contains another C1 string introducer: the match ends just
+// before the next one, which then starts its own match. This keeps the pass
+// linear on a long unterminated run of introducers.
 const STRING_SEQUENCE = new RegExp(
   [
-    '(?:\\u001b\\]|\\u009d)[^\\u0007\\u001b\\u009c]*(?:\\u0007|\\u001b\\\\|\\u009c|$)',
-    '(?:\\u001b[PX^_]|[\\u0090\\u0098\\u009e\\u009f])[^\\u001b\\u009c]*(?:\\u001b\\\\|\\u009c|$)',
+    '(?:\\u001b\\]|\\u009d)[^\\u0007\\u001b\\u009c\\u0090\\u0098\\u009d-\\u009f]*(?:\\u0007|\\u001b\\\\|\\u009c|$|(?=[\\u0090\\u0098\\u009d-\\u009f]))',
+    '(?:\\u001b[PX^_]|[\\u0090\\u0098\\u009e\\u009f])[^\\u001b\\u009c\\u0090\\u0098\\u009d-\\u009f]*(?:\\u001b\\\\|\\u009c|$|(?=[\\u0090\\u0098\\u009d-\\u009f]))',
   ].join('|'),
   'g',
 );
