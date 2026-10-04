@@ -1,6 +1,6 @@
 # C042 SP1 — is the host's mod interface live on this install?
 
-**Current verdict:** see the last entry of [Verdict log](#verdict-log). As of 2026-10-04 it is **live**.
+**Current verdict:** see the last entry of [Verdict log](#verdict-log).
 **Tracker item:** WF-1048 (charter C042 SUB-1, OUT-1). Later re-checks: WF-1055 (SUB-12).
 **Consumers:** the cockpit sub-tasks (C042 SUB-7 to SUB-10) and the C044 component-kit gate, which calls this verdict SP0.
 **Model:** claude-opus-5-5
@@ -17,7 +17,7 @@ A verdict holds only for the install and host release it names. The interface ma
 |---|---|---|
 | `live` | A mod's hook was seen to run in an unattended session. | Design and build may proceed. |
 | `not live` | The trial's stderr showed the host refused, failed to load or switched off the mod. A trial that prints the baseline with no stderr refusal is `untested`, not `not live`. | Design and build wait. The first `not live` entry's date is when the cockpit started waiting. WF-1055 owns what ends the wait. |
-| `untested` | Nothing could be observed unattended, or the 30-minute time box ran out first. The entry gives the reason. | Neither waits nor retires. Design and build proceed, and liveness is recorded as untested. |
+| `untested` | Neither `live` nor `not live` could be established unattended: nothing was observed, the output was ambiguous (including a trial that prints the baseline with no stderr refusal), or the 30-minute time box ran out first. The entry gives the reason. | Neither waits nor retires. Design and build proceed, and liveness is recorded as untested. |
 
 How `untested` reads for the C044 gate is C044's own rule. This document does not set it.
 
