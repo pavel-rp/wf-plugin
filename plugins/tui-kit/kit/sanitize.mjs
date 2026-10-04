@@ -5,23 +5,28 @@
 // stray escape sequence must never move the cursor, retitle the terminal, open
 // a hyperlink or reorder text.
 
-// ESC-introduced sequences, matched in full so no fragment survives:
-// - CSI: ESC [ params intermediates final
-// - OSC: ESC ] ... terminated by BEL, ESC \ or C1 ST (or unterminated to end of input)
-// - DCS / SOS / PM / APC: ESC P|X|^|_ ... ESC \ or C1 ST (or to end of input)
-// - two-character escapes: ESC followed by one byte in 0x20-0x7e
-const ESC_SEQUENCE = new RegExp(
+// String sequences, matched first and in full, with the same terminators whether
+// the introducer is the 7-bit ESC form or the single-byte C1 form:
+// - OSC: ESC ] or 0x9d ... terminated by BEL, ESC \ or ST 0x9c (or to end of input)
+// - DCS / SOS / PM / APC: ESC P|X|^|_ or 0x90|0x98|0x9e|0x9f ... terminated by
+//   ESC \ or ST 0x9c (or to end of input)
+// Running this pass first means a 7-bit ESC \ terminator is never stripped on its
+// own before the string it closes is matched.
+const STRING_SEQUENCE = new RegExp(
   [
-    '\\u001b\\[[0-?]*[ -/]*[@-~]',
-    '\\u001b\\][^\\u0007\\u001b\\u009c]*(?:\\u0007|\\u001b\\\\|\\u009c|$)',
-    '\\u001b[PX^_][^\\u001b\\u009c]*(?:\\u001b\\\\|\\u009c|$)',
-    '\\u001b[ -~]',
+    '(?:\\u001b\\]|\\u009d)[^\\u0007\\u001b\\u009c]*(?:\\u0007|\\u001b\\\\|\\u009c|$)',
+    '(?:\\u001b[PX^_]|[\\u0090\\u0098\\u009e\\u009f])[^\\u001b\\u009c]*(?:\\u001b\\\\|\\u009c|$)',
   ].join('|'),
   'g',
 );
 
-// C1 equivalents of CSI and OSC (single-byte introducers 0x9b and 0x9d).
-const C1_SEQUENCE = /\u009b[0-?]*[ -/]*[@-~]|\u009d[^\u0007\u009c]*(?:\u0007|\u009c|$)/g;
+// Remaining ESC-introduced sequences:
+// - CSI: ESC [ params intermediates final
+// - two-character escapes: ESC followed by one byte in 0x20-0x7e
+const ESC_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b[ -~]/g;
+
+// C1 equivalent of CSI (single-byte introducer 0x9b).
+const C1_SEQUENCE = /\u009b[0-?]*[ -/]*[@-~]/g;
 
 // Whitespace controls that become a single space rather than vanishing, so
 // words on either side of a newline or tab stay apart.
@@ -41,6 +46,7 @@ const OTHER_CONTROLS = /[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g;
 export function sanitizeText(value) {
   const s = typeof value === 'string' ? value : String(value ?? '');
   return s
+    .replace(STRING_SEQUENCE, '')
     .replace(ESC_SEQUENCE, '')
     .replace(C1_SEQUENCE, '')
     .replace(WHITESPACE_CONTROLS, ' ')

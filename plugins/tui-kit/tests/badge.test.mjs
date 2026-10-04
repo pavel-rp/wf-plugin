@@ -130,6 +130,16 @@ test('a C1 string terminator ends an escape string without swallowing the text a
   assert.equal(sanitizeText('a\u001b_x\u009cVISIBLE tail'), 'aVISIBLE tail');
 });
 
+test('a C1-introduced escape string closed by ESC \\ keeps the text after it', () => {
+  // OSC (0x9d), DCS (0x90), SOS (0x98), PM (0x9e) and APC (0x9f), each closed by the 7-bit ST
+  for (const intro of ['\u009d', '\u0090', '\u0098', '\u009e', '\u009f']) {
+    assert.equal(sanitizeText(`a${intro}0;t\u001b\\ visible`), 'a visible');
+  }
+  // and the C1 string introducers still end at C1 ST, and OSC at BEL
+  assert.equal(sanitizeText('a\u0090q\u009cVISIBLE'), 'aVISIBLE');
+  assert.equal(sanitizeText('a\u009d0;t\u0007VISIBLE'), 'aVISIBLE');
+});
+
 test('a hand-built definition whose label sanitizes to empty is refused in every format', () => {
   for (const format of ['plain', 'ansi', 'markdown']) {
     assert.throws(
