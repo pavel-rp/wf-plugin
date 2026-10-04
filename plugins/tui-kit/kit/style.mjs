@@ -18,7 +18,7 @@ const DEFAULT_TOKENS = createTokens();
  * @typedef {{
  *   format: 'plain' | 'ansi' | 'markdown',
  *   tokens: Readonly<Record<string, any>>,
- *   profile: { appearance?: 'dark' | 'light' | 'auto', daltonized?: boolean, ansiTheme?: boolean, screenReader?: 'on' | 'off' | 'unknown' },
+ *   profile: { appearance?: 'dark' | 'light' | 'auto', daltonized?: boolean, ansiTheme?: boolean, screenReader?: 'on' | 'off' | 'unknown', preferPlainText?: boolean },
  *   colorMode: 'none' | 'ansi16' | 'ansi256' | 'truecolor',
  * }} RenderOptions
  */

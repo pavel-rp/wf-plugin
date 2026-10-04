@@ -7,8 +7,10 @@
 //
 // The percentage and the value/max always appear as text, so the bar is
 // decoration only: colour, or the bar itself, can be lost without losing a
-// fact. Under a screen-reader profile the bar is left out, so a reader hears
-// the numbers rather than a run of block characters. The meter never animates.
+// fact. When the profile prefers plain text (`preferPlainText`, which
+// `resolveProfile` sets unless the person declared no screen reader) or a
+// screen reader is on, the bar is left out, so a reader hears the numbers
+// rather than a run of block characters. The meter never animates.
 
 import { escapeMarkdown } from './sanitize.mjs';
 import { resolveRenderOptions, paint, requireText, toBadge, badgeIn } from './style.mjs';
@@ -72,7 +74,7 @@ export function renderMeter(def, options) {
   const bar = FILLED.repeat(filled) + EMPTY.repeat(def.width - filled);
   const numbers = `${Math.round(ratio * 100)}% (${def.value}/${def.max})`;
   const status = def.badge ? ` ${badgeIn(def.badge, o)}` : '';
-  const showBar = o.profile.screenReader !== 'on';
+  const showBar = !(o.profile.preferPlainText === true || o.profile.screenReader === 'on');
 
   if (o.format === 'markdown') {
     return `**${escapeMarkdown(label)}**${status}${showBar ? ` \`${bar}\`` : ''} ${numbers}`;

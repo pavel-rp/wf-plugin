@@ -5,8 +5,8 @@
 //
 //   Check  Result   Time
 //   -----  -------  ----
-//   lint   ✓ OK      12
-//   tests  ✗ Error  340
+//   lint   ✓ OK       12
+//   tests  ✗ Error   340
 //
 // Plain columns are padded by code-point count. A wide character (for example
 // an East Asian ideograph or an emoji) still counts as one, so such a column

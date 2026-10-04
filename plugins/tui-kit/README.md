@@ -184,11 +184,11 @@ renderPanel(panel);
 // └
 renderPanel(panel, { format: 'markdown' });
 // **Build** — ✗ **Error**
-// > 3 tests failed
+// > 3 tests failed\
 // > see the log
 ```
 
-`body` is a string or an array of lines and may be omitted. There is no right border, so the panel never measures text width. In ANSI the border takes the status colour, or `muted` without a status.
+`body` is a string or an array of lines and may be omitted. In markdown, every body line but the last ends in a backslash hard break, so the lines stay separate instead of joining into one paragraph. There is no right border, so the panel never measures text width. In ANSI the border takes the status colour, or `muted` without a status.
 
 ### List
 
@@ -239,7 +239,9 @@ renderMeter(meter, { format: 'markdown' }); // '**Disk** \! **Warning** `██�
 
 Anything else throws a `RangeError`. The bar takes the colour of `token`, else the status badge's colour, else `info`.
 
-The percentage and the value/max always appear as text, so the bar carries no fact of its own. Under a screen-reader profile (`profile.screenReader === 'on'`) the bar is left out, and a reader hears `Disk ! Warning 80% (8/10)` rather than a run of block characters.
+The percentage and the value/max always appear as text, so the bar carries no fact of its own. The bar is left out when the profile prefers plain text (`profile.preferPlainText === true`) or a screen reader is on (`profile.screenReader === 'on'`). A reader then hears `Disk ! Warning 80% (8/10)` rather than a run of block characters.
+
+`resolveProfile` sets `preferPlainText` unless the person declared they use no screen reader. So with a resolved profile the bar shows only after that declaration, which matches the documented plain-text-safe default. With no `profile` passed, the bar shows.
 
 ## Tests
 

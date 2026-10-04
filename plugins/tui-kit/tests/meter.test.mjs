@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defineMeter, renderMeter, METER_WIDTH } from '../kit/index.mjs';
+import { defineMeter, renderMeter, METER_WIDTH, resolveProfile } from '../kit/index.mjs';
 
 const strip = (s) => s.replace(/\u001b\[[0-9;]*m/g, '');
 
@@ -33,6 +33,18 @@ test('a screen-reader profile drops the bar and keeps label, badge and numbers',
   assert.equal(renderMeter(meter, { profile }), 'Disk ! Warning 80% (8/10)');
   assert.equal(renderMeter(meter, { format: 'markdown', profile }), '**Disk** \\! **Warning** 80% (8/10)');
   assert.doesNotMatch(renderMeter(meter, { format: 'ansi', colorMode: 'ansi16', profile }), /█|░/);
+});
+
+test('a plain-text-preferring profile drops the bar; a declared no-screen-reader profile keeps it', () => {
+  const meter = defineMeter({ label: 'Disk', value: 8, max: 10 });
+  // resolveProfile defaults to screenReader 'unknown' with preferPlainText true
+  const unknown = resolveProfile({ theme: 'dark' });
+  assert.equal(unknown.screenReader, 'unknown');
+  assert.equal(renderMeter(meter, { profile: unknown }), 'Disk 80% (8/10)');
+  assert.equal(renderMeter(meter, { profile: { preferPlainText: true } }), 'Disk 80% (8/10)');
+  const declaredOff = resolveProfile({ theme: 'dark', screenReaderOff: true });
+  assert.equal(renderMeter(meter, { profile: declaredOff }), 'Disk [████████░░] 80% (8/10)');
+  assert.equal(renderMeter(meter), 'Disk [████████░░] 80% (8/10)');
 });
 
 test('meter width and bounds', () => {

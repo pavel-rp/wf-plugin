@@ -7,6 +7,9 @@
 //   │ see the log
 //   └
 //
+// In markdown the body is a blockquote whose lines end in hard breaks, so
+// they stay separate lines.
+//
 // There is no right border, so the panel never measures text width. In ANSI
 // only the border glyphs are coloured (with the status colour, or `muted`).
 
@@ -56,7 +59,12 @@ export function renderPanel(def, options) {
 
   if (o.format === 'markdown') {
     const head = `**${escapeMarkdown(title)}**${badge ? ` — ${badgeIn(badge, o)}` : ''}`;
-    return [head, ...body.map((line) => `> ${escapeMarkdown(line)}`)].join('\n');
+    // Consecutive `>` lines would join into one paragraph, so every body line
+    // but the last ends in a backslash hard break. Content never ends in a
+    // bare backslash: escapeMarkdown doubles any backslash it carries.
+    const last = body.length - 1;
+    const quoted = body.map((line, i) => `> ${escapeMarkdown(line)}${i < last ? '\\' : ''}`);
+    return [head, ...quoted].join('\n');
   }
 
   const border = badge ? badge.token : 'muted';

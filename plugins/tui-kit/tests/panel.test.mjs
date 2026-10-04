@@ -7,7 +7,7 @@ const strip = (s) => s.replace(/\u001b\[[0-9;]*m/g, '');
 test('panel renders the documented plain and markdown shapes', () => {
   const panel = definePanel({ title: 'Build', status: 'error', body: ['3 tests failed', 'see the log'] });
   assert.equal(renderPanel(panel), '┌ Build — ✗ Error\n│ 3 tests failed\n│ see the log\n└');
-  assert.equal(renderPanel(panel, { format: 'markdown' }), '**Build** — ✗ **Error**\n> 3 tests failed\n> see the log');
+  assert.equal(renderPanel(panel, { format: 'markdown' }), '**Build** — ✗ **Error**\n> 3 tests failed\\\n> see the log');
 });
 
 test('panel without status or body', () => {
@@ -43,5 +43,15 @@ test('panel refuses empty title or body line, and non-text values', () => {
 
 test('panel markdown escapes structural characters in content', () => {
   const md = renderPanel(definePanel({ title: '# *x*', body: ['> quote', '- item | pipe'] }), { format: 'markdown' });
-  assert.equal(md, '**\\# \\*x\\***\n> &gt; quote\n> \\- item \\| pipe');
+  assert.equal(md, '**\\# \\*x\\***\n> &gt; quote\\\n> \\- item \\| pipe');
+});
+
+test('panel markdown body lines end in a hard break except the last, so they never join', () => {
+  const md = renderPanel(definePanel({ title: 'T', body: ['one', 'two', 'three'] }), { format: 'markdown' });
+  assert.deepEqual(md.split('\n'), ['**T**', '> one\\', '> two\\', '> three']);
+  // a single line carries no break
+  assert.equal(renderPanel(definePanel({ title: 'T', body: ['only'] }), { format: 'markdown' }), '**T**\n> only');
+  // content ending in a backslash stays escaped, so the break is never doubled into a literal
+  const tricky = renderPanel(definePanel({ title: 'T', body: ['a\\', 'b'] }), { format: 'markdown' });
+  assert.equal(tricky, '**T**\n> a\\\\\\\n> b');
 });
