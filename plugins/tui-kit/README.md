@@ -11,7 +11,9 @@ On top of the core sit four composite components: a **panel**, a **list**, a **t
 
 All of it is plain functions, with no mod loaded.
 
-The pack ships **no hooks, skills or agents**. Installing it from the marketplace changes nothing. The kit only acts once a mod copies it in.
+Beside the kit sit thin **adapters** (`adapters/`) that draw the components in a mod's panes and bands: interactive on the terminal, display-only on Desktop. They are the only code that names the host's elements; the kit core stays host-free.
+
+The pack ships **no hooks, skills or agents** at its root. Installing it from the marketplace changes nothing. The kit only acts once a mod copies it in. The `example/` folder is a mod you assemble and test yourself (see [Pinning mounts](#pinning-mounts-with-claude-plugin-test)); installing the pack never loads it.
 
 ## Trust cost — read before adopting
 
@@ -23,9 +25,9 @@ The kit ships **no permission-deciding or rewriting handler**. It never allows, 
 
 On this host, a mod's hooks module may import only its own files, by relative path, plus `claude-code`. A shared plugin's files, or a package referenced by a bare name, are refused. So the kit is a **template you copy**, not a dependency you install:
 
-1. Copy `kit/` into your mod, for example as `lib/kit/`.
-2. Import it by relative path: `import { defineBadge, renderBadge } from '../lib/kit/index.mjs'`.
-3. Re-copy it when you want a newer version. Nothing updates on its own.
+1. Copy `kit/` into your mod, for example as `lib/kit/`. To draw with host elements, copy `adapters/` beside it as `lib/adapters/`, so its `../kit/index.mjs` imports resolve.
+2. Import by relative path: `import { defineBadge, renderBadge } from '../lib/kit/index.mjs'`, `import { drawView } from '../lib/adapters/index.mjs'`.
+3. Re-copy them when you want a newer version. Nothing updates on its own.
 
 Every kit file is an ES module (`.mjs`) with no `require`, no dynamic `import()`, and no Node, DOM or host API. Your adapter reads the host and passes plain values in.
 
@@ -45,7 +47,7 @@ Every kit file is an ES module (`.mjs`) with no `require`, no dynamic `import()`
 | `meter.mjs` | `METER_WIDTH`, `defineMeter`, `renderMeter` | A quantity out of a maximum |
 | `index.mjs` | everything above | The public surface |
 
-Later kit modules (adapters) are added as new files beside these, and their exports are appended to `index.mjs`.
+The adapters live in their own folder, `adapters/`, described under [Adapters](#adapters).
 
 ## Tokens: inherit before inventing
 
@@ -243,6 +245,84 @@ The percentage and the value/max always appear as text, so the bar carries no fa
 
 `resolveProfile` sets `preferPlainText` unless the person declared they use no screen reader. So with a resolved profile the bar shows only after that declaration, which matches the documented plain-text-safe default. With no `profile` passed, the bar shows.
 
+## Adapters
+
+The adapters draw the components with the host's own elements. They are adapter code: only they name host elements such as `Box`, `Text` and `Button`, so when a host element changes, only `adapters/` changes. A test keeps the kit core free of those names.
+
+**`$` stays in your hooks module.** The host lets `$` reach only functions declared in the mod's own hooks module, never across an import. So the adapters never take `$`. Your hook passes plain values instead: the element table from `$.ui.resolve(e)`, the surface from `e.surface`, and a profile built from the host reads you made.
+
+| File | Exports | Purpose |
+|---|---|---|
+| `segments.mjs` | `VIEW_KINDS`, `viewLines`, `viewText` | A view as lines of styled runs (host-free) |
+| `host.mjs` | `profileFromHost` | The kit profile from your host reads |
+| `draw.mjs` | `hostKeyFor` (plus internal helpers) | Runs as `Text` elements |
+| `terminal.mjs` | `drawTerminal` | Interactive drawing |
+| `desktop.mjs` | `DISPLAY_ONLY_NOTICE`, `drawDesktop` | Display-only drawing |
+| `mount.mjs` | `drawView`, `shouldMount`, `planPane` | Surface choice and screen-reader mounting |
+| `index.mjs` | everything above | The public surface |
+
+### Views
+
+A view is `{ kind, def }`. `kind` is `badge`, `panel`, `list`, `table` or `meter`, and `def` is that component's definition, for example from `definePanel`. Any other kind throws a `RangeError`.
+
+`viewLines(view, { profile })` breaks the view into lines of runs `{ text, token?, bold? }`. The joined text of each line is exactly that line of the core's plain rendering with the same profile, so every decoration rule stays the core's. For example, the meter bar is left out when `profile.preferPlainText` is true or `profile.screenReader` is `'on'`. A definition the core refuses throws the core's own error. Every run's text has passed `sanitizeText`, or is kit-built decoration.
+
+### Drawing
+
+```js
+on('ui.render', { component: 'Pane', requestId: 'checks' }, async ($, e) => {
+  const profile = await hostProfile($);   // your own function, below
+  return drawView($.ui.resolve(e), e.surface, view, { profile });
+});
+```
+
+- **Colour.** Each coloured `Text` gets the token's host theme key as its `color`, looked up as an own property, so the host resolves it for the person's theme.
+- **Terminal.** `drawView` uses `drawTerminal` on the terminal. A `list` view with an `onSelect(index)` callback draws each item as a `Button` keyed `item-1`, `item-2` and so on. Pressing one calls `onSelect` with the item's 0-based index, in your mod.
+- **Desktop.** `drawView` uses `drawDesktop` on every other surface. It draws text only, never a `Button`, `Input` or `Select`, because Desktop stays display-only. A `list` with `onSelect` also gets a `Box` keyed `display-only` whose text says so (`DISPLAY_ONLY_NOTICE`).
+
+### Accessibility profile from the host
+
+Make the three host reads in your hooks module, then hand the results to `profileFromHost`. Pass `undefined` for a read that failed.
+
+```js
+async function hostProfile($) {
+  let configRows, settings, screenReaderEnv;
+  try { configRows = await $.config.list(); } catch {}
+  try { settings = await $.settings.read(); } catch {}
+  try { screenReaderEnv = await $.env.get('CLAUDE_AX_SCREEN_READER'); } catch {}
+  return profileFromHost({ configRows, settings, screenReaderEnv }, { screenReaderOff: options.screenReaderOff === true });
+}
+```
+
+The `theme` and `reduceMotion` config rows, the `prefersReducedMotion` and `axScreenReader` settings keys and the environment value fill the profile inputs listed under [Accessibility profile](#accessibility-profile). A missing or wrongly-typed value counts as unreachable, so the documented default applies.
+
+### Screen readers
+
+It is not yet known whether panes are read out with a screen reader on. So with `profile.screenReader === 'on'`, a pane or band is drawn only when your mod sets `panesDrawForScreenReader: true`. By default it is skipped, and the view's plain text goes to the transcript instead, which a reader always reaches.
+
+- `shouldMount(profile, { panesDrawForScreenReader })` says whether to draw. A band hook passes `next(e)` when it is false.
+- `planPane(view, { profile, panesDrawForScreenReader })` returns `{ isMounted: true }` (call `$.ui.open`), or `{ isMounted: false, text, lines }` (call `$.ui.log` once per line).
+
+Only a screen reader that is on skips a mount. A plain-text preference alone still draws, with the core's plain-text decoration rules.
+
+### Pinning mounts with `claude plugin test`
+
+A host silently replaces a tree it cannot validate, so every mount is pinned by the host's own test runner:
+
+```sh
+bash plugins/tui-kit/tests/plugin-test.sh <new-dir>
+```
+
+The script assembles `example/` into `<new-dir>` with `kit/` and `adapters/` copied into its `lib/`, the way a mod author would. It then runs `claude plugin validate` and `claude plugin test`, and removes `<new-dir>`. `<new-dir>` must not exist yet.
+
+The example's tests mount every component as a `Pane`, and the badge as an `AbovePrompt` band, on both the terminal and desktop. They also check that:
+
+- a terminal press reaches the mod;
+- desktop draws no live controls and states that it is display-only;
+- both screen-reader outcomes behave as described above.
+
+The script needs an authenticated `claude` CLI, so CI does not run it. If the host's mods switch is stale, run one networked `claude -p` first.
+
 ## Tests
 
 ```sh
@@ -258,4 +338,6 @@ The suite runs on plain Node (`node:test`), with no mod and no host runtime, and
 - each component's three renderings, its errors and its badge use;
 - that plain equals stripped ANSI for every component, that markdown carries every fact, and that nothing is lost in the daltonized, `NO_COLOR`, reduced-motion and screen-reader profiles;
 - sanitising, including hostile content in every component;
-- a boundary check that the kit imports only its own files and touches no host or runtime global.
+- a boundary check that the kit imports only its own files and touches no host or runtime global;
+- each adapter behaviour above, with a stand-in element table;
+- that the kit core names no host element and the adapters import only their own files and the kit index.

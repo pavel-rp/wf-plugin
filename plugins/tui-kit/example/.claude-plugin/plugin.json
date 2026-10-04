@@ -1,0 +1,24 @@
+{
+  "name": "tui-kit-example",
+  "version": "0.1.0",
+  "description": "Example mod that copies in the tui-kit and its adapters, and draws every kit component in a pane and the status badge in a band.",
+  "author": {
+    "name": "Pavel Kalabin",
+    "url": "https://github.com/pavel-rp"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "screenReaderOff": {
+      "type": "boolean",
+      "title": "I use no screen reader",
+      "description": "Declare that you use no screen reader, so decoration such as the meter bar is drawn.",
+      "default": false
+    },
+    "panesDrawForScreenReader": {
+      "type": "boolean",
+      "title": "Panes draw for my screen reader",
+      "description": "Open panes even when a screen reader is on. Off: the panes are skipped and their plain text is written to the transcript instead.",
+      "default": false
+    }
+  }
+}
