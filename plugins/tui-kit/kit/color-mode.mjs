@@ -10,8 +10,8 @@
  *
  * Rules, first match wins:
  * 1. `NO_COLOR` present and non-empty -> `none` (it beats `FORCE_COLOR`).
- * 2. `FORCE_COLOR` present -> `0`/`false` gives `none`; `2` gives `ansi256`;
- *    `3` gives `truecolor`; any other value (including empty, `1`, `true`)
+ * 2. `FORCE_COLOR` present -> `0`/`false` gives `none`; `2` gives at least
+ *    `ansi256` (`truecolor` when the terminal reports it); `3` gives `truecolor`; any other value (including empty, `1`, `true`)
  *    gives `ansi16`, or the terminal's detected depth when that is higher.
  *    This applies whether or not output is a TTY.
  * 3. Not a TTY -> `none`.

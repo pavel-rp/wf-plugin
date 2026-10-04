@@ -15,6 +15,7 @@ test('FORCE_COLOR enables colour when output is not a TTY', () => {
   assert.equal(resolveColorMode({ env: { FORCE_COLOR: '1' }, isTTY: false }), 'ansi16');
   assert.equal(resolveColorMode({ env: { FORCE_COLOR: '' }, isTTY: false }), 'ansi16');
   assert.equal(resolveColorMode({ env: { FORCE_COLOR: '2' }, isTTY: false }), 'ansi256');
+  assert.equal(resolveColorMode({ env: { FORCE_COLOR: '2', COLORTERM: 'truecolor' }, isTTY: false }), 'truecolor');
   assert.equal(resolveColorMode({ env: { FORCE_COLOR: '3' }, isTTY: false }), 'truecolor');
   assert.equal(resolveColorMode({ env: { FORCE_COLOR: '0' }, isTTY: true }), 'none');
   assert.equal(resolveColorMode({ env: { FORCE_COLOR: 'false' }, isTTY: true }), 'none');

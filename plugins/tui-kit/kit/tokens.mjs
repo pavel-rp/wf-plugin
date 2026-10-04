@@ -282,7 +282,7 @@ function tierFromRemap(n, value) {
 export function createTokens(options = {}) {
   const remaps = options.tiers ?? {};
   for (const key of Object.keys(remaps)) {
-    if (!TIER_NUMBERS.includes(Number(key))) throw new RangeError(`unknown tier ${JSON.stringify(key)}; tiers are 1 to 5`);
+    if (!TIER_NUMBERS.map(String).includes(key)) throw new RangeError(`unknown tier ${JSON.stringify(key)}; tiers are 1 to 5`);
   }
   /** @type {Record<string, any>} */
   const out = { ...BASE_TOKENS };

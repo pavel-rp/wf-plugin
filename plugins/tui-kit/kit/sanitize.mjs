@@ -7,14 +7,14 @@
 
 // ESC-introduced sequences, matched in full so no fragment survives:
 // - CSI: ESC [ params intermediates final
-// - OSC: ESC ] ... terminated by BEL or ESC \ (or unterminated to end of input)
-// - DCS / SOS / PM / APC: ESC P|X|^|_ ... ESC \ (or to end of input)
+// - OSC: ESC ] ... terminated by BEL, ESC \ or C1 ST (or unterminated to end of input)
+// - DCS / SOS / PM / APC: ESC P|X|^|_ ... ESC \ or C1 ST (or to end of input)
 // - two-character escapes: ESC followed by one byte in 0x20-0x7e
 const ESC_SEQUENCE = new RegExp(
   [
     '\\u001b\\[[0-?]*[ -/]*[@-~]',
-    '\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\|$)',
-    '\\u001b[PX^_][^\\u001b]*(?:\\u001b\\\\|$)',
+    '\\u001b\\][^\\u0007\\u001b\\u009c]*(?:\\u0007|\\u001b\\\\|\\u009c|$)',
+    '\\u001b[PX^_][^\\u001b\\u009c]*(?:\\u001b\\\\|\\u009c|$)',
     '\\u001b[ -~]',
   ].join('|'),
   'g',

@@ -88,7 +88,7 @@ A raw colour must reach **at least 3:1 contrast** (WCAG non-text) against the re
 1. `NO_COLOR` is set and not empty → `none`. It also wins over `FORCE_COLOR`.
 2. `FORCE_COLOR` is set → colour is on, even when output is not a TTY. The values map like this:
    - `0` or `false` → off;
-   - `2` → 256 colours;
+   - `2` → at least 256 colours (truecolour when the terminal reports it);
    - `3` → truecolour;
    - anything else → at least 16 colours.
 3. Output is not a TTY → `none`.

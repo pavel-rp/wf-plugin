@@ -36,7 +36,9 @@ export const STATUSES = Object.freeze({
  */
 export function defineBadge(spec) {
   if (!spec || typeof spec !== 'object') throw new TypeError('defineBadge needs a spec object');
-  const preset = spec.status === undefined ? undefined : STATUSES[/** @type {keyof typeof STATUSES} */ (spec.status)];
+  const preset = spec.status === undefined || !Object.hasOwn(STATUSES, spec.status)
+    ? undefined
+    : STATUSES[/** @type {keyof typeof STATUSES} */ (spec.status)];
   if (spec.status !== undefined && !preset) throw new RangeError(`unknown badge status ${JSON.stringify(spec.status)}`);
   const glyph = sanitizeText(spec.glyph ?? preset?.glyph ?? '');
   const label = sanitizeText(spec.label ?? preset?.label ?? '');
@@ -85,6 +87,7 @@ export function renderBadge(def, options = {}) {
   const { format = 'plain', tokens = DEFAULT_TOKENS, profile = {}, colorMode = 'none' } = options;
   const glyph = sanitizeText(def.glyph);
   const label = sanitizeText(def.label);
+  if (label === '') throw new TypeError('a badge needs a non-empty label');
   const text = glyph === '' ? label : `${glyph} ${label}`;
 
   if (format === 'plain') return text;
@@ -97,7 +100,7 @@ export function renderBadge(def, options = {}) {
 
   if (format === 'ansi') {
     if (colorMode === 'none') return text;
-    const token = tokens[def.token];
+    const token = Object.hasOwn(tokens, def.token) ? tokens[def.token] : undefined;
     if (!token) throw new RangeError(`unknown colour token ${JSON.stringify(def.token)}`);
     // An ANSI host theme maps every key to the 16 terminal colours; follow it.
     const depth = profile.ansiTheme ? 'ansi16' : colorMode;

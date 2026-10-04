@@ -124,6 +124,30 @@ test('markdown escapes markdown and HTML metacharacters', () => {
   assert.doesNotMatch(md, /<|>/);
 });
 
+test('a C1 string terminator ends an escape string without swallowing the text after it', () => {
+  assert.equal(sanitizeText('a\u001b]0;t\u009cVISIBLE tail'), 'aVISIBLE tail');
+  assert.equal(sanitizeText('a\u001bPq\u009cVISIBLE tail'), 'aVISIBLE tail');
+  assert.equal(sanitizeText('a\u001b_x\u009cVISIBLE tail'), 'aVISIBLE tail');
+});
+
+test('a hand-built definition whose label sanitizes to empty is refused in every format', () => {
+  for (const format of ['plain', 'ansi', 'markdown']) {
+    assert.throws(
+      () => renderBadge({ glyph: '', label: '\u001b[0m', token: 'info' }, { format, colorMode: 'ansi16' }),
+      TypeError,
+    );
+  }
+});
+
+test('inherited object names are not statuses or tokens', () => {
+  assert.throws(() => defineBadge({ status: 'constructor' }), RangeError);
+  assert.throws(() => defineBadge({ status: 'toString' }), RangeError);
+  assert.throws(
+    () => renderBadge(defineBadge({ glyph: 'x', label: 'y', token: 'toString' }), { format: 'ansi', colorMode: 'ansi16' }),
+    RangeError,
+  );
+});
+
 test('sanitizeText and escapeMarkdown accept non-strings', () => {
   assert.equal(sanitizeText(42), '42');
   assert.equal(sanitizeText(undefined), '');

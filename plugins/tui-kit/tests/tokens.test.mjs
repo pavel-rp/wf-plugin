@@ -66,6 +66,10 @@ test('remap validation: unknown host key, low contrast, unknown tier', () => {
   assert.throws(() => createTokens({ tiers: { 3: '#ffffe0' } }), RangeError); // too light for the light background
   assert.throws(() => createTokens({ tiers: { 3: '#101010' } }), RangeError); // too dark for the dark background
   assert.throws(() => createTokens({ tiers: { 6: 'success' } }), RangeError);
+  // a key the lookup would not read is refused, never silently dropped
+  for (const key of ['1.0', '01', ' 1']) {
+    assert.throws(() => createTokens({ tiers: { [key]: '#2f8fdf' } }), RangeError);
+  }
   assert.doesNotThrow(() => createTokens({ tiers: { 3: { dark: '#ffd75f', light: '#8a6d00' } } }));
 });
 
