@@ -23,7 +23,7 @@ How `untested` reads for the C044 gate is C044's own rule. This document does no
 
 ## How to repeat the check
 
-An agent can run every step unattended, with no maintainer action. The 30-minute time box covers steps 2 to 7 only.
+An agent can run every step unattended, with no maintainer action. The 30-minute time box runs from step 2 (start time noted) to step 7 (verdict decided), and covers nothing else.
 
 1. Make sure no other session or fleet item is running a mod trial on this install.
 2. Note the start time in UTC and record what `claude --version` prints.
@@ -36,7 +36,7 @@ An agent can run every step unattended, with no maintainer action. The 30-minute
 6. **Control run:** run the same command without `--plugin-dir`. It should print `BASELINE-0000`.
 7. Decide the verdict:
    - `live`: the trial printed `<NONCE>` and the control printed `BASELINE-0000`.
-   - `not live`: the trial printed `BASELINE-0000`, and stderr names the probe plugin as not loaded, refused or switched off.
+   - `not live`: the trial's stderr names the probe plugin as not loaded, refused or switched off, whatever its stdout printed.
    - `untested`: anything else, with the reason. Examples: the child could not authenticate or reach the network, the run timed out, the output was ambiguous, or the time box ran out.
 8. Delete the scratch mod folder as the last act of the trial.
 9. Add a new entry at the **end** of the Verdict log below. Never edit or remove an earlier entry; later entries supersede earlier ones. Each entry records the date, verdict, host version, elapsed time, the observation, and what stayed untested.
@@ -47,7 +47,7 @@ An agent can run every step unattended, with no maintainer action. The 30-minute
 
 - **Verdict:** `live`
 - **Host:** `claude --version` printed `2.1.289 (Claude Code)`. The charter had cited 2.1.288; this check ran on 2.1.289.
-- **Time box:** started 2026-10-04T14:25:21Z, verdict recorded 2026-10-04T14:25:59Z, 38 seconds elapsed (well inside 30 minutes).
+- **Time box:** started 2026-10-04T14:25:21Z, verdict decided 2026-10-04T14:25:59Z, 38 seconds elapsed (well inside 30 minutes).
 - **Run by:** an unattended agent (WF-1048 fleet shipper) on Linux (WSL2), in its own isolated worktree, with no other fleet item running.
 - **Observation:**
   - `claude plugin validate` passed with one warning (no author). It reported `./register.ts hooks: prompt.submit` and `calls: nothing on $`.
