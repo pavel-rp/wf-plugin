@@ -16,7 +16,7 @@ A verdict holds only for the install and host release it names. The interface ma
 | Verdict | Meaning | Effect on the cockpit (SUB-7 to SUB-10) |
 |---|---|---|
 | `live` | A mod's hook was seen to run in an unattended session. | Design and build may proceed. |
-| `not live` | The host was seen to refuse, skip or switch off the mod. | Design and build wait. The first `not live` entry's date is when the cockpit started waiting. WF-1055 owns what ends the wait. |
+| `not live` | The trial's stderr showed the host refused, failed to load or switched off the mod. A trial that prints the baseline with no stderr refusal is `untested`, not `not live`. | Design and build wait. The first `not live` entry's date is when the cockpit started waiting. WF-1055 owns what ends the wait. |
 | `untested` | Nothing could be observed unattended, or the 30-minute time box ran out first. The entry gives the reason. | Neither waits nor retires. Design and build proceed, and liveness is recorded as untested. |
 
 How `untested` reads for the C044 gate is C044's own rule. This document does not set it.
