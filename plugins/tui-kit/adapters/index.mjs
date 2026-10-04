@@ -2,8 +2,8 @@
 // side and imports from here.
 
 export { VIEW_KINDS, viewLines, viewText } from './segments.mjs';
-export { readHostProfile } from './host.mjs';
+export { profileFromHost } from './host.mjs';
 export { hostKeyFor } from './draw.mjs';
 export { drawTerminal } from './terminal.mjs';
 export { DISPLAY_ONLY_NOTICE, drawDesktop } from './desktop.mjs';
-export { drawView, shouldMount, openPane } from './mount.mjs';
+export { drawView, shouldMount, planPane } from './mount.mjs';

@@ -1,28 +1,20 @@
-// Host reading: the one place the adapters ask the host for accessibility
-// values and hand them to the kit's profile as plain data.
+// Host values: the accessibility values a mod reads from the host, checked
+// and handed to the kit's profile as plain data.
 //
-// Where each value comes from:
-// - theme and reduced motion: the effective `theme` and `reduceMotion` rows of
-//   `$.config.list()` (a settings key only shows a value some source set);
-// - the reduced-motion fallback and the screen reader: `$.settings.read()`
-//   keys `prefersReducedMotion` and `axScreenReader`;
-// - the screen reader, again: the `CLAUDE_AX_SCREEN_READER` environment value.
-// The `--ax-screen-reader` flag is invisible to a mod, so nothing here can see
-// it; the profile keeps its plain-text-safe default for that reason.
+// The host lets `$` reach only functions declared in the mod's own hooks
+// module, never across an import, so the mod makes the three reads itself
+// and passes their results here:
 //
-// A read that throws, or yields a value of the wrong type, counts as
-// unreachable, and the profile's documented default applies.
+//   const configRows = await $.config.list()                    // theme, reduceMotion rows
+//   const settings = await $.settings.read()                    // prefersReducedMotion, axScreenReader
+//   const screenReaderEnv = await $.env.get('CLAUDE_AX_SCREEN_READER')
+//
+// Each read may fail; pass `undefined` for one that did. A missing or
+// wrongly-typed value counts as unreachable, and the profile's documented
+// default applies. The `--ax-screen-reader` flag is invisible to a mod, so the
+// profile keeps its plain-text-safe default for that reason.
 
 import { resolveProfile } from '../kit/index.mjs';
-
-/** @param {() => Promise<any>} read */
-async function attempt(read) {
-  try {
-    return await read();
-  } catch {
-    return undefined;
-  }
-}
 
 /** @param {unknown} rows @param {string} key */
 function rowValue(rows, key) {
@@ -42,23 +34,23 @@ const asString = (v) => (typeof v === 'string' ? v : undefined);
 const asBoolean = (v) => (typeof v === 'boolean' ? v : undefined);
 
 /**
- * Read the host's accessibility values and resolve the kit profile.
+ * Resolve the kit profile from the host reads a mod made.
  *
- * @param {any} $ the engine interface a hook receives
+ * @param {{ configRows?: unknown, settings?: unknown, screenReaderEnv?: unknown }} [reads]
+ *   the results of `$.config.list()`, `$.settings.read()` and
+ *   `$.env.get('CLAUDE_AX_SCREEN_READER')`, or `undefined` for a read that failed
  * @param {{ screenReaderOff?: boolean }} [options] `screenReaderOff`: the
  *   person's own declared "no screen reader" preference, for example a mod option
- * @returns {Promise<ReturnType<typeof resolveProfile>>}
+ * @returns {ReturnType<typeof resolveProfile>}
  */
-export async function readHostProfile($, options = {}) {
-  const rows = await attempt(() => $.config.list());
-  const settings = await attempt(() => $.settings.read());
-  const env = await attempt(() => $.env.get('CLAUDE_AX_SCREEN_READER'));
+export function profileFromHost(reads = {}, options = {}) {
+  const { configRows, settings, screenReaderEnv } = reads ?? {};
   return resolveProfile({
-    theme: asString(rowValue(rows, 'theme')),
-    reduceMotion: asBoolean(rowValue(rows, 'reduceMotion')),
+    theme: asString(rowValue(configRows, 'theme')),
+    reduceMotion: asBoolean(rowValue(configRows, 'reduceMotion')),
     prefersReducedMotion: asBoolean(ownValue(settings, 'prefersReducedMotion')),
     axScreenReader: asBoolean(ownValue(settings, 'axScreenReader')),
-    axScreenReaderEnv: asString(env),
+    axScreenReaderEnv: asString(screenReaderEnv),
     screenReaderOff: options?.screenReaderOff === true,
   });
 }
