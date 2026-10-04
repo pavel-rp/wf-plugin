@@ -7,6 +7,8 @@ A terminal UI kit for Claude Code mods. It does not depend on the host's mod run
 - makes untrusted text inert;
 - renders a status badge as plain text, ANSI or markdown.
 
+On top of the core sit four composite components: a **panel**, a **list**, a **table** and a **meter**. Each renders to plain text, ANSI or markdown from one definition, and each draws any status it shows with the status badge.
+
 All of it is plain functions, with no mod loaded.
 
 The pack ships **no hooks, skills or agents**. Installing it from the marketplace changes nothing. The kit only acts once a mod copies it in.
@@ -36,9 +38,14 @@ Every kit file is an ES module (`.mjs`) with no `require`, no dynamic `import()`
 | `profile.mjs` | `HOST_THEMES`, `PROFILE_DEFAULTS`, `resolveProfile` | Accessibility profile from plain host values |
 | `sanitize.mjs` | `sanitizeText`, `escapeMarkdown` | Make untrusted text inert |
 | `badge.mjs` | `STATUSES`, `defineBadge`, `renderBadge` | The status badge |
+| `style.mjs` | `FORMATS` (plus internal helpers) | Shared rendering for the components |
+| `panel.mjs` | `definePanel`, `renderPanel` | A titled block of lines |
+| `list.mjs` | `defineList`, `renderList` | Bulleted or numbered items |
+| `table.mjs` | `ALIGNMENTS`, `defineTable`, `renderTable` | Aligned records under headers |
+| `meter.mjs` | `METER_WIDTH`, `defineMeter`, `renderMeter` | A quantity out of a maximum |
 | `index.mjs` | everything above | The public surface |
 
-Later kit modules (composites, adapters) are added as new files beside these, and their exports are appended to `index.mjs`.
+Later kit modules (adapters) are added as new files beside these, and their exports are appended to `index.mjs`.
 
 ## Tokens: inherit before inventing
 
@@ -154,6 +161,88 @@ Badge content can come from anywhere: tool output, file names, branch names. The
 
 Newlines and tabs become single spaces. Markdown output also escapes markdown metacharacters and `& < > "`. A stray sequence can never move the cursor, change the terminal title, open a link or reorder text.
 
+## Components
+
+Every component follows the badge's shape: `define<X>(spec)` checks and sanitizes the input and returns a frozen definition, and `render<X>(def, options)` turns it into a string. The render options are the badge's: `format` (`plain`, the default, or `ansi` or `markdown`), `colorMode`, `profile` and `tokens`. An unknown format throws a `RangeError`.
+
+The same rules hold for all four:
+
+- **One definition, three formats.** The three formats come from one render function. In ANSI, colour is added only to decoration (borders, markers, the table rule, the meter bar) and to badges, never to content. With the colour stripped, the ANSI rendering is exactly the plain one. With `colorMode` `none` (for example under `NO_COLOR`) it emits no escape byte at all.
+- **Statuses are badges.** A `status` is a badge preset name such as `'ok'`, or any spec `defineBadge` accepts. It is drawn with `renderBadge` in the same format and colour context.
+- **Text is made inert.** Every title, line, item, header and cell goes through `sanitizeText`, both at definition and again at render, so a hand-built definition is made inert too. Markdown output escapes it with `escapeMarkdown`, so a `|` inside a table cell is written `\|`.
+- **Empty text is refused.** Text values must be strings or finite numbers. A value with nothing printable left after sanitising throws a `TypeError`, so a component never renders bare markdown syntax such as `****` or an empty `||` cell.
+- **No motion.** No component animates, so a reduced-motion profile changes nothing.
+
+### Panel
+
+```js
+const panel = definePanel({ title: 'Build', status: 'error', body: ['3 tests failed', 'see the log'] });
+renderPanel(panel);
+// ┌ Build — ✗ Error
+// │ 3 tests failed
+// │ see the log
+// └
+renderPanel(panel, { format: 'markdown' });
+// **Build** — ✗ **Error**
+// > 3 tests failed\
+// > see the log
+```
+
+`body` is a string or an array of lines and may be omitted. In markdown, every body line but the last ends in a backslash hard break, so the lines stay separate instead of joining into one paragraph. There is no right border, so the panel never measures text width. In ANSI the border takes the status colour, or `muted` without a status.
+
+### List
+
+```js
+const list = defineList({ items: [{ text: 'lint', status: 'ok' }, { text: 'tests', status: 'error' }, 'docs'] });
+renderList(list);
+// - ✓ OK · lint
+// - ✗ Error · tests
+// - docs
+```
+
+An item is text or `{ text, status }`. `ordered: true` numbers the items (`1.`, `2.`, …). The list must not be empty. In ANSI the markers are `muted`.
+
+### Table
+
+```js
+const table = defineTable({
+  columns: [{ key: 'check', header: 'Check' }, { key: 'result', header: 'Result' }, { key: 'ms', header: 'Time', align: 'right' }],
+  rows: [{ check: 'lint', result: { status: 'ok' }, ms: 12 }, { check: 'tests', result: { status: 'error' }, ms: 340 }],
+});
+renderTable(table);
+// Check  Result   Time
+// -----  -------  ----
+// lint   ✓ OK       12
+// tests  ✗ Error   340
+renderTable(table, { format: 'markdown' });
+// | Check | Result | Time |
+// | --- | --- | ---: |
+// | lint | ✓ **OK** | 12 |
+// | tests | ✗ **Error** | 340 |
+```
+
+`align` is `left` (the default) or `right`, and any other value throws a `RangeError`. A cell is text, a number or a status badge spec. Each cell is read only from the row's **own** property named by the column key. A missing cell, or an inherited name such as `toString`, throws a `TypeError` and is never rendered. `rows` may be empty. In ANSI the rule under the headers is `muted`.
+
+Plain columns are padded by **code-point count**. A wide character, such as an East Asian ideograph or an emoji, still counts as one, so such a column can look ragged in a terminal.
+
+### Meter
+
+```js
+const meter = defineMeter({ label: 'Disk', value: 8, max: 10, status: 'warn' });
+renderMeter(meter);                         // 'Disk ! Warning [████████░░] 80% (8/10)'
+renderMeter(meter, { format: 'markdown' }); // '**Disk** \! **Warning** `████████░░` 80% (8/10)'
+```
+
+- `max` defaults to 100 and must be a finite number above 0.
+- `value` must be a finite number from 0 to `max`.
+- `width`, the bar's length in cells, defaults to 10 and must be an integer from 1 to 100 (`METER_WIDTH`).
+
+Anything else throws a `RangeError`. The bar takes the colour of `token`, else the status badge's colour, else `info`.
+
+The percentage and the value/max always appear as text, so the bar carries no fact of its own. The bar is left out when the profile prefers plain text (`profile.preferPlainText === true`) or a screen reader is on (`profile.screenReader === 'on'`). A reader then hears `Disk ! Warning 80% (8/10)` rather than a run of block characters.
+
+`resolveProfile` sets `preferPlainText` unless the person declared they use no screen reader. So with a resolved profile the bar shows only after that declaration, which matches the documented plain-text-safe default. With no `profile` passed, the bar shows.
+
 ## Tests
 
 ```sh
@@ -166,5 +255,7 @@ The suite runs on plain Node (`node:test`), with no mod and no host runtime, and
 - the colour-mode rules;
 - profile reachability and defaults;
 - the three badge renderings;
-- sanitising;
+- each component's three renderings, its errors and its badge use;
+- that plain equals stripped ANSI for every component, that markdown carries every fact, and that nothing is lost in the daltonized, `NO_COLOR`, reduced-motion and screen-reader profiles;
+- sanitising, including hostile content in every component;
 - a boundary check that the kit imports only its own files and touches no host or runtime global.
