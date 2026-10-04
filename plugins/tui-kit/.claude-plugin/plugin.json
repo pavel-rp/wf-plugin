@@ -6,11 +6,10 @@
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
   },
-  "repository": "https://github.com/pavel-rp/wf-plugin",
   "license": "UNLICENSED",
   "keywords": [
     "tui",
-    "design-tokens",
+    "tokens",
     "accessibility",
     "no-color",
     "mods"
