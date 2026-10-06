@@ -45,10 +45,15 @@ import {
   applyQuestionValues,
   parseQuestionDeclarations,
 } from "./questions.js";
-import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
+import {
+  parsePluginList,
+  scopePluginsToWorkspace,
+  type ParsedPluginList,
+  type PathCanonicalizer,
+} from "./plugin-list.js";
 import { parseCoreConfig, parseRoutingConfig } from "./config.js";
 import { fingerprint } from "./fingerprint.js";
-import { normalizePluginList } from "./freshness.js";
+import { projectPluginList } from "./freshness.js";
 import { CORE_ARTICLES_BODY } from "./constitution-core.js";
 import { coreArticleDriftDiagnostic, detectCoreArticleDrift } from "./constitution-drift.js";
 import {
@@ -81,6 +86,10 @@ export interface ResolverIO {
     maxBytes: number,
   ): ContainedFileReadResult;
   listFiles?(absDir: string): string[];
+  /** Canonicalize a path (realpath), or `null` when it cannot be. OPTIONAL — it
+   *  scopes the plugin inventory to the workspace (WF-1072); a port that omits
+   *  it falls back to a slash-normalized literal comparison. */
+  canonicalizePath?: PathCanonicalizer;
 }
 
 export interface BuildSnapshotInputs {
@@ -171,6 +180,17 @@ export function buildSnapshot(
   const sources: SourceFingerprint[] = [];
 
   const registryPath = normalizeSlashes(inputs.registryPathValue);
+  // Reuse one scoped observation for fingerprints and installed-pack resolution.
+  let pluginList: ParsedPluginList =
+    inputs.pluginListRaw === null
+      ? { plugins: [], contractOk: true, issues: [] }
+      : parsePluginList(inputs.pluginListRaw);
+  if (inputs.pluginListRaw !== null) {
+    pluginList = {
+      ...pluginList,
+      plugins: scopePluginsToWorkspace(pluginList.plugins, workspaceRoot, io.canonicalizePath),
+    };
+  }
 
   // --- source fingerprints for the top-level inputs ------------------------
   sources.push(fingerprint("wf-config", "wf.config.js", inputs.wfConfigContent));
@@ -191,7 +211,9 @@ export function buildSnapshot(
     fingerprint(
       "plugin-list",
       "claude plugin list --json",
-      normalizePluginList(inputs.pluginListRaw),
+      inputs.pluginListRaw === null || !pluginList.contractOk
+        ? inputs.pluginListRaw
+        : projectPluginList(pluginList.plugins),
     ),
   );
   // WF-334: fingerprint the composed constitution record so a project-clause edit
@@ -231,9 +253,7 @@ export function buildSnapshot(
   // as `"[]"` — that would be a false "no plugins installed" fact. Instead it
   // yields an empty installed set plus a warning diagnostic, so a failed CLI is
   // distinguishable from a genuinely empty one.
-  let pluginList: ParsedPluginList;
   if (inputs.pluginListRaw === null) {
-    pluginList = { plugins: [], contractOk: true, issues: [] };
     diagnostics.push({
       severity: "warning",
       code: "plugin-list/cli-unavailable",
@@ -241,7 +261,6 @@ export function buildSnapshot(
         "`claude plugin list --json` could not be run (CLI unavailable or errored); installed-pack facts are unknown for this snapshot. The plugin-list source is recorded as absent rather than an empty result — re-run once the `claude` CLI is available on PATH.",
     });
   } else {
-    pluginList = parsePluginList(inputs.pluginListRaw);
     for (const issue of pluginList.issues) {
       diagnostics.push({ severity: "error", code: issue.code, message: issue.message });
     }

@@ -406,10 +406,20 @@ export function discoverPacks(input: DiscoveryInput): DiscoverPacksResponse {
     diagnostics.push({ pluginId: null, code: issue.code, message: issue.message });
   }
   for (const id of duplicates.ids) {
+    // Name each colliding install's scope (and project, when it is bound to
+    // one) so the operator can see which installs to remove (WF-1072).
+    const entries = input.inventory.plugins
+      .filter((plugin) => plugin.id === id)
+      .map((plugin) =>
+        plugin.projectPath === undefined
+          ? `${plugin.scope}`
+          : `${plugin.scope} (${plugin.projectPath})`,
+      )
+      .join(", ");
     diagnostics.push({
       pluginId: id,
       code: "discovery/duplicate-plugin-id",
-      message: `plugin id \`${id}\` appears more than once in the inventory; the inventory is ambiguous and cannot be classified.`,
+      message: `plugin id \`${id}\` appears more than once in the inventory (${entries}); the inventory is ambiguous and cannot be classified.`,
     });
   }
   for (const name of duplicates.names) {

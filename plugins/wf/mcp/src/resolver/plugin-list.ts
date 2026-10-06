@@ -22,6 +22,10 @@ export interface InstalledPlugin {
   enabled: boolean;
   /** Normalized (forward-slash) install path. */
   installPath: string;
+  /** Normalized (forward-slash) project the install applies to. Present only on
+   *  project-bound (e.g. `local`) installs; the CLI lists every project's such
+   *  installs machine-wide, so it is what `scopePluginsToWorkspace` keys on. */
+  projectPath?: string;
 }
 
 export interface PluginListContractIssue {
@@ -114,6 +118,17 @@ export function parsePluginList(raw: string): ParsedPluginList {
         recOk = false;
       }
     }
+    // `projectPath` is OPTIONAL (absent on user/managed/synced installs) and so
+    // is not a REQUIRED_FIELDS member — but when present it must be a string. A
+    // retyped one rejects the record rather than dropping the field, because a
+    // dropped `projectPath` would silently widen the entry to every workspace.
+    if ("projectPath" in rec && typeof rec.projectPath !== "string") {
+      issues.push({
+        code: "plugin-list/wrong-type",
+        message: `plugin record ${i} field \`projectPath\` should be a string, got ${typeof rec.projectPath} — incompatible CLI output schema.`,
+      });
+      recOk = false;
+    }
     if (!recOk) return;
 
     const id = rec.id as string;
@@ -126,8 +141,43 @@ export function parsePluginList(raw: string): ParsedPluginList {
       scope: rec.scope as string,
       enabled: rec.enabled as boolean,
       installPath: normalizeSlashes(rec.installPath as string),
+      ...(typeof rec.projectPath === "string"
+        ? { projectPath: normalizeSlashes(rec.projectPath) }
+        : {}),
     });
   });
 
   return { plugins, contractOk: issues.length === 0, issues };
+}
+
+/** Canonicalize a path (e.g. realpath), or `null` when it cannot be — a stale
+ *  project path from a removed worktree is the expected case. */
+export type PathCanonicalizer = (path: string) => string | null;
+
+function comparablePath(path: string, canonicalize?: PathCanonicalizer): string {
+  const canonical = canonicalize?.(path) ?? null;
+  return normalizeSlashes(canonical ?? path).replace(/\/+$/, "");
+}
+
+/**
+ * Keep only the installs that apply to `workspaceRoot`. `claude plugin list
+ * --json` reports every project's project-bound installs machine-wide, each
+ * tagged with `projectPath`; ingesting them all makes N stale installs of one
+ * plugin read as a duplicate inventory. An entry WITHOUT `projectPath`
+ * (user/managed/synced scope) applies everywhere and is always kept; an entry
+ * WITH one is kept iff its canonical form equals the canonical workspace root —
+ * exact equality, no ancestor or worktree-family matching. A path the injected
+ * canonicalizer cannot resolve falls back to its slash-normalized literal, so a
+ * stale one simply fails to match. Pure: the caller injects canonicalization.
+ * Duplicates that survive scoping are left for discovery to reject.
+ */
+export function scopePluginsToWorkspace(
+  plugins: readonly InstalledPlugin[],
+  workspaceRoot: string,
+  canonicalize?: PathCanonicalizer,
+): InstalledPlugin[] {
+  const root = comparablePath(workspaceRoot, canonicalize);
+  return plugins.filter(
+    (p) => p.projectPath === undefined || comparablePath(p.projectPath, canonicalize) === root,
+  );
 }

@@ -167,6 +167,7 @@ function refreshIfStale(root: string): void {
     readContainedFile: (capabilityRoot, selectedPath, maxBytes) =>
       fsIO.readContainedFile!(capabilityRoot, selectedPath, maxBytes),
     pluginListRaw: runPluginList(),
+    canonicalizePath: fsIO.canonicalizePath,
     generatorVersion: RESOLVER_GENERATOR.version,
   });
 

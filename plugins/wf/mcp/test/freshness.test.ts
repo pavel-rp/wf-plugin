@@ -269,6 +269,44 @@ test("a cosmetic plugin-list reorder does NOT churn the snapshot (normalized)", 
   assert.equal(res.fresh, true);
 });
 
+test("another project's local-install churn does NOT churn this workspace's snapshot", () => {
+  const ports = makePorts();
+  const snap = snapshotFor(ports);
+  const base = JSON.parse(PLUGIN_LIST) as object[];
+  const foreign = (version: string, projectPath: string) => ({
+    id: "wf-other@m",
+    version,
+    scope: "local",
+    enabled: true,
+    installPath: `/cache/wf-other/${version}`,
+    projectPath,
+  });
+
+  // Foreign local installs appear, multiply, and change version: still fresh.
+  for (const raw of [
+    JSON.stringify([...base, foreign("1.0.0", "/elsewhere")]),
+    JSON.stringify([...base, foreign("1.0.0", "/elsewhere"), foreign("1.0.1", `${WS}/.claude/worktrees/agent-x`)]),
+  ]) {
+    const res = evaluateFreshness(snap, WS, { readFile: (p) => ports.readFile(p), pluginListRaw: raw });
+    assert.equal(res.fresh, true, `foreign churn should stay fresh for ${raw}`);
+  }
+
+  // A local install bound to THIS workspace is a real inventory change.
+  const res = evaluateFreshness(snap, WS, {
+    readFile: (p) => ports.readFile(p),
+    pluginListRaw: JSON.stringify([...base, foreign("1.0.0", WS)]),
+  });
+  assert.equal(res.fresh, false);
+  assert.ok(res.reasons.some((r) => r.code === "plugin-list/changed"));
+});
+
+test("a scoped normalizePluginList still falls back to raw on a contract break", () => {
+  const broken = JSON.stringify([
+    { id: "a@m", version: "1", scope: "local", enabled: true, installPath: "/a", projectPath: 7 },
+  ]);
+  assert.equal(normalizePluginList(broken, { workspaceRoot: WS }), broken);
+});
+
 test("normalizePluginList is order-independent and preserves absence", () => {
   const a = normalizePluginList(
     JSON.stringify([

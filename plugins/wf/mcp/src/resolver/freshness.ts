@@ -22,7 +22,12 @@ import {
   type ContainedFileReadResult,
 } from "./paths.js";
 import { MAX_PROFILE_TEMPLATE_BYTES } from "./questions.js";
-import { parsePluginList } from "./plugin-list.js";
+import {
+  parsePluginList,
+  scopePluginsToWorkspace,
+  type InstalledPlugin,
+  type PathCanonicalizer,
+} from "./plugin-list.js";
 import {
   RESOLVER_GENERATOR,
   SNAPSHOT_SCHEMA_VERSION,
@@ -55,6 +60,10 @@ export interface FreshnessProbe {
    *  against. `undefined` = skip inventory validation (file/schema only);
    *  `null` = the CLI was unavailable (a recorded absence to compare). */
   pluginListRaw?: string | null;
+  /** Canonicalizer used to scope the plugin inventory to the workspace — the
+   *  same one the snapshot builder used, so the recomputed fingerprint is
+   *  comparable to the recorded one. Omitted = slash-normalized literal match. */
+  canonicalizePath?: PathCanonicalizer;
   /** Current resolver generator version, to detect a runtime upgrade. Defaults
    *  to the bundled `RESOLVER_GENERATOR.version`. */
   generatorVersion?: string;
@@ -137,15 +146,26 @@ function profileTemplateContent(
   return read.status === "ok" ? read.content : null;
 }
 
+/** The workspace a plugin inventory is scoped to before projection. */
+export interface PluginListScope {
+  workspaceRoot: string;
+  canonicalize?: PathCanonicalizer;
+}
+
 /**
  * Normalize `claude plugin list --json` to a stable projection for
  * fingerprinting add/remove/enable/disable — order-independent, dropping any
  * cosmetic field the resolver does not depend on. A `null` raw (CLI
  * unavailable) stays `null` (a recorded absence). Unparseable / contract-broken
  * output falls back to the raw text so a drift is still detected rather than
- * masked as an empty inventory.
+ * masked as an empty inventory. With a `scope`, only the installs that apply to
+ * that workspace are projected (WF-1072), so another project's local-install
+ * churn never invalidates this workspace's snapshot.
  */
-export function normalizePluginList(raw: string | null): string | null {
+export function normalizePluginList(
+  raw: string | null,
+  scope?: PluginListScope,
+): string | null {
   if (raw === null) return null;
   const parsed = parsePluginList(raw);
   // Fall back to the raw text on ANY contract break — not only a fully empty
@@ -158,7 +178,15 @@ export function normalizePluginList(raw: string | null): string | null {
   if (!parsed.contractOk) {
     return raw;
   }
-  const projected = parsed.plugins
+  const plugins = scope
+    ? scopePluginsToWorkspace(parsed.plugins, scope.workspaceRoot, scope.canonicalize)
+    : parsed.plugins;
+  return projectPluginList(plugins);
+}
+
+/** Stable fingerprint projection of an already-parsed, workspace-scoped inventory. */
+export function projectPluginList(plugins: readonly InstalledPlugin[]): string {
+  const projected = plugins
     .map((p) => ({
       id: p.id,
       name: p.name,
@@ -228,7 +256,10 @@ export function evaluateFreshness(
     const now = fingerprint(
       "plugin-list",
       "claude plugin list --json",
-      normalizePluginList(probe.pluginListRaw),
+      normalizePluginList(probe.pluginListRaw, {
+        workspaceRoot,
+        canonicalize: probe.canonicalizePath,
+      }),
     );
     if (!recorded || now.present !== recorded.present || now.sha256 !== recorded.sha256) {
       reasons.push({

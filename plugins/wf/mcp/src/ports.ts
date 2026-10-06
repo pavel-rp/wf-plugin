@@ -44,8 +44,9 @@ import {
   readSnapshot,
   writeSnapshot,
   runPluginList,
+  canonicalizePathOrNull,
 } from "./resolver/index.js";
-import { parsePluginList } from "./resolver/plugin-list.js";
+import { parsePluginList, scopePluginsToWorkspace } from "./resolver/plugin-list.js";
 import { joinSlash, normalizeSlashes } from "./resolver/paths.js";
 import type { PayloadTargetResolution } from "./resolver/payload-plan.js";
 import {
@@ -510,7 +511,10 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
       if (raw === null) return { plugins: [], ok: false, contractOk: true, issues: [] };
       const parsed = parsePluginList(raw);
       return {
-        plugins: parsed.plugins,
+        // Only the installs that apply to this workspace (WF-1072): discovery,
+        // inspection and planning all read this list, so scoping it here keeps
+        // another project's local installs out of every one of them.
+        plugins: scopePluginsToWorkspace(parsed.plugins, workspaceRoot, canonicalizePathOrNull),
         ok: true,
         contractOk: parsed.contractOk,
         issues: parsed.issues,
