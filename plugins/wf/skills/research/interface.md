@@ -60,7 +60,7 @@ _(none)_
 **Allowed:** read any file in the workspace; `WebSearch`/`WebFetch`; dispatch the
 `wf:research-gatherer` and `wf:research-challenger` subagents behind their own
 routing decisions; write only under `{task-root}/<research-id>__<slug>/` plus one
-new charter `00_intake.md` in Phase 7; invoke `/wf:index`; resolve the
+new charter `00_intake.md` in Phase 7; update the per-artifact index rows; resolve the
 `research.publish` slot via `resolve_content({ workspaceRoot, ... })`
 (`class: slot`, `skill: research`) — one call per pass — and, only on a
 `composed` outcome, follow the served body as prose in this skill's own context,

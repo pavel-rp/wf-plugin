@@ -59,7 +59,7 @@ _(none)_
 
 **Allowed:** read any file in the project; read-only resolution via
 `current-branch-query`; dispatch the `wf:branch` subagent for the branch gate;
-invoke `/wf:index`; write `06_qa.md` only inside the resolved task folder; request
+update the per-task index row; write `06_qa.md` only inside the resolved task folder; request
 the phase receipt; resolve the `qa-gen.publish` slot via
 `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: qa-gen`) — one
 call per run — and, only on a `composed` outcome, follow the served body as
