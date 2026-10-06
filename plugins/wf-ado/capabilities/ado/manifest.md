@@ -66,8 +66,11 @@ publishes a finished research pass's `01_findings.md` and `02_verdict.md` togeth
 standalone** `Research:` work item (every verdict, `Not practical` included — never a task child,
 an implementation task or a charter). `qa-gen.publish` publishes only `06_qa.md` as a `QA plan:`
 child of the task's existing umbrella — never `07_qa-report.md`. Unlike the single-shot artifact
-fills, both **refresh**: each keeps its item id in its own publication record, written immediately
-after the create returns, and every later pass `update`s that item instead of creating another.
+fills, both **refresh**: each persists a pending-create marker before external creation and
+replaces it with the returned item id immediately, before later operations. A failed marker write
+prevents create; a failed identity save retains the marker so retry fails closed. Every later
+pass with a completed identity `update`s that item instead of creating another. Outbound copies
+omit only model-attribution metadata; substantive content and local artifacts stay unchanged.
 They bind only `get`, `create_umbrella`, `create_child`, `update` and `set_status`.
 
 **Authored to parity, not live-tested.** The seven conveyor fills are structurally mirrored from
