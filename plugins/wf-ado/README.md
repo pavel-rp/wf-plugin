@@ -14,10 +14,11 @@ dispatch to.
 
 | Item | What it is |
 |---|---|
-| `capabilities/ado/manifest.md` | the `ado` capability's manifest — one `provider` fragment row scoped `tracker`, seven `slot` fill rows, and one declared profile template |
+| `capabilities/ado/manifest.md` | the `ado` capability's manifest — one `provider` fragment row scoped `tracker`, nine `slot` fill rows, and one declared profile template |
 | `capabilities/ado/profile.template.json` | project-configuration metadata declaring exactly two ordered string questions: ADO Organization, then ADO Project; `work-item-id-prefix: ADO` remains ordinary non-question data |
 | `capabilities/ado/fragments/tracker.md` | the inline reference doc binding all thirteen tracker operations to Azure DevOps mechanics, with a completeness coverage table |
-| seven `capabilities/ado/fragments/*-*.md` slot fills | the conveyor tracker mirror — `spec.questions`, `spec.publish`, `plan.publish`, `tasks.publish`, `implement.start`, `implement.milestone`, `implement.finish` |
+| nine `capabilities/ado/fragments/*-*.md` slot fills | the conveyor tracker mirror — `spec.questions`, `spec.publish`, `plan.publish`, `tasks.publish`, `implement.start`, `implement.milestone`, `implement.finish` — plus the completion publishers `research.publish` and `qa-gen.publish` |
+| `capabilities/ado/fixtures/run.sh` | the capability's deterministic structural fixture suite, run by CI's per-capability fixtures step |
 | `/wf-ado:init` | a compatibility alias onto the shared setup lifecycle — it seeds `wf-ado` into the canonical `/wf:init` selection round and relays what comes back; it runs no interview and performs no registry write of its own |
 
 ## Declared project questions
@@ -44,7 +45,19 @@ checkpoint to its comment thread, then closes it and moves the umbrella to the a
 state. Every fill binds only operations the tracker contract already defines — no contract
 extension.
 
-> **⚠ Authored to parity, not live-tested.** The seven fills mirror the `wf-linear` fills
+## Completion publishing (two refreshing slot fills)
+
+With `ado` registered, a finished `/wf:research` pass publishes its findings and verdict together
+as one standalone `Research:` work item (every verdict, `Not practical` included — no
+implementation task, no charter), and `/wf:qa-gen` publishes only `06_qa.md` as a `QA plan:` child
+of the task's umbrella (never a run report). Each fill records the item id in its own publication
+record immediately after creating it, and every later pass refreshes that same item instead of
+creating a duplicate. A publishing failure only warns; the local artifacts stay authoritative.
+These two fills are verified structurally only (review, registry validation and
+`capabilities/ado/fixtures/run.sh`) — like the conveyor fills, no live Azure DevOps run has
+exercised them.
+
+> **⚠ Authored to parity, not live-tested.** The seven conveyor fills mirror the `wf-linear` fills
 > structurally and are verified by fragment/contract review plus registry validation only —
 > **no live Azure DevOps run has exercised them.** Confirm the child-creation response shape,
 > the tag patch, and each state name against your project's process template before relying on

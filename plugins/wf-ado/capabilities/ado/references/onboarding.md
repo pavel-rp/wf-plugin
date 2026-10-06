@@ -196,6 +196,48 @@ The WF-413 review found **no genuinely missing operation**: every op the Linear 
 grounded ADO counterpart. C021 expects zero contract extensions; a genuinely missing operation must
 be flagged on the charter umbrella, never slipped in.
 
+## The two completion-publishing fills (WF-1079, charter C045)
+
+> **Authored to contract — NOT live-tested.** `fragments/research-publish.md` and
+> `fragments/qa-gen-publish.md` are written against the core `research` and `qa-gen` interface
+> declarations (`plugins/wf/skills/research/interface.md`, `plugins/wf/skills/qa-gen/interface.md`)
+> and verified by review, registry validation and the deterministic structural suite in
+> `../fixtures/run.sh` only. No live Azure DevOps run, and no mocked call-count harness, has
+> exercised them: the fills are prose a host follows, so create/update counts are asserted
+> structurally (which operation each path may name), not observed.
+
+`research.publish` and `qa-gen.publish` (WF-1077) fire when a research pass or a test plan is
+finished. Both are `replace` fills and both bind only contract operations.
+
+**What each publishes.** Research publishes `01_findings.md` and `02_verdict.md` together, verbatim,
+as **one standalone** `Research:` work item minted with `create_umbrella` — research has no task, so
+it has no umbrella to hang beneath, and it is never a task child. Every verdict is published,
+`Not practical` included; publishing creates no implementation task and seeds or adopts no
+charter. QA publishes **only** `06_qa.md` as a `QA plan:` child of the task's existing umbrella
+(resolved read-only from a recorded `**Tracker umbrella:**` line, else a successful `get`); it never
+reads or publishes `07_qa-report.md`. With no resolvable umbrella it reports `failed` rather than
+minting one, because its write scope forbids recording a guard line in a task artifact.
+
+**Why these two refresh instead of single-shot.** The conveyor artifact fills return immediately
+when their guard line exists, because their artifacts are written once per task. Research is
+re-run (supersession moves the old pair aside) and test plans are regenerated, so a single-shot
+guard would leave the tracker stale and a guard-less create would duplicate. Each fill instead
+keeps its item id in its own `<publication-record>` — the one file core hands it to write, which
+core never moves or deletes — and every later pass `update`s that item. A record that exists but
+cannot be read fails closed: nothing is created, because creating is exactly how a duplicate is
+made.
+
+**Why the record is written immediately after create.** WF-1077's operational audit found the
+interface does not require ordering. These fills do: the record is written the moment the create
+returns an id, **before** tagging, status or anything else that can fail. A later failure then
+leaves the identity on disk, so a retry refreshes the same item. A failed refresh leaves the record
+untouched for the same reason. Removing a record to publish afresh is an operator choice the fills
+never make.
+
+**Receipt freshness.** `qa-gen` files its phase receipt against `06_qa.md`'s digest before the slot
+fires. The QA fill never writes `06_qa.md`, so the receipt stays `artifactState: fresh` on every
+outcome — first publish, refresh, failure after recording, and retry.
+
 ## Version history
 
 - **WF-123** — initial tracker-provider capability, binding SUB-2/WF-121's `tracker` contract
@@ -225,3 +267,7 @@ be flagged on the charter umbrella, never slipped in.
 - **WF-441** — declare the existing ADO Organization and ADO Project interview as two ordered
   profile-template questions while retaining `work-item-id-prefix: ADO` as ordinary data and leaving
   `/wf-ado:init` execution unchanged.
+- **WF-1079** (charter C045) — two completion-publishing `slot` fills added:
+  `fragments/research-publish.md` (`research.publish`, `replace`) and
+  `fragments/qa-gen-publish.md` (`qa-gen.publish`, `replace`), refreshing a recorded publication
+  instead of single-shot, plus the structural fixture suite `fixtures/run.sh`. Not live-tested.
