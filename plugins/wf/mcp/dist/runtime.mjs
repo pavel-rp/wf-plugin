@@ -21548,7 +21548,7 @@ function applyQuestionValues(questions, inputs) {
 
 // src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 4;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.0" };
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.1" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 var PLAN_ENVELOPE_VERSION = 1;
 var APPLY_ENVELOPE_VERSION = 1;
@@ -24212,6 +24212,13 @@ function parsePluginList(raw) {
         recOk = false;
       }
     }
+    if ("projectPath" in rec && typeof rec.projectPath !== "string") {
+      issues.push({
+        code: "plugin-list/wrong-type",
+        message: `plugin record ${i} field \`projectPath\` should be a string, got ${typeof rec.projectPath} \u2014 incompatible CLI output schema.`
+      });
+      recOk = false;
+    }
     if (!recOk) return;
     const id = rec.id;
     const atIndex = id.indexOf("@");
@@ -24222,10 +24229,21 @@ function parsePluginList(raw) {
       version: rec.version,
       scope: rec.scope,
       enabled: rec.enabled,
-      installPath: normalizeSlashes(rec.installPath)
+      installPath: normalizeSlashes(rec.installPath),
+      ...typeof rec.projectPath === "string" ? { projectPath: normalizeSlashes(rec.projectPath) } : {}
     });
   });
   return { plugins, contractOk: issues.length === 0, issues };
+}
+function comparablePath(path, canonicalize) {
+  const canonical2 = canonicalize?.(path) ?? null;
+  return normalizeSlashes(canonical2 ?? path).replace(/\/+$/, "");
+}
+function scopePluginsToWorkspace(plugins, workspaceRoot, canonicalize) {
+  const root = comparablePath(workspaceRoot, canonicalize);
+  return plugins.filter(
+    (p) => p.projectPath === void 0 || comparablePath(p.projectPath, canonicalize) === root
+  );
 }
 
 // src/resolver/config.ts
@@ -24415,13 +24433,17 @@ function profileTemplateContent(snapshot, workspaceRoot, source, probe) {
   );
   return read.status === "ok" ? read.content : null;
 }
-function normalizePluginList(raw) {
+function normalizePluginList(raw, scope) {
   if (raw === null) return null;
   const parsed = parsePluginList(raw);
   if (!parsed.contractOk) {
     return raw;
   }
-  const projected = parsed.plugins.map((p) => ({
+  const plugins = scope ? scopePluginsToWorkspace(parsed.plugins, scope.workspaceRoot, scope.canonicalize) : parsed.plugins;
+  return projectPluginList(plugins);
+}
+function projectPluginList(plugins) {
+  const projected = plugins.map((p) => ({
     id: p.id,
     name: p.name,
     version: p.version,
@@ -24466,7 +24488,10 @@ function evaluateFreshness(snapshot, workspaceRoot, probe) {
     const now = fingerprint(
       "plugin-list",
       "claude plugin list --json",
-      normalizePluginList(probe.pluginListRaw)
+      normalizePluginList(probe.pluginListRaw, {
+        workspaceRoot,
+        canonicalize: probe.canonicalizePath
+      })
     );
     if (!recorded || now.present !== recorded.present || now.sha256 !== recorded.sha256) {
       reasons.push({
@@ -24793,6 +24818,13 @@ function buildSnapshot(inputs, io) {
   const diagnostics = [];
   const sources = [];
   const registryPath = normalizeSlashes(inputs.registryPathValue);
+  let pluginList = inputs.pluginListRaw === null ? { plugins: [], contractOk: true, issues: [] } : parsePluginList(inputs.pluginListRaw);
+  if (inputs.pluginListRaw !== null) {
+    pluginList = {
+      ...pluginList,
+      plugins: scopePluginsToWorkspace(pluginList.plugins, workspaceRoot, io.canonicalizePath)
+    };
+  }
   sources.push(fingerprint("wf-config", "wf.config.js", inputs.wfConfigContent));
   sources.push(fingerprint("registry", registryPath, inputs.registryContent));
   if (registryPath !== "_local/config.md") {
@@ -24802,7 +24834,7 @@ function buildSnapshot(inputs, io) {
     fingerprint(
       "plugin-list",
       "claude plugin list --json",
-      normalizePluginList(inputs.pluginListRaw)
+      inputs.pluginListRaw === null || !pluginList.contractOk ? inputs.pluginListRaw : projectPluginList(pluginList.plugins)
     )
   );
   const constitutionRecord = io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"));
@@ -24817,16 +24849,13 @@ function buildSnapshot(inputs, io) {
   const configMarkdown = inputs.coreConfigContent ?? inputs.registryContent ?? "";
   const coreConfig = parseCoreConfig(configMarkdown);
   const routing = parseRoutingConfig(configMarkdown);
-  let pluginList;
   if (inputs.pluginListRaw === null) {
-    pluginList = { plugins: [], contractOk: true, issues: [] };
     diagnostics.push({
       severity: "warning",
       code: "plugin-list/cli-unavailable",
       message: "`claude plugin list --json` could not be run (CLI unavailable or errored); installed-pack facts are unknown for this snapshot. The plugin-list source is recorded as absent rather than an empty result \u2014 re-run once the `claude` CLI is available on PATH."
     });
   } else {
-    pluginList = parsePluginList(inputs.pluginListRaw);
     for (const issue3 of pluginList.issues) {
       diagnostics.push({ severity: "error", code: issue3.code, message: issue3.message });
     }
@@ -25545,10 +25574,18 @@ function listFilesOrEmpty(absDir) {
     return [];
   }
 }
+function canonicalizePathOrNull(path) {
+  try {
+    return normalizeSlashes(realpathSync2(path));
+  } catch {
+    return null;
+  }
+}
 var fsIO = {
   readFile: readOrNull,
   readContainedFile: readContainedCapabilityFile,
-  listFiles: listFilesOrEmpty
+  listFiles: listFilesOrEmpty,
+  canonicalizePath: canonicalizePathOrNull
 };
 function extractRegistryPathRaw(wfConfig) {
   if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
@@ -27378,7 +27415,10 @@ function createDefaultPorts(workspaceRoot) {
       if (raw === null) return { plugins: [], ok: false, contractOk: true, issues: [] };
       const parsed = parsePluginList(raw);
       return {
-        plugins: parsed.plugins,
+        // Only the installs that apply to this workspace (WF-1072): discovery,
+        // inspection and planning all read this list, so scoping it here keeps
+        // another project's local installs out of every one of them.
+        plugins: scopePluginsToWorkspace(parsed.plugins, workspaceRoot, canonicalizePathOrNull),
         ok: true,
         contractOk: parsed.contractOk,
         issues: parsed.issues
@@ -29902,10 +29942,13 @@ function discoverPacks(input) {
     diagnostics.push({ pluginId: null, code: issue3.code, message: issue3.message });
   }
   for (const id of duplicates.ids) {
+    const entries = input.inventory.plugins.filter((plugin) => plugin.id === id).map(
+      (plugin) => plugin.projectPath === void 0 ? `${plugin.scope}` : `${plugin.scope} (${plugin.projectPath})`
+    ).join(", ");
     diagnostics.push({
       pluginId: id,
       code: "discovery/duplicate-plugin-id",
-      message: `plugin id \`${id}\` appears more than once in the inventory; the inventory is ambiguous and cannot be classified.`
+      message: `plugin id \`${id}\` appears more than once in the inventory (${entries}); the inventory is ambiguous and cannot be classified.`
     });
   }
   for (const name of duplicates.names) {

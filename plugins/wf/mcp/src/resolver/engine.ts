@@ -257,11 +257,22 @@ function listFilesOrEmpty(absDir: string): string[] {
   }
 }
 
+/** Realpath a path to its forward-slash form, or `null` when it cannot be
+ *  resolved (e.g. a stale project path from a removed worktree). */
+export function canonicalizePathOrNull(path: string): string | null {
+  try {
+    return normalizeSlashes(realpathSync(path));
+  } catch {
+    return null;
+  }
+}
+
 /** Real read-only IO port backed by the filesystem. */
 export const fsIO: ResolverIO = {
   readFile: readOrNull,
   readContainedFile: readContainedCapabilityFile,
   listFiles: listFilesOrEmpty,
+  canonicalizePath: canonicalizePathOrNull,
 };
 
 /** Extract the configured value verbatim (apart from surrounding whitespace). */

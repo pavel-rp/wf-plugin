@@ -1,0 +1,94 @@
+[
+  {
+    "id": "wf@wf-marketplace",
+    "version": "0.175.9",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/dev/.claude/plugins/cache/wf-marketplace/wf/0.175.9",
+    "installedAt": "2026-09-01T10:00:00.000Z",
+    "lastUpdated": "2026-10-01T10:00:00.000Z",
+    "projectEnabled": false
+  },
+  {
+    "id": "wf-git@wf-marketplace",
+    "version": "0.13.3",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/dev/.claude/plugins/cache/wf-marketplace/wf-git/0.13.3",
+    "installedAt": "2026-09-01T10:00:00.000Z",
+    "lastUpdated": "2026-10-01T10:00:00.000Z",
+    "projectEnabled": false
+  },
+  {
+    "id": "wf-linear@wf-marketplace",
+    "version": "0.12.1",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/dev/.claude/plugins/cache/wf-marketplace/wf-linear/0.12.1",
+    "installedAt": "2026-09-01T10:00:00.000Z",
+    "lastUpdated": "2026-10-01T10:00:00.000Z",
+    "projectEnabled": false
+  },
+  {
+    "id": "wf-postmortem@wf-marketplace",
+    "version": "0.9.10",
+    "scope": "local",
+    "enabled": true,
+    "installPath": "/home/dev/.claude/plugins/cache/wf-marketplace/wf-postmortem/0.9.10",
+    "installedAt": "2026-09-20T10:00:00.000Z",
+    "lastUpdated": "2026-10-01T10:00:00.000Z",
+    "projectEnabled": false,
+    "projectPath": "/ws/project"
+  },
+  {
+    "id": "wf-postmortem@wf-marketplace",
+    "version": "0.9.9",
+    "scope": "local",
+    "enabled": true,
+    "installPath": "/home/dev/.claude/plugins/cache/wf-marketplace/wf-postmortem/0.9.9",
+    "installedAt": "2026-09-20T10:00:00.000Z",
+    "lastUpdated": "2026-10-01T10:00:00.000Z",
+    "projectEnabled": false,
+    "projectPath": "/ws/project/.claude/worktrees/agent-a1/_local/T-1"
+  },
+  {
+    "id": "wf-postmortem@wf-marketplace",
+    "version": "0.9.10",
+    "scope": "local",
+    "enabled": true,
+    "installPath": "/home/dev/.claude/plugins/cache/wf-marketplace/wf-postmortem/0.9.10",
+    "installedAt": "2026-09-20T10:00:00.000Z",
+    "lastUpdated": "2026-10-01T10:00:00.000Z",
+    "projectEnabled": false,
+    "projectPath": "/ws/project/.claude/worktrees/agent-a2"
+  },
+  {
+    "id": "wf-postmortem@wf-marketplace",
+    "version": "0.9.10",
+    "scope": "local",
+    "enabled": true,
+    "installPath": "/home/dev/.claude/plugins/cache/wf-marketplace/wf-postmortem/0.9.10",
+    "installedAt": "2026-09-20T10:00:00.000Z",
+    "lastUpdated": "2026-10-01T10:00:00.000Z",
+    "projectEnabled": false,
+    "projectPath": "/ws/project/.claude/worktrees/agent-a3"
+  },
+  {
+    "id": "wf-postmortem@wf-marketplace",
+    "version": "0.9.10",
+    "scope": "local",
+    "enabled": true,
+    "installPath": "/home/dev/.claude/plugins/cache/wf-marketplace/wf-postmortem/0.9.10",
+    "installedAt": "2026-09-20T10:00:00.000Z",
+    "lastUpdated": "2026-10-01T10:00:00.000Z",
+    "projectEnabled": false,
+    "projectPath": "/ws/other-project"
+  },
+  {
+    "id": "engineering@synced",
+    "version": "1.2.0",
+    "scope": "synced",
+    "enabled": true,
+    "installPath": "/home/dev/.claude/plugins/cache/synced/engineering/1.2.0"
+  }
+]

@@ -16,6 +16,8 @@ import { tmpdir } from "node:os";
 import { normalizeSlashes } from "../src/resolver/paths.js";
 import { resolveSnapshot, extractRegistryPath } from "../src/resolver/engine.js";
 import { buildSnapshot, type BuildSnapshotInputs } from "../src/resolver/resolve.js";
+import { fingerprint } from "../src/resolver/fingerprint.js";
+import { normalizePluginList } from "../src/resolver/freshness.js";
 import {
   writeSnapshot,
   readSnapshot,
@@ -228,7 +230,12 @@ test("core config values are recorded", () => {
 // --- plugin-list CLI-failure vs empty output ------------------------------
 
 test("a CLI failure (null plugin-list) records the source as absent + a diagnostic", () => {
-  const snap = buildSnapshot(makeInputs(null), makeIO());
+  const snap = buildSnapshot(makeInputs(null), {
+    ...makeIO(),
+    canonicalizePath: () => {
+      assert.fail("an unavailable inventory must not be scoped");
+    },
+  });
 
   // The plugin-list source is a recorded ABSENCE — never a fake present "[]".
   const src = snap.sources.find((s) => s.kind === "plugin-list");
@@ -261,6 +268,61 @@ test("a real empty '[]' plugin-list stays contract-clean: present source, zero p
   assert.ok(!snap.packs.some((p) => p.enablement !== "unknown"));
   assert.ok(!snap.diagnostics.some((d) => d.code === "plugin-list/cli-unavailable"));
   assert.ok(!snap.diagnostics.some((d) => d.code === "plugin-list/unparseable"));
+});
+
+test("snapshot fingerprinting and pack resolution reuse one scoped inventory", () => {
+  const raw = readFileSync(join(FIX, "local-scope-multi-project.json"), "utf8");
+  const entries = JSON.parse(raw) as { id: string; projectPath?: string }[];
+  const workspaceRoot = "/link/project";
+  const canonical = (path: string) =>
+    path === workspaceRoot ? "/ws/project" : path.replace(/\/+$/, "");
+  const calls: string[] = [];
+  const snap = buildSnapshot(
+    { ...makeInputs(raw), workspaceRoot },
+    {
+      ...makeIO(),
+      canonicalizePath: (path) => {
+        calls.push(path);
+        return canonical(path);
+      },
+    },
+  );
+
+  assert.deepEqual(calls, [
+    workspaceRoot,
+    ...entries.flatMap((entry) => entry.projectPath === undefined ? [] : [entry.projectPath]),
+  ]);
+  assert.deepEqual(
+    snap.packs.filter((pack) => pack.scope !== null).map((pack) => pack.pluginId),
+    entries
+      .filter((entry) => entry.projectPath === undefined || canonical(entry.projectPath) === "/ws/project")
+      .map((entry) => entry.id),
+  );
+  assert.deepEqual(
+    snap.sources.find((source) => source.kind === "plugin-list"),
+    fingerprint("plugin-list", "claude plugin list --json", normalizePluginList(raw, {
+      workspaceRoot,
+      canonicalize: canonical,
+    })),
+  );
+});
+
+test("snapshot fingerprinting preserves raw malformed and partial inventories", () => {
+  const partial = JSON.stringify([
+    ...JSON.parse(pluginListRaw),
+    { id: "wf-broken@m", version: "1", scope: "local", enabled: true, installPath: "/cache/broken", projectPath: 7 },
+  ]);
+  for (const raw of ["not JSON", partial]) {
+    const snap = buildSnapshot(makeInputs(raw), makeIO());
+    assert.deepEqual(
+      snap.sources.find((source) => source.kind === "plugin-list"),
+      fingerprint("plugin-list", "claude plugin list --json", raw),
+    );
+    assert.ok(snap.diagnostics.some((diagnostic) =>
+      diagnostic.code.startsWith("plugin-list/") && diagnostic.severity === "error",
+    ));
+    assert.ok(!snap.packs.some((pack) => pack.pluginId === "wf-broken@m"));
+  }
 });
 
 // --- registryPath normalization -------------------------------------------

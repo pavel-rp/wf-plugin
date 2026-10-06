@@ -10,7 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -28,7 +28,7 @@ import {
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
 import { resolveSnapshot } from "../src/resolver/engine.js";
 import { sha256Hex } from "../src/resolver/fingerprint.js";
-import { parsePluginList } from "../src/resolver/plugin-list.js";
+import { parsePluginList, scopePluginsToWorkspace } from "../src/resolver/plugin-list.js";
 import {
   RESOLVER_GENERATOR,
   type MachineBindingEvidence,
@@ -310,6 +310,81 @@ test("duplicate rejection precedes classification — no plugin root is consulte
     }),
   );
   assert.deepEqual(out.packs, []);
+});
+
+// --- WF-1072: project-bound installs from other workspaces -----------------
+
+const MULTI_PROJECT = readFileSync(
+  join(
+    process.env.WF_MCP_DIR ?? process.cwd(),
+    "test/fixtures/plugin-list/local-scope-multi-project.json",
+  ),
+  "utf8",
+);
+
+/** The inventory exactly as `listPlugins` hands it to discovery: parsed, then
+ *  scoped to the workspace root. */
+function scopedInventory(workspaceRoot: string): DiscoveryInput["inventory"] {
+  const parsed = parsePluginList(MULTI_PROJECT);
+  return {
+    ok: true,
+    contractOk: parsed.contractOk,
+    issues: parsed.issues,
+    plugins: scopePluginsToWorkspace(parsed.plugins, workspaceRoot),
+  };
+}
+
+test("other projects' local installs of one plugin no longer invalidate the inventory", () => {
+  const out = discoverPacks(input({ workspaceRoot: "/ws/project", inventory: scopedInventory("/ws/project"), packs: [] }));
+  assert.equal(out.inventory.confidence, "trustworthy");
+  assert.ok(!out.diagnostics.some((d) => d.code.startsWith("discovery/duplicate-")));
+  assert.equal(
+    scopedInventory("/ws/project").plugins.filter((p) => p.id === "wf-postmortem@wf-marketplace")
+      .length,
+    1,
+  );
+});
+
+test("a workspace none of the local installs belong to sees zero of them and stays trustworthy", () => {
+  const inventory = scopedInventory("/ws/unrelated");
+  const out = discoverPacks(input({ workspaceRoot: "/ws/unrelated", inventory, packs: [] }));
+  assert.equal(out.inventory.confidence, "trustworthy");
+  assert.ok(!out.diagnostics.some((d) => d.code.startsWith("discovery/duplicate-")));
+  assert.equal(inventory.plugins.filter((p) => p.id === "wf-postmortem@wf-marketplace").length, 0);
+});
+
+test("a user install plus a local install for THIS workspace is still ambiguous", () => {
+  const plugins = scopePluginsToWorkspace(
+    [
+      { ...installedPlugin(), scope: "user" },
+      { ...installedPlugin({ installPath: "/cache/wf-demo/2" }), scope: "local", projectPath: "/ws" },
+    ],
+    "/ws",
+  );
+  assert.equal(plugins.length, 2);
+  const out = discoverPacks(
+    input({ inventory: { ok: true, contractOk: true, issues: [], plugins } }),
+  );
+  assert.equal(out.inventory.confidence, "invalid");
+  assert.deepEqual(out.packs, []);
+  const dup = out.diagnostics.find((d) => d.code === "discovery/duplicate-plugin-id");
+  assert.ok(dup);
+  assert.ok(dup.message.includes("user"));
+  assert.ok(dup.message.includes("local (/ws)"));
+  assert.ok(out.diagnostics.some((d) => d.code === "discovery/duplicate-plugin-name"));
+  assert.ok(out.diagnostics.some((d) => d.code === "discovery/inventory-invalid"));
+});
+
+test("two unbound installs of one id survive scoping and are still rejected", () => {
+  const plugins = scopePluginsToWorkspace([installedPlugin(), installedPlugin()], "/ws");
+  const out = discoverPacks(
+    input({ inventory: { ok: true, contractOk: true, issues: [], plugins } }),
+  );
+  assert.equal(out.inventory.confidence, "invalid");
+  assert.deepEqual(out.packs, []);
+  const dup = out.diagnostics.find((d) => d.code === "discovery/duplicate-plugin-id");
+  assert.ok(dup);
+  assert.ok(dup.message.includes("(user, user)"));
 });
 
 // --- criteria 2, 3, 9: the overlay is a total function of the comparison -----

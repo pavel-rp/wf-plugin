@@ -411,8 +411,8 @@ stop the run on it.
   or the registry as a substitute.
 - **`recovery.proceeded: false` at discovery:** halt with `INIT — stopped` —
   nothing may be read or shown from an unrecovered baseline.
-- **Non-trustworthy inventory:** absence is unknown, not established — report
-  confidence and never call a pack orphaned.
+- **Non-trustworthy inventory:** absence is unknown — report confidence, never call a pack orphaned.
+- **`discovery/duplicate-plugin-id`:** two installs of one plugin apply here; the message names each scope/project. Uninstall the redundant one at that scope (`--scope local` from the named project), then re-run `/wf:init`.
 - **Every pack reports `selectable: false`:** the normal fresh-workspace state,
   not an empty offer. Key availability on `enablement`/`presence`.
 - **Zero packs selected:** a valid outcome. The plan comes back `no-change`,

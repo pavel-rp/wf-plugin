@@ -40,7 +40,7 @@ export const SNAPSHOT_SCHEMA_VERSION = 4;
  *  to. Where the plugin inventory is unavailable, nothing else invalidates a cached
  *  snapshot across the upgrade, so it would stay fresh and keep serving the
  *  superseded root — the exact state that rule exists to fix. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.0" } as const;
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.1" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */

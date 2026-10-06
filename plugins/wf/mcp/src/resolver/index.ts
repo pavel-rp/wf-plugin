@@ -33,7 +33,8 @@ export type {
   MachineBindingEvidenceInputs,
   ArtifactEvidenceInputs,
 } from "./lifecycle-evidence.js";
-export { parsePluginList } from "./plugin-list.js";
+export { parsePluginList, scopePluginsToWorkspace } from "./plugin-list.js";
+export type { InstalledPlugin, PathCanonicalizer } from "./plugin-list.js";
 export { parseCoreConfig } from "./config.js";
 export { fingerprint, sha256Hex } from "./fingerprint.js";
 export { evaluateFreshness, normalizePluginList } from "./freshness.js";
@@ -114,6 +115,7 @@ export {
   readContainedCapabilityFile,
   fingerprintContainedCapabilityFile,
   runPluginList,
+  canonicalizePathOrNull,
   fsIO,
 } from "./engine.js";
 export type { ResolveOptions } from "./engine.js";
