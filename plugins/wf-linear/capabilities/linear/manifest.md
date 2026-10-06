@@ -1,10 +1,10 @@
 # linear capability manifest
 
-**Version:** 1.7.0
+**Version:** 1.8.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** linear (registered in the downstream `_local/config.md` `## Capabilities` table)
-**Kind:** both (ships its own `/wf-linear:init` skill; also attaches one phase fragment and seven `slot` fills via the registry)
+**Kind:** both (ships its own `/wf-linear:init` skill; also attaches one phase fragment and nine `slot` fills via the registry)
 **Model:** claude-sonnet-5
 
 ---
@@ -40,13 +40,15 @@ token.
 | —     | slot               | `inline: fragments/implement-start.md` | implement.start replace |
 | —     | slot               | `inline: fragments/implement-milestone.md` | implement.milestone append |
 | —     | slot               | `inline: fragments/implement-finish.md` | implement.finish replace |
+| —     | slot               | `inline: fragments/research-publish.md` | research.publish replace |
+| —     | slot               | `inline: fragments/qa-gen-publish.md` | qa-gen.publish replace |
 
 `provider` is a **partitioned** kind — only the capability owning `surface: tracker` applies,
 and linear owns `tracker` only. The `phase: spec` cell is a **registration-only anchor**: a
 core skill reaches this fragment at any point via **direct provider resolution** (select
 `contribution-kind = provider AND scope = tracker`, registry-wide), not only at `spec`.
 
-Beyond the provider binding, linear contributes **seven `slot` fills** — the conveyor's tracker
+Beyond the provider binding, linear contributes **nine `slot` fills**. Seven are the conveyor's tracker
 mirror (charter C021), targeting the declared composition points of `/wf:spec` (WF-406),
 `/wf:plan` and `/wf:tasks` (WF-407), and `/wf:implement` (WF-408). Their phase cell is `—`: a slot
 targets a per-skill composition point, not an SDD phase. `spec.questions` posts the run's open
@@ -54,14 +56,24 @@ questions as **one** comment on the task's umbrella before the interactive promp
 fills mirror the finished `01_spec.md`, `02_plan.md` and `03_tasks.md` as `Spec:`, `Plan:` and
 `Tasks:` child issues beneath that umbrella and mark each done; the three implement fills open an
 `Impl:` child In Progress at phase entry, append one log entry per checkpoint to its comment thread,
-and at phase end rewrite its description, mark it Done and move the umbrella to In Review. All seven
-compose via the **registry**, so they fire only once this capability is registered — with it
-unregistered, `/wf:spec`, `/wf:plan`, `/wf:tasks` and `/wf:implement` execute their no-op inline
-defaults and no tracker term surfaces at all (CLAUDE.md §2). All seven bind **only** operations
-already defined in `fragments/tracker.ops.md` (`get`, `create_umbrella`, `create_child`, `update`,
-`post_comment`, `set_status`) — this contributes **no** tracker-contract extension.
+and at phase end rewrite its description, mark it Done and move the umbrella to In Review.
 
-**Merge policies.** Six of the seven are `replace`. `implement.milestone` is the **single `append`**
+Two further fills publish **completed** work (charter C045, WF-1078) and, unlike the conveyor
+fills, **refresh** rather than publish once: `research.publish` mirrors finished research — the final
+`01_findings.md` and `02_verdict.md` together, every verdict including Not practical — as one
+standalone top-level `Research:` item, and `qa-gen.publish` mirrors only the finished `06_qa.md` as a
+`QA plan:` child of the task's own tracker item (never a run report). Each keeps its publication
+identity in the host-supplied `<publication-record>`, written immediately after the create returns,
+and a recorded identity means `update` in place — never a second create.
+
+All nine compose via the **registry**, so they fire only once this capability is registered — with
+it unregistered, `/wf:spec`, `/wf:plan`, `/wf:tasks`, `/wf:implement`, `/wf:research` and
+`/wf:qa-gen` execute their no-op inline defaults and no tracker term surfaces at all (CLAUDE.md §2).
+All nine bind **only** operations already defined in `fragments/tracker.ops.md` (`get`,
+`create_umbrella`, `create_child`, `update`, `post_comment`, `set_status`) — this contributes **no**
+tracker-contract extension.
+
+**Merge policies.** Eight of the nine are `replace`. `implement.milestone` is the **single `append`**
 point: `/wf:implement` reaches it once per checkpoint within one run, so contributions accumulate in
 registry order (personal override last) instead of superseding one another, and the running
 implementation log is built from many firings rather than one.

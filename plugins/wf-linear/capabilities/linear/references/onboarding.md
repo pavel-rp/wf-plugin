@@ -228,6 +228,49 @@ transitions are strictly ordered in time and disjoint in value — which is why 
 change to `tf`**. A future fill that wants to comment on the umbrella at phase end must reconcile
 with `tf` first; that is the charter's named failure case.
 
+## The completion publishers: `research.publish` and `qa-gen.publish` (WF-1078, charter C045)
+
+WF-1077 gave `/wf:research` and `/wf:qa-gen` a `publish` point each (`replace`, inert by default)
+and handed every fill a `<publication-record>` path the host never creates, parses, moves or
+deletes. WF-1078 fills both for Linear: `fragments/research-publish.md` and
+`fragments/qa-gen-publish.md`.
+
+**Why these refresh instead of publishing once.** The conveyor fills above are single-shot: a
+recorded id means "already published, never re-invoke", which is right for an artifact that is
+written once per task. Research is superseded and re-run, and a test plan is regenerated and
+overwritten, so a single-shot guard would leave the tracker carrying stale content forever — or,
+without any guard, duplicate it on every pass. These two fills keep the guard's read-back but
+change its meaning: a recorded id selects `update` on that same item, and a create is never
+issued while a record exists, not even when the refresh fails.
+
+**Why the record is written immediately after the create.** The WF-1077 operational audit noted
+the interface does not require ordering. These fills impose it: the identity is written the
+moment the create returns, before the label, the status, or the outcome line, so every later
+failure leaves the identity on disk and the retry refreshes instead of duplicating. The one
+residual window is a failure of the record write itself after a successful create; the fill
+reports that as `failed` and names the created id, because closing it would need a provider-side
+lookup the tracker contract does not define.
+
+**Why research is a standalone top-level item.** Research has no task of its own and must never
+create one: publishing is a record of what was learnt, not a decision to build. So the item is
+minted with `create_umbrella` (no parent) and carries both final artifacts in one description —
+findings and verdict belong together, and a Not practical verdict is published exactly like a
+Practical one. The fill never touches the intake decision or anything a charter would adopt.
+
+**Why the QA plan is a child of the task, and only the plan.** The plan belongs in the task it
+tests, so the fill resolves the task's own tracker item read-only and creates a `QA plan:` child,
+continuing the `Spec:`/`Plan:`/`Tasks:` family. A comment would be the lighter shape, but the
+contract has no comment-edit operation, so a comment could never be refreshed. Execution results
+(`07_qa-report.md`) are deliberately never published. When the task has no tracker item, the fill
+creates nothing and reports `failed` — minting an umbrella here would invent a task context the
+work never had. Because the fill never writes `06_qa.md`, the phase receipt bound to its digest
+stays `fresh` through every publish, refresh and failure.
+
+**Evidence.** `fixtures/run.sh` asserts the rows and clauses above structurally and drives a stub
+tracker through the documented decision sequence (first publish, regeneration, failure after the
+identity is recorded, failed refresh then retry) for both classes. It is mocked evidence, not a
+live tracker run.
+
 ## Version history
 
 - **WF-136** — second, independent tracker-provider capability, binding the contract's
@@ -269,3 +312,9 @@ with `tf` first; that is the charter's named failure case.
   carries the suggested default `<skipped>`, which makes an explicit decline distinguishable from a
   value nobody was ever asked for; the plain `linear-project: none` entry is removed, because an
   ordinary template value at a declared destination would compete with the entry's own suggestion.
+- **WF-1078** (charter C045) — two refresh-capable `slot` fills added for the completion points
+  WF-1077 declared (`replace` each): `fragments/research-publish.md` publishes finished findings
+  and verdict as one standalone `Research:` item, and `fragments/qa-gen-publish.md` publishes only
+  `06_qa.md` as a `QA plan:` child of the task's tracker item. Each records its identity in the
+  host-supplied publication record immediately after the create and refreshes it thereafter; a
+  `fixtures/run.sh` suite pins both. No tracker-contract extension.
