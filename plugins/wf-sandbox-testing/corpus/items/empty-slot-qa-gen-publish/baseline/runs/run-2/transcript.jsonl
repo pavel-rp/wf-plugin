@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"eqp-base-r2","cwd":"/workspace","tools":["Read","Write","Edit","Glob","Grep","Bash","Skill"],"model":"fake-model-a"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Read `_local/wf/FAKE-4/00_reqs.md`; both criteria are build/static. Writing the plan now."}]},"session_id":"eqp-base-r2"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"QA-GEN — Complete\n\nTask:      FAKE-4\nScope:     full\nCapability scenarios: none\nScenarios: 1 in 1 suites (incl. 1 Baseline health) — 0 browser · 0 API · 0 capability\nCoverage:  2/2 criteria mapped (0 browser · 0 API · 0 automated · 2 build/static)\n\nFile:      _local/wf/FAKE-4/06_qa.md\n\nGaps:      none\n\nNext:      /wf:qa-auto FAKE-4"}]},"session_id":"eqp-base-r2"}
+{"type":"result","subtype":"success","is_error":false,"session_id":"eqp-base-r2","num_turns":2,"duration_ms":22410}

@@ -1,0 +1,11 @@
+{
+  "task": "/wf:qa-gen FAKE-4",
+  "skill": "/wf:qa-gen FAKE-4",
+  "fixture": "qa-gen-empty-slot-publish",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-qagen-eqp", "plugin_build": "fp-current-qagen-c40d92", "cli_version": "claude 1.0.0", "run": "fp-eqp-cur-r2" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "current build, qa-gen.publish resolved {status: unfilled} — no capability contributes the slot"
+}

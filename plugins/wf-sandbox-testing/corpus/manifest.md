@@ -55,8 +55,10 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 | 16 | verify-replay — the WF-553 four-round PARTIAL loop | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf553` — four recorded `/wf:verify-spec` rounds (all PARTIAL with every generic requirement passing; round 1 header-only at the source, flagged `body_truncated`) | **WF-553** — `_local/_archive/WF-553/04_verify.history.md`, the rotated audit history of the charter size-budget task (2026-09-04, 4 rounds); mined by **WF-564**, the **C033** baseline SUB. |
 | 17 | verify-replay — the WF-554 seven-round PARTIAL loop with a verify-fix pass | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf554` — seven recorded `/wf:verify-spec` rounds (all PARTIAL at 16/17) with one `/wf:verify-fix` pass between rounds 5 and 6, the last two rounds auditing an uncommitted edit | **WF-554** — `_local/_archive/WF-554/04_verify.history.md` + `05_verify-fix.history.md`, the rotated histories of "Offer one explicit user gate when the revision cap is hit with blocking findings left" (2026-09-04/05, 7 rounds + 1 fix pass); mined by **WF-564**, the **C033** baseline SUB. |
 | 18 | planted plan edit — an approved plan written after approval halts before any PR | absolute assertion (digest recomputed from committed bytes, no variance ceiling) | SMOKE | `planted-plan-edit` — a `/wf:ship` clean control (plan byte-identical to its `gate:plan` digest; PR opened and merged) and a planted run whose approved `02_plan.md` was written after approval (halts at `gate:plan`, zero `pr-create`) | **WF-834** — "Re-baseline the eval-corpus plan snapshots to the progress-artifact shape" (charter **C040**, umbrella **WF-829**), the negative control its re-baseline owes; the invariant is **WF-830** ("Keep the approved plan byte-identical by moving implement progress to its own artifact"). |
+| 19 | empty-slot invariant — `research.publish` | comparison (per declared slot) | SMOKE | `research.publish` (`plugins/wf/skills/research/interface.md` → `## Slots`; marker in `research/SKILL.md` Phase 8) | **WF-1077** — "Enable automatic completion publishing for research and QA plans" (umbrella **WF-1076**, charter **C045**); the per-declared-slot arm `run.sh`'s enumeration requires the moment a slot is declared; its fill performs creating writes and records an identity file, so the unfilled case is asserted silent; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
+| 20 | empty-slot invariant — `qa-gen.publish` | comparison (per declared slot) | SMOKE | `qa-gen.publish` (`plugins/wf/skills/qa-gen/interface.md` → `## Slots`; marker in `qa-gen/SKILL.md` Phase 5 step 3) | **WF-1077** — "Enable automatic completion publishing for research and QA plans" (umbrella **WF-1076**, charter **C045**); the slot fires after the `06_qa.md` receipt, so the unfilled case is asserted to write no `publication/` record and emit zero records; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
 
-All eighteen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
+All twenty items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
 shape, file set), which is the smoke-tier preference (charter OUT-5 / risk table — SMOKE
 prefers structural/deterministic assertions over semantic judgment, so a future PR gate
 stays trustworthy). None requires a semantic-judgment or transcript-prose assertion (locked
@@ -64,7 +66,8 @@ decision 1). Items 3–5 are the C014 watch-list items retrofit by **WF-348**; i
 the WF-347 corpus core; items 7–8 are the per-slot arms **WF-406** owes for the two `spec`
 slots it declares; items 9–10 are the per-slot arms **WF-407** owes for the `plan` and
 `tasks` publish slots it declares; items 11–13 are the per-slot arms **WF-408** owes for the
-three `implement` lifecycle slots it declares. Item 14 is the bare-core arm **WF-414** adds — the
+three `implement` lifecycle slots it declares; items 19–20 are the per-slot arms **WF-1077** owes
+for the `research` and `qa-gen` completion-publishing slots it declares. Item 14 is the bare-core arm **WF-414** adds — the
 one configuration items 1 and 7–13 structurally cannot cover, because every one of their arms runs
 in the `demo-fake` fixture where `fake` owns **both** provider surfaces and their `runs-current` op
 logs genuinely contain tracker records.
@@ -116,7 +119,7 @@ it to halt before any PR exists, recomputing every digest from the committed byt
 Charter OUT-3 requires each arm to state which path produced it, so a reviewer knows exactly what
 each arm proves. `run.sh`'s `check_disclosure` audits this mechanically: every `arm.json` carries
 `provenance: { path, reason }` with `path` ∈ {`canned`, `real`}, and every item carries the paired
-prose section. **All ten arms are `canned`** — zero real containerized arms exist in this
+prose section. **All twelve arms are `canned`** — zero real containerized arms exist in this
 environment, and none is claimed.
 
 | Arm | Item | Path | Why not a live run |
@@ -129,6 +132,8 @@ environment, and none is claimed.
 | `empty-slot-implement-start/baseline` | 11 | **canned** | as above |
 | `empty-slot-implement-milestone/baseline` | 12 | **canned** | as above |
 | `empty-slot-implement-finish/baseline` | 13 | **canned** | as above |
+| `empty-slot-research-publish/baseline` | 19 | **canned** | as above |
+| `empty-slot-qa-gen-publish/baseline` | 20 | **canned** | as above |
 | `barecore-conveyor` | 14 | **canned** | Docker + token absent, **and** the installed plugin cache is `wf` 0.87.0 while the seven slots live in 0.93.0 — skills execute from the installed cache, so a live conveyor would have exercised a **pre-slot** build in which the `<!-- wf:slot … -->` markers do not exist, observing no slot resolution at all while appearing authoritative |
 | `planted-plan-edit` | 18 | **canned** | Docker + token absent; the digest verdict is not canned — check 13 recomputes it from the committed plan bytes on every run |
 
@@ -269,6 +274,8 @@ instead: `resolve_content({class: "slot", …})` returning `{status: "unfilled"}
 | `items/empty-slot-spec-questions/` | item 7 (WF-406): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that posts the questions comment) |
 | `items/empty-slot-spec-publish/` | item 8 (WF-406): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the spec as a child record) |
 | `items/empty-slot-plan-publish/` | item 9 (WF-407): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the plan as a child record) |
+| `items/empty-slot-research-publish/` | item 19 (WF-1077): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the findings and verdict as a standalone record) |
+| `items/empty-slot-qa-gen-publish/` | item 20 (WF-1077): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes `06_qa.md` as a child record) |
 | `items/empty-slot-tasks-publish/` | item 10 (WF-407): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the decomposition as one child record) |
 | `items/empty-slot-implement-start/` | item 11 (WF-408): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that opens an execution child record and moves it and its umbrella into progress) |
 | `items/empty-slot-implement-milestone/` | item 12 (WF-408): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (**two** contributions to the same `append` point, both running in registry order at every checkpoint) |

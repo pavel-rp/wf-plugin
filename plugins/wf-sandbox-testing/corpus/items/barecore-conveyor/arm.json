@@ -38,6 +38,14 @@
     {
       "slot": "pr.body-check",
       "reason": "declared in /wf:pr Phase 2.5, which is unreachable in bare core: /wf:pr is not on the SDD conveyor this arm drives (/wf:spec -> /wf:plan -> /wf:tasks -> /wf:implement), and its only conveyor caller, /wf:ship, hard-stops at Phase 1 with no delivery provider registered. It is also a declared slot with no per-slot arm; that is recorded, with its reason, in corpus/slot-exemptions.json, and its inertness is asserted at the resolver and in the core-authoring capability's own fixture suite instead (WF-757)."
+    },
+    {
+      "slot": "research.publish",
+      "reason": "declared in /wf:research Phase 8. /wf:research runs before /wf:charter and is not on the SDD conveyor this arm drives (/wf:spec -> /wf:plan -> /wf:tasks -> /wf:implement), so the bare-core run never reaches it; recording it as covered would claim an observation the run cannot make. Its unfilled behaviour is covered by its own per-slot comparison arm, corpus item 19 (WF-1077)."
+    },
+    {
+      "slot": "qa-gen.publish",
+      "reason": "declared in /wf:qa-gen Phase 5, which runs after /wf:verify-spec and is not on the SDD conveyor this arm drives (/wf:spec -> /wf:plan -> /wf:tasks -> /wf:implement), so the bare-core run never reaches it; recording it as covered would claim an observation the run cannot make. Its unfilled behaviour is covered by its own per-slot comparison arm, corpus item 20 (WF-1077)."
     }
   ],
   "runs": [

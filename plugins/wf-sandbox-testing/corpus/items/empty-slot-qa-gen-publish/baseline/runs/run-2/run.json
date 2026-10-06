@@ -1,0 +1,11 @@
+{
+  "task": "/wf:qa-gen FAKE-4",
+  "skill": "/wf:qa-gen FAKE-4",
+  "fixture": "qa-gen-empty-slot-publish",
+  "plugin_source": "/pinned/preslot-qa-gen-build",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-qagen-eqp", "plugin_build": "fp-preslot-qagen-7e2b14", "cli_version": "claude 1.0.0", "run": "fp-eqp-base-r2" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "pre-slot baseline arm: the qa-gen.publish slot did not exist on this pinned build"
+}

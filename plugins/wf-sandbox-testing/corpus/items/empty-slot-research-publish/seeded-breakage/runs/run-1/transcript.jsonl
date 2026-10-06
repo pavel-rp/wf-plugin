@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"erp-seed-r1","cwd":"/workspace","tools":["Read","Write","Edit","Glob","Grep","Bash","Skill","WebSearch","WebFetch"],"model":"fake-model-a"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Resumed R001 at the Done state; following the composed research.publish fill."}]},"session_id":"erp-seed-r1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Publish: published FAKE-9"}]},"session_id":"erp-seed-r1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"RESEARCH — Complete\n\nResearch:   R001 — Demo topic\nFolder:     /workspace/_local/wf/R001__demo-topic\nEvidence:   1 claim(s) — 0 strong · 0 moderate · 1 weak · 0 insufficient\nSources:    0 external cited · 0 verified · 1 local · 0 excluded\nChallenge:  not performed\nVerdict:    Not practical — evidence insufficient\nConfidence: Low\nIntake:     n/a\nWarnings:   —\nNext:       none — terminus"}]},"session_id":"erp-seed-r1"}
+{"type":"result","subtype":"success","is_error":false,"session_id":"erp-seed-r1","num_turns":3,"duration_ms":19870}

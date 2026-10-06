@@ -1,0 +1,11 @@
+{
+  "task": "/wf:research R001",
+  "skill": "/wf:research R001",
+  "fixture": "research-empty-slot-publish",
+  "plugin_source": "current+seeded-fill",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-research-erp", "plugin_build": "fp-seeded-research-publish-fill-2d6f", "cli_version": "claude 1.0.0", "run": "fp-erp-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "SEEDED BREAKAGE: research.publish resolved {status: composed} and published the findings and verdict as a standalone record, recording its identity in publication/research.publish.md — the empty-slot invariant must diverge against the pre-slot baseline"
+}
