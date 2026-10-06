@@ -14,7 +14,8 @@
 #      immediately after create and before tag/status; refresh never creates;
 #   3. only tracker-contract operations are named; no AI-attribution strings;
 #      outbound-only model metadata filtering preserves substantive/local content;
-#      each fill stays within the 250-line runtime-doc bound;
+#      each slot body stays within 150 total lines (a conservative behavior-line bound)
+#      and carries contents when longer than 100 lines;
 #   4. research publishes one standalone item (create_umbrella, never
 #      create_child) for every verdict and creates no implementation task or
 #      charter; QA publishes only 06_qa.md under the task umbrella
@@ -43,7 +44,10 @@ check_fill() {
 
   local n
   n="$(wc -l < "$f")"
-  [ "$n" -le 250 ] || fail "$label: $n lines exceeds the 250-line runtime-doc bound"
+  [ "$n" -le 150 ] || fail "$label: $n lines exceeds the 150-line slot-body bound"
+  if [ "$n" -gt 100 ]; then
+    has "$f" '## Contents' || fail "$label: runtime body over 100 lines has no contents section"
+  fi
 
   has "$f" '**Publication item:** <id>' || fail "$label: no publication-record identity line"
   has "$f" 'Publish: published' || fail "$label: missing 'Publish: published' outcome"
@@ -201,6 +205,12 @@ expect_caught "identity replacement can destroy pending marker"
 
 seed; sed -i 's/model-attribution metadata from the outbound copy/all metadata retained in outbound copy/' "$tmp/cap/fragments/qa-gen-publish.md"
 expect_caught "outbound model metadata filter removed"
+
+seed; printf '\n' >> "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "slot body exceeds 150 lines"
+
+seed; sed -i '/^## Contents$/d' "$tmp/cap/fragments/research-publish.md"
+expect_caught "runtime body over 100 lines has no contents"
 
 if [ "$SELF_FAILS" -ne 0 ]; then
   echo "ado fixtures: $SELF_FAILS seeded breakage(s) escaped the checks." >&2

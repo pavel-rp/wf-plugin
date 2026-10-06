@@ -10,26 +10,26 @@ this point once per run, after `06_qa.md` is written, its index row recorded and
 requested — and follows this prose in its own context. It supersedes the inline default ("nothing
 is published") wholesale.
 
-**Role framing.** This fill publishes the finished **test plan** — `06_qa.md` and nothing else —
-as a `QA plan:` child work item beneath the task's existing umbrella, and keeps it current: every
-regeneration **refreshes the same item** instead of creating a second one. It never blocks the
-phase: `06_qa.md` is already written and remains the source of truth.
+**Role framing.** Publish only finished `06_qa.md` as a `QA plan:` child beneath the existing
+tracker umbrella; regenerate by refreshing the same item. Publishing never blocks local generation.
 
 **What this fill never does.** It never reads or publishes `07_qa-report.md` or any execution
 result. It never modifies `06_qa.md` — its phase receipt is bound to that file's digest, so the
 receipt stays `fresh` — and never writes any other task artifact. The only file it writes is its
 own `<publication-record>`.
 
-**Inputs (resolved by the host).** `<task-id>`, `<task-folder>`, `<qa-plan>` =
-`<task-folder>/06_qa.md`, `<scope>`, `<scenario-count>`, `<publication-record>` =
-`<task-folder>/publication/qa-gen.publish.md`.
+**Inputs (resolved by the host).** `<task-id>`, `<task-folder>`, `<qa-plan>` = `<task-folder>/06_qa.md`,
+`<scope>`, `<scenario-count>`, `<publication-record>` = `<task-folder>/publication/qa-gen.publish.md`.
 
-**Tracker access.** Every operation below is a `tracker`-surface operation. Resolve the `tracker`
-provider via `resolve_provider({ workspaceRoot, surface: "tracker" })`; obtain each operation's
-body via `resolve_content` (`workspaceRoot`, `class: fragment`) from that record and follow it
-in-context — name no concrete tracker tool here. The operations this fill uses: `get`,
-`create_child`, `update`, and `set_status`. **No operation outside the already-defined tracker
-contract is used, described, or implied.**
+**Tracker access.** Resolve `resolve_provider({ workspaceRoot, surface: "tracker" })`, then obtain
+its operation body via `resolve_content` (`workspaceRoot`, `class: fragment`) and follow it
+in-context; name no concrete tracker tool. Bind only existing contract operations `get`,
+`create_child`, `update`, `set_status` — no extension.
+
+## Contents
+
+[Record](#step-1--read-the-publication-record-first) · [Context](#step-2--resolve-the-task-context-create-path-only) · [Compose](#step-3--compose-the-item-shared-by-create-and-refresh)
+[Create](#step-4--create-path-create-then-record-immediately) · [Refresh](#step-5--refresh-path-update-the-recorded-item) · [Outcome](#step-6--outcome) · [Degradation](#degradation)
 
 ---
 
@@ -83,7 +83,6 @@ recording a guard line in a task artifact). Create nothing and end with
 
    ```markdown
    # qa-gen.publish — publication record
-
    **Publication state:** pending
    ```
 
@@ -97,7 +96,6 @@ recording a guard line in a task artifact). Create nothing and end with
 
    ```markdown
    # qa-gen.publish — publication record
-
    **Publication item:** <id>
    **Publication parent:** <umbrella-id>
    **Published:** <YYYY-MM-DD HH:mm>
@@ -106,9 +104,7 @@ recording a guard line in a task artifact). Create nothing and end with
    Replacement must be failure-atomic: never truncate or remove the pending record first. If a
    safe replacement cannot be performed or fails, retain the pending marker and end with
    `Publish: failed — item <id> created but its record could not be written: <error>`.
-   Name the id in the warning; the unresolved marker refuses another create on retry. Do not
-   clear it automatically, even after a create failure; reconciliation is an explicit operator
-   choice, never an automatic create fallback.
+   Never clear the marker automatically, even after create failure; reconcile only by explicit operator choice.
 4. **Best effort, never fatal:** `update(<id>, tags: ["wf-artifact"])`, then
    `set_status(<id>, <the project's completed state>)` — `Closed` in Agile, `Done` in Scrum and
    Basic, a custom template's own completed state otherwise. On either failure, state one line and
@@ -151,5 +147,4 @@ footer, emoji, or promotional tagline into any title, description or comment.
 | refresh `update` fails | record kept → `failed`; the next run refreshes the same item |
 | Tracker unconfigured or unrecoverable | this fill never resolves; `qa-gen` runs its no-op inline default |
 
-Rationale, the refresh model shared with `research.publish`, and the authored-not-tested status:
-[`../references/onboarding.md`](../references/onboarding.md) — read by authors, never at slot-fire.
+Rationale and authored-not-tested status: [`../references/onboarding.md`](../references/onboarding.md) — authors only, never at slot-fire.

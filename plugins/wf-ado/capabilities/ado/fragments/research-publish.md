@@ -32,6 +32,11 @@ in-context — name no concrete tracker tool here. The operations this fill uses
 `create_umbrella`, `update`, and `set_status`. **No operation outside the already-defined tracker
 contract is used, described, or implied.**
 
+## Contents
+
+[Record](#step-1--read-the-publication-record-first) · [Compose](#step-2--compose-the-item-shared-by-create-and-refresh) · [Create](#step-3--create-path-create-then-record-immediately)
+[Refresh](#step-4--refresh-path-update-the-recorded-item) · [Outcome](#step-5--outcome) · [Degradation](#degradation)
+
 ---
 
 ## Step 1 — Read the publication record first
