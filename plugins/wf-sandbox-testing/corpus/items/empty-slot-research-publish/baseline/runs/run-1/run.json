@@ -1,0 +1,11 @@
+{
+  "task": "/wf:research R001",
+  "skill": "/wf:research R001",
+  "fixture": "research-empty-slot-publish",
+  "plugin_source": "/pinned/preslot-research-build",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-research-erp", "plugin_build": "fp-preslot-research-3c9a57", "cli_version": "claude 1.0.0", "run": "fp-erp-base-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "pre-slot baseline arm: the research.publish slot did not exist on this pinned build"
+}

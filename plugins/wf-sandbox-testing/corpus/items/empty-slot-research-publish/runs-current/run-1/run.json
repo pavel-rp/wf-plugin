@@ -1,0 +1,11 @@
+{
+  "task": "/wf:research R001",
+  "skill": "/wf:research R001",
+  "fixture": "research-empty-slot-publish",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-research-erp", "plugin_build": "fp-current-research-8f41d0", "cli_version": "claude 1.0.0", "run": "fp-erp-cur-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "current build, research.publish resolved {status: unfilled} — no capability contributes the slot"
+}

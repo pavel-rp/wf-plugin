@@ -1,0 +1,25 @@
+{
+  "_comment": "The recorded pinned-build baseline arm for the qa-gen.publish empty-slot invariant. Produced via WF-345's pinned-build install option: the pre-slot qa-gen build installed as the run source. Carries the pinned build's fingerprint and the run fingerprints of the baseline set. CANNED per item.md's disclosure — Docker + CLAUDE_CODE_OAUTH_TOKEN are unavailable in this environment; the run bytes are shaped exactly like the WF-345 runner's output tree, and runner/run-skill.sh regenerates them from the real pinned build when a container and token are available.",
+  "slot": "qa-gen.publish",
+  "skill": "/wf:qa-gen FAKE-4",
+  "fixture": "qa-gen-empty-slot-publish",
+  "pinned_build": {
+    "source": "/pinned/preslot-qa-gen-build",
+    "description": "the qa-gen skill immediately before the qa-gen.publish composition point was introduced",
+    "fingerprint": "fp-preslot-qagen-7e2b14"
+  },
+  "runs": [
+    {
+      "dir": "runs/run-1",
+      "fingerprint": "fp-eqp-base-r1"
+    },
+    {
+      "dir": "runs/run-2",
+      "fingerprint": "fp-eqp-base-r2"
+    }
+  ],
+  "provenance": {
+    "path": "canned",
+    "reason": "Docker and CLAUDE_CODE_OAUTH_TOKEN are both absent in the authoring/CI environment (the same constraint WF-345/WF-346/WF-347 hit), so the pinned pre-slot build was not re-installed and executed in a live container. The run bytes are shaped exactly like the WF-345 runner output tree; runner/run-skill.sh regenerates them from the real pinned build when a container and token are available, and the comparison re-runs unchanged. Disclosed in this item .md under \"Canned-vs-real disclosure\"."
+  }
+}
