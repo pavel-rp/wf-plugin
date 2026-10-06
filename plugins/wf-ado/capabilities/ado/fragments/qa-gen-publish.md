@@ -48,9 +48,10 @@ Read `<publication-record>` before any tracker call. Three cases, decided by the
 The **umbrella** is the work item the task id already names. Resolve it read-only, in this order,
 and stop at the first hit:
 
-1. A `**Tracker umbrella:** <id>` line read back from `<task-folder>/03_tasks.md`, else
-   `02_plan.md`, else `01_spec.md` — an earlier artifact fill recorded it there. Read only; never
-   write these files.
+1. A `**Tracker umbrella:** <id>` line read back from `<task-folder>/02_plan.md`, else
+   `03_tasks.md`, else `02_progress.md`, else `01_spec.md` — the order `implement.start` uses; an
+   earlier artifact fill recorded it there (`implement.start` records an umbrella it minted in
+   `02_progress.md`). Read only; never write these files.
 2. A `get(<task-id>)` succeeds — then `<task-id>` **is** the umbrella.
 
 Neither holds → this fill has no task context and may not mint one (its write scope forbids
