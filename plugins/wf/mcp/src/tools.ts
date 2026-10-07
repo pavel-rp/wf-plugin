@@ -974,7 +974,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     {
       title: "resolve settings",
       description:
-        "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default — the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
+        "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default — the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`, plus a committed project tier `.wf/settings/<skill>.settings.json` (WF-586) ranked below it — per key, personal > project > declared default; `projectOverridePresent` reports the committed file. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override at either tier carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
       inputSchema: skillInput,
     },
     async (args: WorkspaceArgs & { skill: string }) => selected(args, (service) => service.resolveSettings(args.skill)),

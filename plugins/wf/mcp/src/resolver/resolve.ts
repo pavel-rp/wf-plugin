@@ -24,6 +24,7 @@ import {
 } from "./paths.js";
 import {
   capabilityProfileRelPath,
+  PROJECT_SETTINGS_DIR,
   SETTINGS_STORAGE_DIR,
   locateInterface,
   mergeSettings,
@@ -636,60 +637,71 @@ export function buildSnapshot(
   for (const r of pluginRoots) {
     if (r.resolvedRoot) interfaceRoots.push(toAbsolute(workspaceRoot, r.resolvedRoot));
   }
-  const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
-  const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
+  // The same validation runs over BOTH override tiers: the personal
+  // `_local/profiles/` override (WF-328) and the committed `.wf/settings/` project
+  // override (WF-586), each fingerprinted under its own source kind. Diagnostics
+  // name the file, so a reader can tell which tier carries the fault.
+  // `settingsOverrides` keeps its WF-329 meaning — the PERSONAL presence index.
   const settingsOverrides: string[] = [];
-  for (const filename of [...settingsFiles].sort()) {
-    const skill = skillFromSettingsFilename(filename);
-    if (!skill) continue; // not a `<skill>.settings.json` (e.g. a capability profile)
-    const overridePath = joinSlash(settingsDir, filename);
-    const overrideRaw = io.readFile(overridePath);
-    if (overrideRaw === null) continue;
-    // Fingerprint the settings override into the snapshot's input set (WF-329) so
-    // editing it invalidates the snapshot. The JSON is HASHED, not stored.
-    sources.push(
-      fingerprint("settings-override", `${SETTINGS_STORAGE_DIR}/${filename}`, overrideRaw),
-    );
-    settingsOverrides.push(skill);
-    const parsed = parseSettingsOverride(overrideRaw);
-    if (!parsed.ok) {
-      diagnostics.push({
-        severity: "warning",
-        code: "settings/unparseable",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) is not a valid JSON object: ${parsed.error}`,
-      });
-      continue;
+  const validateSettingsTier = (
+    relDir: string,
+    sourceKind: "settings-override" | "settings-project-override",
+    label: string,
+  ): void => {
+    const dir = joinSlash(workspaceRoot, relDir);
+    const files = io.listFiles ? io.listFiles(dir) : [];
+    for (const filename of [...files].sort()) {
+      const skill = skillFromSettingsFilename(filename);
+      if (!skill) continue; // not a `<skill>.settings.json` (e.g. a capability profile)
+      const overrideRaw = io.readFile(joinSlash(dir, filename));
+      if (overrideRaw === null) continue;
+      const rel = `${relDir}/${filename}`;
+      // Fingerprint the override into the snapshot's input set (WF-329) so editing
+      // it invalidates the snapshot. The JSON is HASHED, not stored.
+      sources.push(fingerprint(sourceKind, rel, overrideRaw));
+      if (relDir === SETTINGS_STORAGE_DIR) settingsOverrides.push(skill);
+      const parsed = parseSettingsOverride(overrideRaw);
+      if (!parsed.ok) {
+        diagnostics.push({
+          severity: "warning",
+          code: "settings/unparseable",
+          message: `${label} for skill \`${skill}\` (\`${rel}\`) is not a valid JSON object: ${parsed.error}`,
+        });
+        continue;
+      }
+      const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
+      if (!located) {
+        // The override targets a skill with no locatable settings-declaring
+        // interface (an uninstalled pack, a renamed/removed skill). Warn — the
+        // resolver cannot validate it — but do not hard-fail an unrelated override.
+        diagnostics.push({
+          severity: "warning",
+          code: "settings/interface-unresolvable",
+          message: `${label} for skill \`${skill}\` (\`${rel}\`) has no locatable declaring \`interface.md\` — its keys cannot be validated. Install the owning pack or remove the override.`,
+        });
+        continue;
+      }
+      const { undeclared } = mergeSettings(located.declared, parsed.value);
+      if (undeclared.length > 0) {
+        diagnostics.push({
+          severity: "error",
+          code: "settings/undeclared-key",
+          message: `${label} for skill \`${skill}\` (\`${rel}\`) carries ${
+            undeclared.length === 1 ? "a key" : "keys"
+          } its \`interface.md\` does not declare: ${undeclared
+            .map((k) => `\`${k}\``)
+            .join(", ")}. Remove the undeclared ${
+            undeclared.length === 1 ? "key" : "keys"
+          } or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
+          category: "registry-invalid",
+          recovery:
+            "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`.",
+        });
+      }
     }
-    const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
-    if (!located) {
-      // The override targets a skill with no locatable settings-declaring
-      // interface (an uninstalled pack, a renamed/removed skill). Warn — the
-      // resolver cannot validate it — but do not hard-fail an unrelated override.
-      diagnostics.push({
-        severity: "warning",
-        code: "settings/interface-unresolvable",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) has no locatable declaring \`interface.md\` — its keys cannot be validated. Install the owning pack or remove the override.`,
-      });
-      continue;
-    }
-    const { undeclared } = mergeSettings(located.declared, parsed.value);
-    if (undeclared.length > 0) {
-      diagnostics.push({
-        severity: "error",
-        code: "settings/undeclared-key",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) carries ${
-          undeclared.length === 1 ? "a key" : "keys"
-        } its \`interface.md\` does not declare: ${undeclared
-          .map((k) => `\`${k}\``)
-          .join(", ")}. Remove the undeclared ${
-          undeclared.length === 1 ? "key" : "keys"
-        } or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
-        category: "registry-invalid",
-        recovery:
-          "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`.",
-      });
-    }
-  }
+  };
+  validateSettingsTier(SETTINGS_STORAGE_DIR, "settings-override", "settings override");
+  validateSettingsTier(PROJECT_SETTINGS_DIR, "settings-project-override", "project settings override");
 
   // --- per-skill slot contributions + overrides (validate at refresh — WF-329)
   // Fingerprint every pack slot-contribution body and every personal slot

@@ -72,6 +72,10 @@ export interface SourceFingerprint {
     | "slot-project-override"
     /** A per-skill `_local/profiles/<skill>.settings.json` override (WF-329). */
     | "settings-override"
+    /** A committed `.wf/settings/<skill>.settings.json` project settings override
+     *  (WF-586) — hashed, never stored, so a committed setting invalidates the
+     *  snapshot exactly as a personal settings override does. */
+    | "settings-project-override"
     /** The composed constitution record `_local/constitution.md` (WF-334) —
      *  hashed, never stored, so a project-clause edit (or a re-composed capability
      *  article set) invalidates the snapshot and the SessionStart hook serves the

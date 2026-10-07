@@ -57,6 +57,7 @@ import {
   locateInterface,
   mergeSettings,
   parseSettingsOverride,
+  projectSettingsOverrideRelPath,
   settingsOverrideRelPath,
 } from "./resolver/settings.js";
 import {
@@ -496,6 +497,9 @@ export interface SettingsResponse {
   declared: boolean;
   /** True when a `_local/profiles/<skill>.settings.json` override is present. */
   overridePresent: boolean;
+  /** True when a committed `.wf/settings/<skill>.settings.json` project override
+   *  is present (WF-586). It ranks below the personal override per key. */
+  projectOverridePresent: boolean;
   /** The resolved per-key values (override value where present, else the declared
    *  default). `null` when the skill declares no settings, or when resolution
    *  failed (undeclared key / unparseable override / bad skill slug). */
@@ -1200,7 +1204,9 @@ export class ResolverService {
 
   // --- per-skill settings (WF-328): resolve declared keys under override ---
   /** Resolve a slotted skill's declared settings keys to their effective values
-   *  under the hybrid precedence override > declared default, re-keyed per skill
+   *  under the hybrid precedence override > declared default (WF-586: the
+   *  personal override > the committed `.wf/settings/` project override >
+   *  declared default, per key), re-keyed per skill
    *  on the same `_local/profiles/` machinery as capability profiles. Locates the
    *  skill's `interface.md` (core plugin root first, then resolved pack roots),
    *  reads the optional `_local/profiles/<skill>.settings.json` override via the
@@ -1216,6 +1222,7 @@ export class ResolverService {
       skill: slug,
       declared: false,
       overridePresent: false,
+      projectOverridePresent: false,
       values: null,
       undeclaredKeys: [],
       category: null,
@@ -1232,6 +1239,11 @@ export class ResolverService {
     const overridePath = joinSlash(this.ports.workspaceRoot, settingsOverrideRelPath(slug));
     const overrideRaw = this.ports.readFile(overridePath);
     const overridePresent = overrideRaw !== null;
+    // The committed project tier (WF-586), ranked below the personal override.
+    const projectRel = projectSettingsOverrideRelPath(slug);
+    const projectRaw = this.ports.readFile(joinSlash(this.ports.workspaceRoot, projectRel));
+    const projectOverridePresent = projectRaw !== null;
+    const anyOverride = overridePresent || projectOverridePresent;
 
     const roots: string[] = [normalizeSlashes(this.ports.corePluginRoot)];
     for (const r of s.pluginRoots) {
@@ -1246,37 +1258,52 @@ export class ResolverService {
 
     const located = locateInterface(slug, roots, (p) => this.ports.readFile(p), joinSlash);
     if (!located) {
+      const presentFiles = [
+        ...(overridePresent ? [`${SETTINGS_STORAGE_DIR}/${slug}.settings.json`] : []),
+        ...(projectOverridePresent ? [projectRel] : []),
+      ];
       return {
         ...base,
         overridePresent,
-        message: overridePresent
-          ? `skill \`${slug}\` has a settings override but no locatable settings-declaring \`interface.md\` — its keys cannot be validated. Install the owning pack or remove \`${SETTINGS_STORAGE_DIR}/${slug}.settings.json\`.`
+        projectOverridePresent,
+        message: anyOverride
+          ? `skill \`${slug}\` has a settings override but no locatable settings-declaring \`interface.md\` — its keys cannot be validated. Install the owning pack or remove ${presentFiles
+              .map((f) => `\`${f}\``)
+              .join(" and ")}.`
           : `skill \`${slug}\` declares no settings (no settings-declaring \`interface.md\` located).`,
-        category: overridePresent ? "registry-invalid" : null,
+        category: anyOverride ? "registry-invalid" : null,
       };
     }
 
     let override: Record<string, unknown> | null = null;
-    if (overrideRaw !== null) {
-      const parsed = parseSettingsOverride(overrideRaw);
+    let projectOverride: Record<string, unknown> | null = null;
+    for (const [tier, raw, rel, label] of [
+      ["personal", overrideRaw, `${SETTINGS_STORAGE_DIR}/${slug}.settings.json`, "settings override"],
+      ["project", projectRaw, projectRel, "project settings override"],
+    ] as const) {
+      if (raw === null) continue;
+      const parsed = parseSettingsOverride(raw);
       if (!parsed.ok) {
         return {
           ...base,
           declared: true,
           overridePresent,
+          projectOverridePresent,
           category: "registry-invalid",
-          message: `settings override for skill \`${slug}\` (\`${SETTINGS_STORAGE_DIR}/${slug}.settings.json\`) is not a valid JSON object: ${parsed.error}`,
+          message: `${label} for skill \`${slug}\` (\`${rel}\`) is not a valid JSON object: ${parsed.error}`,
         };
       }
-      override = parsed.value;
+      if (tier === "personal") override = parsed.value;
+      else projectOverride = parsed.value;
     }
 
-    const { values, undeclared } = mergeSettings(located.declared, override);
+    const { values, undeclared } = mergeSettings(located.declared, override, projectOverride);
     if (undeclared.length > 0) {
       return {
         ...base,
         declared: true,
         overridePresent,
+        projectOverridePresent,
         undeclaredKeys: undeclared,
         category: "registry-invalid",
         message: `settings override for skill \`${slug}\` carries ${
@@ -1289,6 +1316,7 @@ export class ResolverService {
       ...base,
       declared: true,
       overridePresent,
+      projectOverridePresent,
       values,
     };
   }
