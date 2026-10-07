@@ -63,8 +63,9 @@ run (fail-closed, unconfirmed — `critic-verdict.md` §"Malformed or failed dis
 it is recorded in exactly one of the two non-gating sections below instead of here, so every
 aggregated finding appears exactly once in the report and none is ever dropped. A `[PASS]`
 assertion row carries no severity, is not a finding, and is never routed — it always stays here.
-The section's presence rule, its grouping, and its bullet shape are unchanged by that routing;
-when the routing leaves it with no entry at all, render the single line `- none`.
+The section's presence rule and its grouping are unchanged by that routing; each `[FAIL]` bullet
+carries the `anchors` clause described below. When the routing leaves the section with no entry
+at all, render the single line `- none`.
 
 A confirmed bullet appends the critic's own confirmation, `` — critic: AGREE at `path/to/file:L`
 — "<quoted evidence>"``; a bullet standing here because the critic did not run appends
@@ -73,9 +74,11 @@ an inline critic held appends `` — critic: not confirmed — inline, not indep
 `AGREE` keeps the confirmed form with ` (critic run inline)` after it), so a reader can tell a
 grounded confirmation from a fail-closed default at a glance.
 
-Every bullet here records the requirement `verify-spec` matched it to (`SKILL.md` §"The blocking set")
-by appending `` — anchors: R<n>`` after its evidence, so a reader can see which requirement the
-finding blocks on.
+Every `[FAIL]` bullet here — never a `[PASS]` assertion row — records the requirement
+`verify-spec` matched it to (`SKILL.md` §"The blocking set") as `` — anchors: R<n>``, so a reader
+can see which requirement the finding blocks on. On a single-lens bullet the trailing clauses run in
+one fixed order: evidence, `— anchors: R<n>`, `— Remedy: …`, the critic tag, then `— mechanical`.
+A collapsed finding carries the anchor once, at the end of its headline line.
 
 Every finding bullet in this report — here, under `## Pre-existing`, and under
 `## Accepted warnings`, collapsed or not — is keyed by its fingerprint
@@ -86,8 +89,8 @@ The fingerprint is the finding's identity; the cited `file:L` is where `/wf:veri
 applies the remedy, so a contributor line never drops it. A single-lens finding is a collapse
 of one:
 
-- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence> — Remedy: <bounded edit>
-- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence>
+- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence> — anchors: R<n> — Remedy: <bounded edit>
+- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence> — anchors: R<n>
 - **<source capability>** — [PASS] <rule asserted, no divergence found>
 - none
 
@@ -96,7 +99,7 @@ aggregation step) renders as one bullet naming every contributing lens, with eac
 evidence, `<lens>/<check>` provenance, cited `file:L`, and remedy nested beneath it — never
 one bullet per lens, and never a single evidence field standing in for all of them:
 
-- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:
+- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses: — anchors: R<n>
   - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence> — Remedy: <that lens's recommendation>
   - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence>
 
@@ -153,12 +156,16 @@ contributor exactly as `## Capability findings` does:
   - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence> — Remedy: <that lens's recommendation>
 
 An **advisory** `fail` — change-anchored (or under the dirty-file / empty-diff carve-out) but
-naming no requirement it contradicts (`verify-spec/SKILL.md` §"The blocking set") — also renders
-here, never routed to the critic and never blocking, tagged `advisory: not requirement-anchored`
-(ledger status `accepted`, disposition `accepted`). It nests contributors exactly as a collapsed
-`warn` does:
+matched to no extracted requirement (no `anchors: R<n>`; `verify-spec/SKILL.md` §"The blocking
+set") — also renders here, never routed to the critic and never blocking, tagged
+`advisory: not requirement-anchored` (ledger status `accepted`, disposition `accepted`). It renders
+like a `warn`: flat for a single contributor, nested when collapsed, with the tag ending the
+headline line:
 
 - **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence> — advisory: not requirement-anchored
+- **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses: — advisory: not requirement-anchored
+  - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence> — Remedy: <that lens's recommendation>
+  - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence>
 
 A candidate the critic pass classified also renders here — never dropped, and never dismissing a
 requirement `FAIL`/`PARTIAL` (which never reaches the critic at all):
@@ -276,12 +283,12 @@ Informational only — does NOT affect the verdict.
 
 ## Recommended next actions
 
-- Short, ordered list. "Fix X at file:line", "Run `tsc --noEmit`", "Resolve open
-  question Y".
-- Draw only from requirement `FAIL`/`PARTIAL` items, blocking-set members, and open
-  questions — never from `## Pre-existing` or `## Accepted warnings` entries (advisory ones
-  included), which are recorded, not to-dos. Only when the blocking set is empty **and** no
-  open question remains, write `- none — requirements met`, adding
+- Short, ordered list. "Fix X at file:line", "Run the runtime check named for UNVERIFIABLE
+  item N", "Resolve open question Y".
+- Draw only from requirement items whose verdict is `FAIL`, `PARTIAL`, or `UNVERIFIABLE`,
+  blocking-set members, and open questions — never from `## Pre-existing` or
+  `## Accepted warnings` entries (advisory ones included), which are recorded, not to-dos. Only
+  when none of those sources has an entry, write `- none — requirements met`, adding
   `; remaining capability findings are advisory` only when `## Accepted warnings` carries an
   `advisory: not requirement-anchored` entry.
 ```

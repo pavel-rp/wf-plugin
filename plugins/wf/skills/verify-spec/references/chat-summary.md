@@ -46,8 +46,9 @@ Print, in this order:
   unconfirmed` when the critic ran inline under a caller that cannot await. Non-gating on its own — a refutation already removed that candidate
   from the blocking set the verdict line above reads, and this line never re-derives it.
 - **Top next actions:** 1–3 bullets — the most important items from the report's
-  "Recommended next actions", which draw only from requirement items, blocking-set
-  members, and open questions — never from `## Pre-existing` or `## Accepted warnings` entries.
+  "Recommended next actions", which draw only from requirement items whose verdict is
+  `FAIL`, `PARTIAL`, or `UNVERIFIABLE`, blocking-set members, and open questions — never
+  from `## Pre-existing` or `## Accepted warnings` entries.
 - **`/wf:verify-fix` suggestion (conditional):** one line —
   `Suggested: /wf:verify-fix {task-id} — <N> mechanical fixes look auto-applicable.` Include
   **only** when a FAIL or PARTIAL finding — a requirement item or a blocking-set member, never
