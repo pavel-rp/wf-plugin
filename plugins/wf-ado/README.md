@@ -50,7 +50,11 @@ extension.
 With `ado` registered, a finished `/wf:research` pass publishes its findings and verdict together
 as one standalone `Research:` work item (every verdict, `Not practical` included — no
 implementation task, no charter), and `/wf:qa-gen` publishes only `06_qa.md` as a `QA plan:` child
-of the task's umbrella (never a run report). Each fill persists a pending-create marker before
+of the task's umbrella (never a run report). Both fills preflight the existing tracker
+configuration before any record mutation or outbound create/update; unconfigured state warns
+without changing records or the tracker. QA also fails closed on retained execution annotations
+on both create and refresh, preserving local plan bytes, receipts and publication identity.
+Each fill persists a pending-create marker before
 creating externally, then records the returned item id immediately. If the marker cannot be
 saved, it does not create; if saving the returned id fails, the marker remains and retries fail
 closed. A completed identity selects refresh of that same item. Outbound descriptions omit only

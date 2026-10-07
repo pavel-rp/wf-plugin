@@ -71,7 +71,10 @@ replaces it with the returned item id immediately, before later operations. A fa
 prevents create; a failed identity save retains the marker so retry fails closed. Every later
 pass with a completed identity `update`s that item instead of creating another. Outbound copies
 omit only model-attribution metadata; substantive content and local artifacts stay unchanged.
-They bind only `get`, `create_umbrella`, `create_child`, `update` and `set_status`.
+They bind only existing `resolve_config`, `get`, `create_umbrella`, `create_child`, `update` and
+`set_status`. Both preflight tracker configuration before record mutation or publication;
+unconfigured state only warns and leaves the record unchanged. QA additionally refuses plans
+containing retained execution annotations on create and refresh, without editing local artifacts.
 
 **Authored to parity, not live-tested.** The seven conveyor fills are structurally mirrored from
 the `linear` capability's fills; the two completion fills are authored against the core

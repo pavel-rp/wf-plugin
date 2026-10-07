@@ -1,85 +1,73 @@
 # qa-gen.publish — publish and refresh the finished test plan (slot fill)
 
-**Version:** 1.0.0 (WF-1079 — the ADO half of the C045 completion-publishing fills; authored to parity, review-verified, never run live)
+**Version:** 1.0.0 (WF-1079 — ADO completion publishing; structural evidence only, never run live)
 **Model:** claude-opus-5-5
 
-Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+Before any resolver MCP call, run `pwd -P` and pass its absolute current Agent/session directory as `workspaceRoot` on every call. Use this worktree's root, never a parent's; omission is a schema error, with no default or fallback.
 
-The `ado` capability's fill for the `qa-gen.publish` slot (`replace` policy). `/wf:qa-gen` reaches
-this point once per run, after `06_qa.md` is written, its index row recorded and its phase receipt
-requested — and follows this prose in its own context. It supersedes the inline default ("nothing
-is published") wholesale.
+The `ado` fill for `qa-gen.publish` (`replace`) runs after the plan, index and receipt request,
+before the host's final block. It publishes only the finished plan beneath the existing umbrella;
+regeneration refreshes the same identity. Publishing never blocks local generation.
+It never reads or publishes `07_qa-report.md` or any execution result.
+It never modifies `06_qa.md` — the receipt stays `fresh` — or any other task artifact.
+The only file it writes is its own `<publication-record>`.
 
-**Role framing.** Publish only finished `06_qa.md` as a `QA plan:` child beneath the existing
-tracker umbrella; regenerate by refreshing the same item. Publishing never blocks local generation.
-
-**What this fill never does.** It never reads or publishes `07_qa-report.md` or any execution
-result. It never modifies `06_qa.md` — its phase receipt is bound to that file's digest, so the
-receipt stays `fresh` — and never writes any other task artifact. The only file it writes is its
-own `<publication-record>`.
-
-**Inputs (resolved by the host).** `<task-id>`, `<task-folder>`, `<qa-plan>` = `<task-folder>/06_qa.md`,
-`<scope>`, `<scenario-count>`, `<publication-record>` = `<task-folder>/publication/qa-gen.publish.md`.
-
-**Tracker access.** Resolve `resolve_provider({ workspaceRoot, surface: "tracker" })`, then obtain
-its operation body via `resolve_content` (`workspaceRoot`, `class: fragment`) and follow it
-in-context; name no concrete tracker tool. Bind only existing contract operations `get`,
-`create_child`, `update`, `set_status` — no extension.
+**Inputs:** `<task-id>`, `<task-folder>`, `<qa-plan>` = `<task-folder>/06_qa.md`, `<scope>`,
+`<scenario-count>`, `<publication-record>` = `<task-folder>/publication/qa-gen.publish.md`.
+**Tracker access:** resolve `resolve_provider({ workspaceRoot, surface: "tracker" })`, then obtain
+its operation body through `resolve_content` (`workspaceRoot`, `class: fragment`) and follow it
+in-context. Bind only existing `resolve_config`, `get`, `create_child`, `update`, `set_status`;
+name no concrete tracker tool and extend no contract.
 
 ## Contents
 
-[Record](#step-1--read-the-publication-record-first) · [Context](#step-2--resolve-the-task-context-create-path-only) · [Compose](#step-3--compose-the-item-shared-by-create-and-refresh)
+[Record and guards](#step-1--read-the-publication-record-first) · [Context](#step-2--resolve-the-task-context-create-path-only) · [Compose](#step-3--compose-the-item-shared-by-create-and-refresh)
 [Create](#step-4--create-path-create-then-record-immediately) · [Refresh](#step-5--refresh-path-update-the-recorded-item) · [Outcome](#step-6--outcome) · [Degradation](#degradation)
-
----
 
 ## Step 1 — Read the publication record first
 
-Read `<publication-record>` before any tracker call. Four cases, decided by the file alone:
+Read `<publication-record>` before any tracker call; these cases select a route, not permission to skip the shared guards:
+- **Absent** — select create; pass both shared guards below before Step 2.
+- **Pending** (`**Publication state:** pending`, even alongside an id) — change/create nothing;
+  never clear it on retry. End `Publish: failed — pending publication identity unresolved at <publication-record>`.
+- **Readable** (exactly one nonempty `**Publication item:**` line and no pending marker) — select refresh;
+  after both guards compose Step 3 values, then Step 5. **Never create** on this path.
+- **Unreadable** (missing/duplicate/empty id) — change/create nothing;
+  end `Publish: failed — publication record unreadable at <publication-record>`.
 
-- **Absent** — no publication identity or pending attempt is recorded. Continue at Step 2 (create).
-- **Present with `**Publication state:** pending`** — creation may already have succeeded without
-  its returned id being saved. Create nothing, change nothing, and end with
-  `Publish: failed — pending publication identity unresolved at <publication-record>`.
-  This test wins even if the file also contains an item id; never clear a pending marker on retry.
-- **Present with exactly one `**Publication item:** <id>` line carrying a non-empty id and no pending marker** — a plan
-  for this task was published before. Compose fresh Step 3 values, then continue at Step 5 (refresh).
-  **Never create** on this path.
-- **Present but unreadable** (no such line, more than one, or an empty value) — create nothing,
-  change nothing, and end with `Publish: failed — publication record unreadable at <publication-record>`.
+**Shared preflight — both routes:** follow the tracker operation `resolve_config()` (not the core resolver-config query).
+Proceed only on `configured`; `unconfigured`, errors or unknown outcomes end `Publish: failed — tracker configuration unavailable`.
+Leave `<publication-record>` unchanged and make no create/update on that failure. Perform this check
+before record mutation or outbound create/update, then continue the selected route through the plan guard.
+
+**Plan guard — create and refresh:** inspect the entire `<qa-plan>`, including retained/appended sections.
+Execution annotations are recorded observations/outcomes: filled Verdict/Observed cells, run-result notes,
+execution timestamps or evidence/screenshots; expectations, empty placeholders and fenced examples are not results.
+If any such annotation exists, or classification is uncertain, end `Publish: failed — QA plan contains execution annotations`.
+Make no record mutation or outbound create/update; leave the plan, receipt and identity unchanged. Never strip results to publish.
 
 ## Step 2 — Resolve the task context (create path only)
 
-The **umbrella** is the work item the task id already names. Resolve it read-only, in this order,
-and stop at the first hit:
-
-1. A `**Tracker umbrella:** <id>` line read back from `<task-folder>/02_plan.md`, else
-   `03_tasks.md`, else `02_progress.md`, else `01_spec.md` — the order `implement.start` uses; an
-   earlier artifact fill recorded it there (`implement.start` records an umbrella it minted in
-   `02_progress.md`). Read only; never write these files.
-2. A `get(<task-id>)` succeeds — then `<task-id>` **is** the umbrella.
-
-Neither holds → this fill has no task context and may not mint one (its write scope forbids
-recording a guard line in a task artifact). Create nothing and end with
+Resolve the existing umbrella read-only from `<task-folder>`, stopping at the first hit:
+1. `**Tracker umbrella:** <id>` from `02_plan.md`, else `03_tasks.md`, else `02_progress.md`,
+   else `01_spec.md` (implement.start's order, including minted umbrellas). Never write these files.
+2. A `get(<task-id>)` succeeds — then `<task-id>` is the umbrella.
+No umbrella → create nothing, never mint one or edit a task artifact; end
 `Publish: failed — no tracker work item for <task-id>`.
 
 ## Step 3 — Compose the item (shared by create and refresh)
 
-- **title** — `QA plan: <task title>`, the task title taken from `06_qa.md`'s H1 (else
-  `01_spec.md`'s).
-- **description** — the full markdown body of `<qa-plan>`, preserving all substantive content
-  verbatim. Filter only model-attribution metadata from the outbound copy: before the artifact's
-  first `##` heading, outside fenced code blocks, omit whole metadata lines labelled `**Model:**`,
-  `**Researched by:**` or `**Generated by:**`. Preserve every other line, including examples or
-  substantive mentions of models. Do not summarise, truncate or re-word substantive content,
-  append no run results, and never alter the local source artifact. Apply this same outbound-only
-  filter on both create and refresh.
+- **title** — `QA plan: <task title>`, from `06_qa.md`'s H1 (else `01_spec.md`'s).
+- **description** — the full markdown body of `<qa-plan>`, substantive content verbatim; append no results.
+  Filter only model-attribution metadata from the outbound copy before the first `##` heading,
+  outside fenced code blocks: omit header lines `**Model:**`, `**Researched by:**`, `**Generated by:**`.
+  Preserve every other line, including examples and substantive model mentions; never alter the local artifact.
+  Apply this filter on both create and refresh, only after the plan guard passed.
 
 ## Step 4 — Create path: create, then record immediately
 
-1. **Before external create**, persist this pending marker in `<publication-record>` (create the
-   `publication/` folder if absent). Create the record exclusively; if one appeared since Step 1,
-   do not overwrite it or create externally — restart the record decision instead.
+1. **Before external create**, persist this pending marker in `<publication-record>` (create `publication/` if absent).
+   Create the record exclusively; if one appeared since Step 1, do not overwrite or create — restart the record decision.
 
    ```markdown
    # qa-gen.publish — publication record
@@ -88,11 +76,9 @@ recording a guard line in a task artifact). Create nothing and end with
 
    Read back the marker. If writing or read-back fails, invoke no create and end with
    `Publish: failed — pending marker could not be persisted: <error>`.
-2. Invoke `create_child(<umbrella-id>, <title>, <description>)` **once**. On failure, retain the
-   pending marker (the external outcome may be uncertain) and end with
-   `Publish: failed — create_child: <error>`.
-3. **Immediately** after it returns an id, and **before any further operation**, replace the pending
-   `<publication-record>` with the completed identity record:
+2. Invoke `create_child(<umbrella-id>, <title>, <description>)` **once**. On failure retain pending
+   (the external outcome may be uncertain); end `Publish: failed — create_child: <error>`.
+3. **Immediately** after it returns an id, and **before any further operation**, replace pending with:
 
    ```markdown
    # qa-gen.publish — publication record
@@ -104,47 +90,41 @@ recording a guard line in a task artifact). Create nothing and end with
    Replacement must be failure-atomic: never truncate or remove the pending record first. If a
    safe replacement cannot be performed or fails, retain the pending marker and end with
    `Publish: failed — item <id> created but its record could not be written: <error>`.
-   Never clear the marker automatically, even after create failure; reconcile only by explicit operator choice.
+   Never clear pending automatically, even after create failure; reconcile only by explicit operator choice.
 4. **Best effort, never fatal:** `update(<id>, tags: ["wf-artifact"])`, then
-   `set_status(<id>, <the project's completed state>)` — `Closed` in Agile, `Done` in Scrum and
-   Basic, a custom template's own completed state otherwise. On either failure, state one line and
-   continue; the outcome stays `published`.
-5. End with `Publish: published <id>`.
+   `set_status(<id>, <the project's completed state>)` — Closed in Agile, Done in Scrum/Basic,
+   or the custom template's completed state. Either failure states one line; outcome stays published.
+5. End `Publish: published <id>`.
 
 ## Step 5 — Refresh path: update the recorded item
 
-1. Invoke `update(<recorded-id>, title: <title>, description: <description>)` **once**, with the
-   Step 3 values. Never `create_child` here, whatever the error.
-2. On failure, leave `<publication-record>` exactly as it is — so the next run retries the same
-   item — and end with `Publish: failed — update <recorded-id>: <error>`. If the item was deleted on
-   the tracker, removing the record is the operator's explicit choice to publish anew; this fill
-   never makes it.
-3. On success, end with `Publish: refreshed <recorded-id>`. The record is unchanged.
+1. Invoke `update(<recorded-id>, title: <title>, description: <description>)` **once**, with guarded Step 3 values.
+   Never `create_child` here, whatever the error.
+2. Failure leaves `<publication-record>` exactly unchanged; end `Publish: failed — update <recorded-id>: <error>`.
+   Retry refreshes the same item; deleting its record to publish anew is an explicit operator choice, never this fill's.
+3. Success ends `Publish: refreshed <recorded-id>`. The record is unchanged.
 
 ## Step 6 — Outcome
 
-State **exactly one** outcome line, as the last thing this fill emits: `Publish: published <ref>`,
-`Publish: refreshed <ref>`, or `Publish: failed — <reason>`. The host prints `failed` as one warning
-line; no outcome changes its status token, `06_qa.md`, the receipt, the index row or `Next:`.
-Publish no model-attribution metadata, and carry no AI-attribution trailer, "generated with"
-footer, emoji, or promotional tagline into any title, description or comment.
-
----
+Emit exactly one final outcome: `Publish: published <ref>`, `Publish: refreshed <ref>` or `Publish: failed — <reason>`.
+The host prints failed as a warning; status, local plan, receipt, index and Next remain unchanged.
+Publish no model-attribution metadata, AI-attribution trailer, generated-with footer, emoji or promotional tagline.
 
 ## Degradation
 
 | Situation | Behaviour |
 |-----------|-----------|
-| record absent, umbrella resolved | persist pending marker, create child, replace with identity immediately, tag + status best effort → `published` |
-| record absent, no umbrella | nothing created → `failed` |
-| pending marker cannot be persisted | no external create → `failed` |
-| record pending | nothing created or changed → `failed`; no automatic retry create |
-| record readable | compose filtered current content, `update` the recorded item → `refreshed`; never create |
-| record unreadable | nothing created or changed → `failed` |
-| `create_child` fails | pending marker retained → `failed`; retry fails closed |
-| record replacement fails after create | pending marker retained → `failed`, naming the created id; retry fails closed |
-| tag or status fails | one line stated → still `published` |
-| refresh `update` fails | record kept → `failed`; the next run refreshes the same item |
-| Tracker unconfigured or unrecoverable | this fill never resolves; `qa-gen` runs its no-op inline default |
+| configuration unconfigured/error/unknown | failed, record unchanged, no create/update |
+| annotated/uncertain plan | failed, plan/receipt/identity unchanged, no publication |
+| record absent, umbrella resolved | guarded pending → create → immediate identity → published |
+| record absent, no umbrella | failed, no create |
+| marker persistence fails | failed, no create |
+| record pending/unreadable | failed, no create/change |
+| record readable | guarded update → refreshed; never create |
+| create fails | pending retained; retry fails closed |
+| identity replacement fails | pending retained; failed names created id |
+| tag/status fails | warning; still published |
+| refresh fails | identity retained; next run refreshes |
+| slot unfilled/unresolved/refused | core follows its inline default; this body is not followed |
 
-Rationale and authored-not-tested status: [`../references/onboarding.md`](../references/onboarding.md) — authors only, never at slot-fire.
+Rationale: [`../references/onboarding.md`](../references/onboarding.md) — authors only, never at slot-fire.

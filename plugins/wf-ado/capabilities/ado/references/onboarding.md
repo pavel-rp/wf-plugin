@@ -243,6 +243,20 @@ fenced code blocks. All other content, including substantive model mentions and 
 preserved. The filter acts only on the outbound description, never on either research artifact
 or `06_qa.md`; local model attribution and receipt digests therefore remain intact.
 
+**Shared guards before publication.** Slot composition validates contribution paths, not tracker
+configuration. Both fills therefore invoke the existing tracker `resolve_config` operation after
+their publication-record decision and before any record mutation or outbound create/update.
+Only `configured` proceeds; unconfigured, error or unknown outcomes warn without creating,
+updating or changing the record. Existing pending markers remain fail-closed, never reset on a
+configuration change.
+
+QA also checks the entire plan, including sections retained by qa-gen's append path. Recorded
+execution observations/outcomes (filled Verdict/Observed cells, run-result notes, execution
+timestamps or evidence/screenshots) are annotations, unlike expectations, empty placeholders and
+fenced examples. Any annotation or uncertain classification refuses publication on both create
+and refresh. It neither sanitizes results into a publishable copy nor edits the local plan,
+receipt or publication identity. This preserves the plan-only boundary without losing local history.
+
 **Receipt freshness.** `qa-gen` files its phase receipt against `06_qa.md`'s digest before the slot
 fires. The QA fill never writes `06_qa.md`, so the receipt stays `artifactState: fresh` on every
 outcome — first publish, refresh, failure after recording, and retry.

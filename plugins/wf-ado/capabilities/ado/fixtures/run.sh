@@ -30,7 +30,7 @@ CAP_DIR="$(cd "$HERE/.." && pwd)"
 
 # Tracker-contract operations the fills may bind, plus the two resolver calls
 # every fill uses to reach the provider (not tracker operations themselves).
-ALLOWED_OPS="get create_umbrella create_child update set_status resolve_provider resolve_content"
+ALLOWED_OPS="resolve_config get create_umbrella create_child update set_status resolve_provider resolve_content"
 
 fail() { echo "  FAIL: $*"; FAILS=$((FAILS + 1)); }
 
@@ -63,8 +63,17 @@ check_fill() {
   has "$f" 'Replacement must be failure-atomic' || fail "$label: failed replacement may destroy the guard"
   has "$f" 'retain the pending marker and end with' || fail "$label: failed identity save loses the guard"
 
-  local pending create rec tag st
+  local config pending create rec tag st
+  config="$(first_line "$f" '`resolve_config()`')"
   pending="$(first_line "$f" '**Before external create**')"
+  has "$f" 'Shared preflight — both routes' || fail "$label: configuration check not shared by create and refresh"
+  has "$f" 'Proceed only on `configured`' || fail "$label: unconfigured tracker can proceed"
+  has "$f" 'tracker configuration unavailable' || fail "$label: configuration failure is not reported"
+  has "$f" 'before record mutation or outbound create/update' || fail "$label: configuration guard too late"
+  has "$f" 'Leave `<publication-record>` unchanged and make no create/update' || fail "$label: configuration failure mutates publication state"
+  if [ -z "$config" ] || [ -z "$pending" ] || [ "$config" -ge "$pending" ]; then
+    fail "$label: tracker configuration must be checked before pending persistence"
+  fi
   create="$(first_line "$f" '2. Invoke `create_')"
   rec="$(first_line "$f" '**Immediately** after it returns an id')"
   if [ -z "$pending" ] || [ -z "$create" ] || [ -z "$rec" ]; then
@@ -136,6 +145,18 @@ check_cap() {
     has "$qf" 'never reads or publishes `07_qa-report.md`' || fail "qa-gen-publish: does not exclude 07_qa-report.md"
     has "$qf" 'It never modifies `06_qa.md`' || fail "qa-gen-publish: does not protect 06_qa.md (receipt freshness)"
     has "$qf" 'Never `create_child` here' || fail "qa-gen-publish: refresh path does not forbid create_child"
+    has "$qf" 'Plan guard — create and refresh' || fail "qa-gen-publish: annotation guard not shared by both routes"
+    has "$qf" 'including retained/appended sections' || fail "qa-gen-publish: old appended results can leak"
+    has "$qf" 'QA plan contains execution annotations' || fail "qa-gen-publish: annotations do not fail closed"
+    has "$qf" 'classification is uncertain' || fail "qa-gen-publish: uncertain annotations can publish"
+    has "$qf" 'expectations, empty placeholders and fenced examples are not results' || fail "qa-gen-publish: guard confuses definitions with results"
+    has "$qf" 'leave the plan, receipt and identity unchanged' || fail "qa-gen-publish: annotated-plan refusal mutates artifacts"
+    local guard pending
+    guard="$(first_line "$qf" 'Plan guard — create and refresh')"
+    pending="$(first_line "$qf" '**Before external create**')"
+    if [ -z "$guard" ] || [ -z "$pending" ] || [ "$guard" -ge "$pending" ]; then
+      fail "qa-gen-publish: annotation guard must precede pending persistence"
+    fi
   fi
 
   return "$FAILS"
@@ -206,11 +227,28 @@ expect_caught "identity replacement can destroy pending marker"
 seed; sed -i 's/model-attribution metadata from the outbound copy/all metadata retained in outbound copy/' "$tmp/cap/fragments/qa-gen-publish.md"
 expect_caught "outbound model metadata filter removed"
 
-seed; printf '\n' >> "$tmp/cap/fragments/qa-gen-publish.md"
+seed
+lines="$(wc -l < "$tmp/cap/fragments/qa-gen-publish.md")"
+while [ "$lines" -lt 151 ]; do
+  printf '\n' >> "$tmp/cap/fragments/qa-gen-publish.md"
+  lines=$((lines + 1))
+done
 expect_caught "slot body exceeds 150 lines"
 
 seed; sed -i '/^## Contents$/d' "$tmp/cap/fragments/research-publish.md"
 expect_caught "runtime body over 100 lines has no contents"
+
+seed; sed -i 's/resolve_config()/get()/g' "$tmp/cap/fragments/research-publish.md"
+expect_caught "tracker configuration operation no longer checked"
+
+seed; sed -i 's/Proceed only on `configured`/Proceed even when unconfigured/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "unconfigured tracker can proceed"
+
+seed; sed -i 's/QA plan contains execution annotations/QA plan accepted with annotations/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "execution annotations no longer fail closed"
+
+seed; sed -i 's/including retained\/appended sections/only the newest section/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "retained appended results no longer checked"
 
 if [ "$SELF_FAILS" -ne 0 ]; then
   echo "ado fixtures: $SELF_FAILS seeded breakage(s) escaped the checks." >&2

@@ -29,8 +29,7 @@ charter, and creates no child under any task. It never edits `00_brief.md`, `01_
 provider via `resolve_provider({ workspaceRoot, surface: "tracker" })`; obtain each operation's
 body via `resolve_content` (`workspaceRoot`, `class: fragment`) from that record and follow it
 in-context — name no concrete tracker tool here. The operations this fill uses:
-`create_umbrella`, `update`, and `set_status`. **No operation outside the already-defined tracker
-contract is used, described, or implied.**
+`resolve_config`, `create_umbrella`, `update`, `set_status` — existing operations only.
 
 ## Contents
 
@@ -43,17 +42,22 @@ contract is used, described, or implied.**
 
 Read `<publication-record>` before any tracker call. Four cases, decided by the file alone:
 
-- **Absent** — no publication identity or pending attempt is recorded. Continue at Step 2 (create).
+- **Absent** — select create; pass the shared preflight below before continuing at Step 2.
 - **Present with `**Publication state:** pending`** — creation may already have succeeded without
   its returned id being saved. Create nothing, change nothing, and end with
   `Publish: failed — pending publication identity unresolved at <publication-record>`.
   This test wins even if the file also contains an item id; never clear a pending marker on retry.
 - **Present with exactly one `**Publication item:** <id>` line carrying a non-empty id and no pending marker** — this
-  research was published before. Compose fresh Step 2 values, then continue at Step 4 (refresh).
+  research was published before. After the shared preflight, compose fresh Step 2 values, then Step 4 (refresh).
   **Never create** on this path.
 - **Present but unreadable** (no such line, more than one, or an empty value) — the identity cannot
   be trusted, and creating would risk a duplicate. Create nothing, change nothing, and end with
   `Publish: failed — publication record unreadable at <publication-record>`.
+
+**Shared preflight — both routes:** follow the tracker operation `resolve_config()` (not the core resolver-config query).
+Proceed only on `configured`; `unconfigured`, errors or unknown outcomes end `Publish: failed — tracker configuration unavailable`.
+Leave `<publication-record>` unchanged and make no create/update on that failure. Perform this check
+before record mutation or outbound create/update, then compose/continue the selected route.
 
 ## Step 2 — Compose the item (shared by create and refresh)
 
@@ -139,7 +143,8 @@ tagline into any title, description or comment.
 | record replacement fails after create | pending marker retained → `failed`, naming the created id; retry fails closed |
 | tag or status fails | one line stated → still `published` |
 | refresh `update` fails | record kept → `failed`; the next pass refreshes the same item |
-| Tracker unconfigured or unrecoverable | this fill never resolves; `research` runs its no-op inline default |
+| tracker configuration unconfigured/unreadable | `failed`; record unchanged, no create/update |
+| slot unfilled/unresolved/refused | core follows its inline default; this body is not followed |
 
 Rationale, the refresh model shared with `qa-gen.publish`, and the authored-not-tested status:
 [`../references/onboarding.md`](../references/onboarding.md) — read by authors, never at slot-fire.
