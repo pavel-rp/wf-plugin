@@ -57,7 +57,7 @@ its `finding` fragment carries one) as a trailing `— Remedy: <text>` clause; o
 clause when the fragment carries none.
 
 This section carries the `fail`-severity aggregated findings that made the **blocking set** —
-anchored candidates the critic confirmed (`AGREE`), plus every candidate when the critic did not
+requirement-anchored candidates the critic confirmed (`AGREE`), plus every candidate when the critic did not
 run (fail-closed, unconfirmed — `critic-verdict.md` §"Malformed or failed dispatch"), plus every candidate an inline critic
 (caller cannot await) returned `DISAGREE` or `UNVERIFIABLE` (held, unconfirmed). A `fail` or `warn` that did not make
 it is recorded in exactly one of the two non-gating sections below instead of here, so every
@@ -147,6 +147,14 @@ contributor exactly as `## Capability findings` does:
 
 - **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:
   - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence> — Remedy: <that lens's recommendation>
+
+An **advisory** `fail` — change-anchored (or under the dirty-file / empty-diff carve-out) but
+naming no requirement it contradicts (`verify-spec/SKILL.md` §"The blocking set") — also renders
+here, never routed to the critic and never blocking, tagged `advisory: not requirement-anchored`
+(ledger status `accepted`, disposition `accepted`). It nests contributors exactly as a collapsed
+`warn` does:
+
+- **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence> — advisory: not requirement-anchored
 
 A candidate the critic pass classified also renders here — never dropped, and never dismissing a
 requirement `FAIL`/`PARTIAL` (which never reaches the critic at all):
@@ -266,6 +274,10 @@ Informational only — does NOT affect the verdict.
 
 - Short, ordered list. "Fix X at file:line", "Run `tsc --noEmit`", "Resolve open
   question Y".
+- Draw only from requirement `FAIL`/`PARTIAL` items, blocking-set members, and open
+  questions — never from `## Pre-existing` or `## Accepted warnings` entries (advisory ones
+  included), which are recorded, not to-dos. With the blocking set empty, write
+  `- none — requirements met; remaining capability findings are advisory`.
 ```
 
 ## Lens count

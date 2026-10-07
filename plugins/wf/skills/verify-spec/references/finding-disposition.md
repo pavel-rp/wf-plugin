@@ -23,7 +23,7 @@ carries exactly one. Nothing else is a disposition, and no row is ever left with
 | `escalated` | Open and blocking at the loop's stop point — the round at which `/wf:run`'s stop gate fires when it drives the loop. | open |
 | `fixed` | No longer reported by the latest round. | fixed |
 | `refuted` | The critic disagreed with it (`critic: DISAGREE`). | refuted |
-| `accepted` | Non-blocking and kept as-is: a `warn`, a critic-`UNVERIFIABLE` candidate, a pre-existing `fail`, a gate-accepted residue, or a drift residual (`certified-commit.ops.md` §"Drift-mode audit"). | accepted-warning |
+| `accepted` | Non-blocking and kept as-is: a `warn`, an advisory (change-anchored-only) `fail`, a critic-`UNVERIFIABLE` candidate, a pre-existing `fail`, a gate-accepted residue, or a drift residual (`certified-commit.ops.md` §"Drift-mode audit"). | accepted-warning |
 
 The kernel column is the state a shared loop kernel reuses; the disposition is a projection of the
 finding ledger's `status` (`finding-ledger.md` §"Status vocabulary") plus the stop predicate below —
