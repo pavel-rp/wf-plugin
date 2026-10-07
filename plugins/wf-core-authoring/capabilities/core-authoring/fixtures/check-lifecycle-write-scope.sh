@@ -9,6 +9,8 @@
 #
 #   * `.wf/install-state.json`         the portable install-state ledger (WF-442)
 #   * `.wf/slots/<skill>.<point>.md`   the committed project-override slot tier (WF-443)
+#   * `.wf/settings/<skill>.settings.json`  the committed project settings tier (WF-586) —
+#                                      read by `resolve_settings` below the personal override
 #   * `.wf/run-evidence/<run>.json`    the machine-emitted run-evidence class (WF-490) —
 #                                      the resolver-issued receipts a receipt-bearing phase
 #                                      files on completion, and the per-gate self-approval
@@ -32,7 +34,7 @@
 #       lifecycle ownership. This is the "an ordinary skill claims arbitrary `.wf/`
 #       access" defect.
 #   W2  undeclared artifact class — any `.wf/<path>` token that is none of
-#       `.wf/slots/…`, `.wf/run-evidence/…`, or `.wf/install-state.json`.
+#       `.wf/slots/…`, `.wf/settings/…`, `.wf/run-evidence/…`, or `.wf/install-state.json`.
 #       Verb-independent by design: an undeclared lifecycle artifact is out of scope
 #       whether it is read or written, and naming the resolver does not excuse it.
 #
@@ -141,9 +143,10 @@ lint_file() {
         '.wf/') continue ;;                            # the home named as a directory
         '.wf/install-state.json') continue ;;          # declared class: portable install state
         '.wf/slots/'*) continue ;;                     # declared class: committed slot override
+        '.wf/settings/'*) continue ;;                  # declared class: committed settings override
         '.wf/run-evidence/'*) continue ;;              # declared class: machine-emitted run evidence
       esac
-      echo "$rel:$lno: W2 undeclared committed lifecycle artifact '$tok' — the exception admits '.wf/slots/<skill>.<point>.md', '.wf/run-evidence/<run>.json', '.wf/install-state.json', and a destination declared in a complete '## Payloads' row. '.wf/' is not a general home; declare the artifact's lifecycle before naming it."
+      echo "$rel:$lno: W2 undeclared committed lifecycle artifact '$tok' — the exception admits '.wf/slots/<skill>.<point>.md', '.wf/settings/<skill>.settings.json', '.wf/run-evidence/<run>.json', '.wf/install-state.json', and a destination declared in a complete '## Payloads' row. '.wf/' is not a general home; declare the artifact's lifecycle before naming it."
     done <<TOKENS
 $(printf '%s' "$line" | grep -Po "$PATHTOK")
 TOKENS

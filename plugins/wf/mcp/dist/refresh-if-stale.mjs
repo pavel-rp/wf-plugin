@@ -1441,6 +1441,9 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   // query exactly as a personal override does.
   "slot-project-override",
   "settings-override",
+  // WF-586: the committed `.wf/settings/` project settings override, re-read the
+  // same way as its personal counterpart.
+  "settings-project-override",
   // WF-334: the composed constitution record joins the re-read set — editing a
   // project clause (or re-composing capability articles into it) invalidates the
   // snapshot on the next query, keeping the SessionStart constitution payload
@@ -1561,6 +1564,7 @@ var ALL_CONTENT_CLASSES = [...CONTENT_REF_CLASSES, "slot"];
 // src/resolver/settings.ts
 var SETTINGS_STORAGE_DIR = "_local/profiles";
 var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
+var PROJECT_SETTINGS_DIR = ".wf/settings";
 var PROFILE_STORAGE_DIR = SETTINGS_STORAGE_DIR;
 var PROFILE_SUFFIX = ".profile.json";
 function capabilityProfileRelPath(capability) {
@@ -1615,19 +1619,20 @@ function parseSettingsOverride(jsonText) {
   }
   return { ok: true, value: parsed };
 }
-function mergeSettings(declared, override) {
+function mergeSettings(declared, override, projectOverride = null) {
+  const has = (o, key) => o !== null && Object.prototype.hasOwnProperty.call(o, key);
   const values = {};
   for (const [key, def] of declared) {
-    values[key] = override && Object.prototype.hasOwnProperty.call(override, key) ? override[key] : def;
+    values[key] = has(override, key) ? override[key] : has(projectOverride, key) ? projectOverride[key] : def;
   }
-  const undeclared = [];
-  if (override) {
-    for (const key of Object.keys(override)) {
-      if (!declared.has(key)) undeclared.push(key);
+  const undeclared = /* @__PURE__ */ new Set();
+  for (const tier of [override, projectOverride]) {
+    if (!tier) continue;
+    for (const key of Object.keys(tier)) {
+      if (!declared.has(key)) undeclared.add(key);
     }
   }
-  undeclared.sort();
-  return { values, undeclared };
+  return { values, undeclared: [...undeclared].sort() };
 }
 function locateInterface(skill, roots, readFile, joinSlash2) {
   for (const root of roots) {
@@ -2263,48 +2268,50 @@ function buildSnapshot(inputs, io) {
   for (const r of pluginRoots) {
     if (r.resolvedRoot) interfaceRoots.push(toAbsolute(workspaceRoot, r.resolvedRoot));
   }
-  const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
-  const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
   const settingsOverrides = [];
-  for (const filename of [...settingsFiles].sort()) {
-    const skill = skillFromSettingsFilename(filename);
-    if (!skill) continue;
-    const overridePath = joinSlash(settingsDir, filename);
-    const overrideRaw = io.readFile(overridePath);
-    if (overrideRaw === null) continue;
-    sources.push(
-      fingerprint("settings-override", `${SETTINGS_STORAGE_DIR}/${filename}`, overrideRaw)
-    );
-    settingsOverrides.push(skill);
-    const parsed = parseSettingsOverride(overrideRaw);
-    if (!parsed.ok) {
-      diagnostics.push({
-        severity: "warning",
-        code: "settings/unparseable",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) is not a valid JSON object: ${parsed.error}`
-      });
-      continue;
+  const validateSettingsTier = (relDir, sourceKind, label2) => {
+    const dir = joinSlash(workspaceRoot, relDir);
+    const files = io.listFiles ? io.listFiles(dir) : [];
+    for (const filename of [...files].sort()) {
+      const skill = skillFromSettingsFilename(filename);
+      if (!skill) continue;
+      const overrideRaw = io.readFile(joinSlash(dir, filename));
+      if (overrideRaw === null) continue;
+      const rel = `${relDir}/${filename}`;
+      sources.push(fingerprint(sourceKind, rel, overrideRaw));
+      if (relDir === SETTINGS_STORAGE_DIR) settingsOverrides.push(skill);
+      const parsed = parseSettingsOverride(overrideRaw);
+      if (!parsed.ok) {
+        diagnostics.push({
+          severity: "warning",
+          code: "settings/unparseable",
+          message: `${label2} for skill \`${skill}\` (\`${rel}\`) is not a valid JSON object: ${parsed.error}`
+        });
+        continue;
+      }
+      const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
+      if (!located) {
+        diagnostics.push({
+          severity: "warning",
+          code: "settings/interface-unresolvable",
+          message: `${label2} for skill \`${skill}\` (\`${rel}\`) has no locatable declaring \`interface.md\` \u2014 its keys cannot be validated. Install the owning pack or remove the override.`
+        });
+        continue;
+      }
+      const { undeclared } = mergeSettings(located.declared, parsed.value);
+      if (undeclared.length > 0) {
+        diagnostics.push({
+          severity: "error",
+          code: "settings/undeclared-key",
+          message: `${label2} for skill \`${skill}\` (\`${rel}\`) carries ${undeclared.length === 1 ? "a key" : "keys"} its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}. Remove the undeclared ${undeclared.length === 1 ? "key" : "keys"} or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
+          category: "registry-invalid",
+          recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
+        });
+      }
     }
-    const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
-    if (!located) {
-      diagnostics.push({
-        severity: "warning",
-        code: "settings/interface-unresolvable",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) has no locatable declaring \`interface.md\` \u2014 its keys cannot be validated. Install the owning pack or remove the override.`
-      });
-      continue;
-    }
-    const { undeclared } = mergeSettings(located.declared, parsed.value);
-    if (undeclared.length > 0) {
-      diagnostics.push({
-        severity: "error",
-        code: "settings/undeclared-key",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) carries ${undeclared.length === 1 ? "a key" : "keys"} its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}. Remove the undeclared ${undeclared.length === 1 ? "key" : "keys"} or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
-        category: "registry-invalid",
-        recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
-      });
-    }
-  }
+  };
+  validateSettingsTier(SETTINGS_STORAGE_DIR, "settings-override", "settings override");
+  validateSettingsTier(PROJECT_SETTINGS_DIR, "settings-project-override", "project settings override");
   const SLOT_RECOVERY = "The capability registry or a skill interface is invalid. Declare the missing slot in the skill's `## Slots` interface table, or remove the orphaned contribution/override, then run `/wf:resolve refresh`.";
   const declaredSlotsCache = /* @__PURE__ */ new Map();
   const declaredSlotsFor = (skill) => {
