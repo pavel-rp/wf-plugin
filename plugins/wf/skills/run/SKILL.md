@@ -145,6 +145,8 @@ Applies only when the QA mode is `off` and Phase 2 reads a `04_verify.md` `**Ver
 
 Before emitting that block, request one run-evidence record: `record_run_evidence({ workspaceRoot, kind: "gate-approval", subject: "qa-tail:skipped-by-config", taskId: {task-id} })` — no `artifactPath`, so it is `invocation-only` by design: it records that the tail was skipped by configuration, and approves no artifact. A `refused` response (or an unavailable evidence tool) is reported in one line above the block and changes nothing else — the status token stays `complete`, because the skip is already stated on the `Gate:` line.
 
+**Flags never override the setting.** With the QA mode `off`, a `--from` or `--to` naming a QA phase (`qa`, `qa-gen`, `qa-auto`, `qa-run`, `qa-followup`) is refused before Phase 3 runs: emit `RUN — blocked`, `Halted: QA is disabled by config — --from/--to cannot select a QA phase; set qa to on in the personal settings override to run it`, with no `Run next:` line and nothing dispatched. Blocking, rather than letting the flag win, is what keeps the promise above that no QA phase is ever dispatched or named while the setting is `off`.
+
 ---
 
 ## The verify⇄fix stop gate
@@ -210,7 +212,7 @@ Do **not**, in either mode, execute a phase inline in your own context (Safety R
 - **Out-of-order / hand-made artifacts:** trust the filesystem — detect the furthest-complete phase regardless of how it got there.
 - **`02_progress.md` partial:** implement is *in progress*, not done — next command is `/wf:implement <id>` (it resumes from the first step not yet recorded done on its own).
 - **`04_verify.md` is `PASS` but source changed since:** staleness guard warns; offer `--from verify`.
-- **QA mode `off`:** a `verify-spec` PASS completes the run — `RUN — complete`, `Gate: auto-complete (QA disabled by config)`, a `qa-tail:skipped-by-config` record requested (§"QA disabled by config"); no QA phase is dispatched or named, and no `06_qa.md` / `07_qa-report.md` is written. A `FAIL`/`PARTIAL` verdict routes exactly as with QA on.
+- **QA mode `off`:** a `verify-spec` PASS completes the run — `RUN — complete`, `Gate: auto-complete (QA disabled by config)`, a `qa-tail:skipped-by-config` record requested (§"QA disabled by config"); no QA phase is dispatched or named, and no `06_qa.md` / `07_qa-report.md` is written. A `FAIL`/`PARTIAL` verdict routes exactly as with QA on. A `--from`/`--to` naming a QA phase is `RUN — blocked`, never a dispatch — the setting wins over the flag.
 - **QA setting unresolvable or out of range:** `resolve_settings` returned a non-null `category` (e.g. an undeclared key in either settings override), or `qa` is neither `on` nor `off` → `RUN — blocked` before Phase 1, `Halted:` naming the resolver message or the value. Never a silent fall back to `on`.
 - **verify⇄fix or qa⇄followup exceeds 2 cycles:** halt with `RUN — blocked`, summarize the stuck findings, hand to the user.
 - **verify⇄fix stops early (no progress before the cap):** the blocking fingerprint set was stable or grew between two rounds — §"The verify⇄fix stop gate" fires before the cap is spent, not only at it.

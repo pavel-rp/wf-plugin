@@ -40,7 +40,12 @@ export const SNAPSHOT_SCHEMA_VERSION = 4;
  *  to. Where the plugin inventory is unavailable, nothing else invalidates a cached
  *  snapshot across the upgrade, so it would stay fresh and keep serving the
  *  superseded root — the exact state that rule exists to fix. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.1" } as const;
+/*  0.7.0 (WF-586): the snapshot's input set gained the committed `.wf/settings/`
+ *  project settings tier (`settings-project-override`). A snapshot built by an
+ *  earlier generator never scanned that directory, so the per-query check — which
+ *  re-reads only recorded paths — would keep it fresh across the upgrade, and a
+ *  committed override would never join refresh diagnostics or fingerprint tracking. */
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.7.0" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */

@@ -235,7 +235,7 @@ function selectWorkspaceRoot(declaration, launch) {
 
 // src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 4;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.1" };
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.7.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
 // src/resolver/registry.ts

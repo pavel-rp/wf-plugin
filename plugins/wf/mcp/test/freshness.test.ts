@@ -233,6 +233,15 @@ test("a snapshot stamped by the pre-WF-937 generator (0.5.0) is stale against th
   assert.ok(res.reasons.some((r) => r.code === "resolver/version-changed"));
 });
 
+test("a snapshot stamped by the pre-WF-586 generator (0.6.1) is stale against the bundled runtime", () => {
+  const ports = makePorts();
+  const snap = { ...snapshotFor(ports), generator: { name: "wf-resolver", version: "0.6.1" } };
+  // A 0.6.1 snapshot never scanned `.wf/settings/`; the upgrade must invalidate it once.
+  const res = evaluateFreshness(snap, WS, { readFile: (p) => ports.readFile(p) });
+  assert.equal(res.fresh, false);
+  assert.ok(res.reasons.some((r) => r.code === "resolver/version-changed"));
+});
+
 // --- plugin inventory: add/remove/enable/disable --------------------------
 
 test("a plugin add/remove/enable/disable is detected via the normalized plugin list", () => {

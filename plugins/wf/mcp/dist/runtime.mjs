@@ -21548,7 +21548,7 @@ function applyQuestionValues(questions, inputs) {
 
 // src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 4;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.1" };
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.7.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 var PLAN_ENVELOPE_VERSION = 1;
 var APPLY_ENVELOPE_VERSION = 1;
@@ -23505,7 +23505,7 @@ function registerResolverTools(server, selectService) {
     "resolve_settings",
     {
       title: "resolve settings",
-      description: "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default \u2014 the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`, plus a committed project tier `.wf/settings/<skill>.settings.json` (WF-586) ranked below it \u2014 per key, personal > project > declared default; `projectOverridePresent` reports the committed file. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override at either tier carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
+      description: "Override-merged per-skill SETTINGS values (WF-328). Resolves a settings-declaring skill's declared settings keys under the hybrid precedence override > declared default \u2014 the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`, plus a committed project tier `.wf/settings/<skill>.settings.json` (WF-586) ranked below it \u2014 per key, personal > project > declared default; `projectOverridePresent` reports the committed file. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override at either tier carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
       inputSchema: skillInput
     },
     async (args) => selected(args, (service) => service.resolveSettings(args.skill))
