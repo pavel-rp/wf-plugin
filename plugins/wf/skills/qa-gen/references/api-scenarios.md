@@ -135,7 +135,7 @@ The Baseline-health suite is always present (SKILL.md Phase 3.5). When the task 
 | 2 | HTTP status is not 401/403 (token accepted) | true |
 ```
 
-Keep the standing bar small — this one API baseline scenario, no more. Only fall back to a single `[N/A: no runnable surface]` scenario when the task has *neither* a route *nor* any callable service/endpoint (pure type/config/helper work) — the genuinely-nothing-to-run case.
+Keep the standing bar small — this one API baseline scenario, no more. Only fall back to a single `[N/A: no runnable surface]` scenario when the task has *neither* a route *nor* any callable service/endpoint — the genuinely-nothing-to-run case, which covers command-line, hook, skill/prose, config, and library/helper work alike (SKILL.md Phase 3, "No runnable surface").
 
 ---
 

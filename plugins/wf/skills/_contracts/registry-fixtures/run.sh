@@ -615,6 +615,32 @@ else
   fail=$((fail + 1))
 fi
 
+# WF-581 — a task with no runnable surface (no browser route, no HTTP endpoint or
+# callable service) must yield a 06_qa.md whose only scenario is the N/A
+# baseline, so /wf:qa-auto's no-runnable-scenarios path fires. The self-test
+# runs the plan-shape check over seeded fixtures (one conforming, two defective:
+# a command-line-adapted scenario and a rendered runtime capability scenario);
+# the real-tree scan asserts qa-gen and its template carry the rules.
+echo ""
+echo "=== No-runnable-surface QA plan guard — seeded self-test ==="
+if bash "$DIR/../qa-no-surface-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "qa-no-surface guard self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "qa-no-surface guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== No-runnable-surface QA plan guard — real-tree scan ==="
+if bash "$DIR/../qa-no-surface-guard.sh"; then
+  printf 'PASS: %s\n' "qa-no-surface guard real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "qa-no-surface guard real-tree scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
