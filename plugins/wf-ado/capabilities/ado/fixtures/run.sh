@@ -145,6 +145,8 @@ check_cap() {
     has "$qf" 'never reads or publishes `07_qa-report.md`' || fail "qa-gen-publish: does not exclude 07_qa-report.md"
     has "$qf" 'It never modifies `06_qa.md`' || fail "qa-gen-publish: does not protect 06_qa.md (receipt freshness)"
     has "$qf" 'Never `create_child` here' || fail "qa-gen-publish: refresh path does not forbid create_child"
+    has "$qf" "from \`00_reqs.md\`'s title metadata/H1, else \`01_spec.md\`'s" || fail "qa-gen-publish: task-title source order missing"
+    has "$qf" "Never derive the task title from \`06_qa.md\`'s fixed QA-plan H1" || fail "qa-gen-publish: fixed QA heading can supply the title"
     has "$qf" 'Plan guard — create and refresh' || fail "qa-gen-publish: annotation guard not shared by both routes"
     has "$qf" 'including retained/appended sections' || fail "qa-gen-publish: old appended results can leak"
     has "$qf" 'QA plan contains execution annotations' || fail "qa-gen-publish: annotations do not fail closed"
@@ -172,7 +174,10 @@ fi
 echo "  ok — shipped capability passes"
 
 echo "=== ado fixtures: self-test — each seeded breakage must be caught ==="
-tmp="$(mktemp -d)"
+ROOT="$(cd "$CAP_DIR/../../../.." && pwd)"
+SCRATCH="$ROOT/_local/scratch"
+mkdir -p "$SCRATCH" || exit 1
+tmp="$(mktemp -d "$SCRATCH/ado-publish-fixtures.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 
 seed() {
@@ -249,6 +254,12 @@ expect_caught "execution annotations no longer fail closed"
 
 seed; sed -i 's/including retained\/appended sections/only the newest section/' "$tmp/cap/fragments/qa-gen-publish.md"
 expect_caught "retained appended results no longer checked"
+
+seed; sed -i 's/from `00_reqs.md`/from `06_qa.md`/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "QA title comes from the fixed plan heading"
+
+seed; sed -i '/Never derive the task title from/d' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "QA title exclusion removed"
 
 if [ "$SELF_FAILS" -ne 0 ]; then
   echo "ado fixtures: $SELF_FAILS seeded breakage(s) escaped the checks." >&2
