@@ -33,8 +33,8 @@ insert/match, never merged, and left unchanged (not cleared) on retire, per §"M
 - **warn** — most recent match in `## Accepted warnings` **and** carries the critic's `UNVERIFIABLE` tag.
 - **pre-existing** — most recent match in `## Pre-existing` (a `fail` anchored to neither a requirement nor the
   diff).
-- **accepted** — most recent match in `## Accepted warnings` **without** any critic tag — every
-  originally-`warn`-severity finding, whatever its anchor.
+- **accepted** — most recent match in `## Accepted warnings` **without** a critic tag: every originally-`warn`
+  finding, whatever its anchor, and every advisory `fail` (`advisory: not requirement-anchored` is no critic tag).
 
 Status is set from where the most recent match rendered: `## Capability findings` → `open` (always), `##
 Pre-existing` → `pre-existing`, `## Accepted warnings` → per the tag test above — then overridden to `fixed` when a

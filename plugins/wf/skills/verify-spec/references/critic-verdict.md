@@ -24,6 +24,8 @@ dispatched fresh — it never receives the lens's own reasoning, only the candid
 and the frozen artifact — so it cannot simply agree with itself. It **confirms or refutes**,
 never re-derives a new finding of its own: a critic dispatch that reports a defect the candidate
 set never named is a malformed response (§"Malformed or failed dispatch"), not a bonus finding.
+Only a **requirement-anchored** lens `fail` is ever a candidate; a change-anchored-only `fail` is
+advisory and never reaches the critic (`verify-spec/SKILL.md` §"The blocking set").
 
 ## Dispatch prompt
 

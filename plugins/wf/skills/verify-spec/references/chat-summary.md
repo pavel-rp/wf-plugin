@@ -16,6 +16,12 @@ Print, in this order:
 - **Verdict line:** `**Verdict:** <PASS | FAIL | PARTIAL>` — `<n>/<total>` requirements. Echo
   the report's own `**Verdict:**` value verbatim; it is computed from the blocking set, so a
   non-blocking finding listed below never contradicts a `PASS` here.
+- **Requirements-met line (conditional):** when the verdict is `PASS`, no requirement item is
+  `UNVERIFIABLE`, and `## Accepted warnings` carries any `advisory: not requirement-anchored`
+  entry, one line —
+  `Requirements met — <V> remaining capability findings are advisory; no /wf:verify-fix needed.`
+  `<V>` counts the `## Accepted warnings` entries tagged `advisory: not requirement-anchored`.
+  Omit it otherwise. Never word an advisory finding as something to fix before shipping.
 - **Report pointer:** one line — `Report: <task-folder>/04_verify.md`.
 - **FAILs and PARTIALs:** one bullet each — short requirement name, one-line reason,
   `file:line` citation. Skip the section entirely if none.
@@ -42,10 +48,13 @@ Print, in this order:
   unconfirmed` when the critic ran inline under a caller that cannot await. Non-gating on its own — a refutation already removed that candidate
   from the blocking set the verdict line above reads, and this line never re-derives it.
 - **Top next actions:** 1–3 bullets — the most important items from the report's
-  "Recommended next actions".
+  "Recommended next actions", which draw only from requirement items whose verdict is
+  `FAIL`, `PARTIAL`, or `UNVERIFIABLE`, blocking-set members, and open questions — never
+  from `## Pre-existing` or `## Accepted warnings` entries.
 - **`/wf:verify-fix` suggestion (conditional):** one line —
   `Suggested: /wf:verify-fix {task-id} — <N> mechanical fixes look auto-applicable.` Include
-  **only** when a FAIL or PARTIAL finding carries a concrete literal `Expected` value at a
+  **only** when a FAIL or PARTIAL finding — a requirement item or a blocking-set member, never
+  a non-blocking entry — carries a concrete literal `Expected` value at a
   cited `file:line`. Omit on PASS, when every finding is UNVERIFIABLE, structural, or
   vaguely `Expected` — and whenever in doubt.
 
