@@ -9,15 +9,15 @@
       "manifestHashes": [
         {
           "path": "capabilities/audit/manifest.md",
-          "sha256": "92f35ff34fcf12e07210fd6f088d6a3ca4da5abf10d647ff18663c4ff59af2a7"
+          "sha256": "a6e671c81101a7de12f7fd59ceed9721db771c201ee753afd83b9294e77c8882"
         },
         {
           "path": "capabilities/sr/manifest.md",
-          "sha256": "d33f286083ce591894e77d313dab8fad932a97a2b7aa56cae8a3caf77d2d1f55"
+          "sha256": "0216d880b35dd1ced07b7dbee3986cfcf534b0d99697717c1ffb61bc1f740616"
         }
       ],
       "pluginId": "wf-audit@wf-marketplace",
-      "version": "0.5.2"
+      "version": "0.4.5"
     },
     "wf-author-caps@wf-marketplace": {
       "capabilities": [
@@ -45,7 +45,7 @@
         }
       ],
       "pluginId": "wf-browser-qa@wf-marketplace",
-      "version": "0.3.1"
+      "version": "0.3.0"
     },
     "wf-git@wf-marketplace": {
       "capabilities": [
@@ -59,7 +59,7 @@
         }
       ],
       "pluginId": "wf-git@wf-marketplace",
-      "version": "0.13.3"
+      "version": "0.9.0"
     },
     "wf-linear@wf-marketplace": {
       "capabilities": [
@@ -69,25 +69,11 @@
       "manifestHashes": [
         {
           "path": "capabilities/linear/manifest.md",
-          "sha256": "92b29e706886523ab7d485beb6337e3c6bcfcf5257511a6aab39f41ef80458e1"
+          "sha256": "df43175b4fc1f1500b7c727dd2fba5f8a2ad9cb9419d3d0260eb33cf8a4edcef"
         }
       ],
       "pluginId": "wf-linear@wf-marketplace",
-      "version": "0.12.1"
-    },
-    "wf-postmortem@wf-marketplace": {
-      "capabilities": [
-        "postmortem"
-      ],
-      "declaredSourceHashes": [],
-      "manifestHashes": [
-        {
-          "path": "capabilities/postmortem/manifest.md",
-          "sha256": "598d5ee51efb40faecb2cace6a128fa4cffceaf4dd16c105691c8b37a8a18c4d"
-        }
-      ],
-      "pluginId": "wf-postmortem@wf-marketplace",
-      "version": "0.9.10"
+      "version": "0.11.0"
     },
     "wf-review@wf-marketplace": {
       "capabilities": [
@@ -97,11 +83,11 @@
       "manifestHashes": [
         {
           "path": "capabilities/pr-review/manifest.md",
-          "sha256": "76267149e2712d3ffd8852b36f3e42fe05ac922d182a64b2bef989330d8cd496"
+          "sha256": "5c561490364fd57d5630e156da1aba20bede6b68124bbbe6055f043b87d38dab"
         }
       ],
       "pluginId": "wf-review@wf-marketplace",
-      "version": "0.11.3"
+      "version": "0.6.0"
     },
     "wf-sandbox-testing@wf-marketplace": {
       "capabilities": [
@@ -115,35 +101,7 @@
         }
       ],
       "pluginId": "wf-sandbox-testing@wf-marketplace",
-      "version": "0.15.4"
-    },
-    "wf-skill-eval@wf-local-eval": {
-      "capabilities": [
-        "skill-eval-qa"
-      ],
-      "declaredSourceHashes": [],
-      "manifestHashes": [
-        {
-          "path": "capabilities/skill-eval-qa/manifest.md",
-          "sha256": "8af502bdcce9d8a6670518a66baa02320b3ed61294966265683f8635a066a055"
-        }
-      ],
-      "pluginId": "wf-skill-eval@wf-local-eval",
-      "version": "0.3.0"
-    },
-    "wf-spec-eval@wf-local-eval": {
-      "capabilities": [
-        "spec-eval-qa"
-      ],
-      "declaredSourceHashes": [],
-      "manifestHashes": [
-        {
-          "path": "capabilities/spec-eval-qa/manifest.md",
-          "sha256": "1755b5f2694910b96600d65a8138f5c480d9e399ac80299074e1e3f1d6c62f36"
-        }
-      ],
-      "pluginId": "wf-spec-eval@wf-local-eval",
-      "version": "0.1.0"
+      "version": "0.15.0"
     }
   }
 }
