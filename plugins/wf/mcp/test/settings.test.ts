@@ -19,6 +19,7 @@ import {
   mergeSettings,
   skillFromSettingsFilename,
   settingsOverrideRelPath,
+  projectSettingsOverrideRelPath,
 } from "../src/resolver/settings.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
 import type { ResolverSnapshot } from "../src/resolver/types.js";
@@ -269,4 +270,108 @@ test("resolveSettings reports a bad skill slug as registry-invalid", () => {
   const r = svc.resolveSettings("Bad.Slug");
   assert.equal(r.category, "registry-invalid");
   assert.equal(r.values, null);
+});
+
+// ---------------------------------------------------------------------------
+// Committed project tier — `.wf/settings/<skill>.settings.json` (WF-586)
+// ---------------------------------------------------------------------------
+
+const PROJECT_DEMO = `${WS}/.wf/settings/demo.settings.json`;
+const PERSONAL_DEMO = `${WS}/_local/profiles/demo.settings.json`;
+
+test("projectSettingsOverrideRelPath names the committed `.wf/settings/` file", () => {
+  assert.equal(projectSettingsOverrideRelPath("demo"), ".wf/settings/demo.settings.json");
+});
+
+test("mergeSettings ranks personal over project over the declared default, per key", () => {
+  const decl = parseSettingsDeclaration(DEMO_INTERFACE)!;
+  const projectOnly = mergeSettings(decl, null, { "review.depth": 4 });
+  assert.equal(projectOnly.values["review.depth"], 4);
+  assert.equal(projectOnly.values["review.strict"], "false");
+
+  const both = mergeSettings(decl, { "review.depth": 9 }, { "review.depth": 4, "review.strict": true });
+  assert.equal(both.values["review.depth"], 9); // personal wins
+  assert.equal(both.values["review.strict"], true); // project fills the key personal omits
+  assert.deepEqual(both.undeclared, []);
+});
+
+test("mergeSettings collects undeclared keys from the project tier too, deduplicated", () => {
+  const decl = parseSettingsDeclaration(DEMO_INTERFACE)!;
+  const merged = mergeSettings(decl, { x: 1 }, { x: 2, y: 3 });
+  assert.deepEqual(merged.undeclared, ["x", "y"]);
+});
+
+test("resolveSettings resolves a committed project override alone", () => {
+  const svc = makeService({
+    [`${CORE}/skills/demo/interface.md`]: DEMO_INTERFACE,
+    [PROJECT_DEMO]: JSON.stringify({ "review.depth": 4 }),
+  });
+  const r = svc.resolveSettings("demo");
+  assert.equal(r.category, null);
+  assert.equal(r.overridePresent, false);
+  assert.equal(r.projectOverridePresent, true);
+  assert.equal(r.values!["review.depth"], 4);
+});
+
+test("resolveSettings lets the personal override beat the committed one per key", () => {
+  const svc = makeService({
+    [`${CORE}/skills/demo/interface.md`]: DEMO_INTERFACE,
+    [PROJECT_DEMO]: JSON.stringify({ "review.depth": 4, "review.strict": true }),
+    [PERSONAL_DEMO]: JSON.stringify({ "review.depth": 1 }),
+  });
+  const r = svc.resolveSettings("demo");
+  assert.equal(r.overridePresent, true);
+  assert.equal(r.projectOverridePresent, true);
+  assert.equal(r.values!["review.depth"], 1);
+  assert.equal(r.values!["review.strict"], true);
+});
+
+test("resolveSettings rejects an undeclared key in the committed override loudly", () => {
+  const svc = makeService({
+    [`${CORE}/skills/demo/interface.md`]: DEMO_INTERFACE,
+    [PROJECT_DEMO]: JSON.stringify({ nope: 1 }),
+  });
+  const r = svc.resolveSettings("demo");
+  assert.equal(r.category, "registry-invalid");
+  assert.deepEqual(r.undeclaredKeys, ["nope"]);
+  assert.equal(r.values, null);
+  assert.match(r.message!, /demo/);
+  assert.match(r.message!, /nope/);
+});
+
+test("resolveSettings rejects an unparseable committed override, naming its file", () => {
+  const svc = makeService({
+    [`${CORE}/skills/demo/interface.md`]: DEMO_INTERFACE,
+    [PROJECT_DEMO]: "{ not json",
+  });
+  const r = svc.resolveSettings("demo");
+  assert.equal(r.category, "registry-invalid");
+  assert.match(r.message!, /\.wf\/settings\/demo\.settings\.json/);
+});
+
+test("refresh rejects an undeclared key in the committed override, naming file, key and skill", () => {
+  const snap = refreshWith({
+    [`${CORE}/skills/demo/interface.md`]: DEMO_INTERFACE,
+    [PROJECT_DEMO]: JSON.stringify({ "review.bogus": true }),
+  });
+  const d = snap.diagnostics.find((x) => x.code === "settings/undeclared-key");
+  assert.ok(d, "expected a settings/undeclared-key diagnostic");
+  assert.equal(d!.severity, "error");
+  assert.equal(d!.category, "registry-invalid");
+  assert.match(d!.message, /\.wf\/settings\/demo\.settings\.json/);
+  assert.match(d!.message, /review\.bogus/);
+});
+
+test("refresh fingerprints the committed override under its own source kind", () => {
+  const snap = refreshWith({
+    [`${CORE}/skills/demo/interface.md`]: DEMO_INTERFACE,
+    [PROJECT_DEMO]: JSON.stringify({ "review.depth": 3 }),
+  });
+  const src = snap.sources.find((s) => s.kind === "settings-project-override");
+  assert.ok(src, "expected a settings-project-override source");
+  assert.equal(src!.path, ".wf/settings/demo.settings.json");
+  assert.equal(src!.present, true);
+  assert.ok(!snap.diagnostics.some((d) => d.code.startsWith("settings/")));
+  // The personal presence index is unchanged by a committed-only override.
+  assert.deepEqual(snap.settingsOverrides, []);
 });
