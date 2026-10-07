@@ -32,6 +32,8 @@ This plan is executed manually in a browser against the running app. Each scenar
 | SC-6 | <abbreviated criterion> | TC-004 | API | P0 | runnable |
 | SC-7 | <abbreviated criterion> | TC-005 | API | P1 | unavailable — host required |
 
+**No runnable surface** (the task has no browser route and no HTTP endpoint or callable service — SKILL.md Phase 3): replace this table with the single line `No runnable surface on this task — every criterion is verified by build / automation below.` The plan then carries no `runnable` row, and its only `TC-NNN` is the N/A baseline scenario.
+
 ### Verified by build / automation
 
 | Criterion (SC-N) | Wording (abbreviated) | Verification |
@@ -57,6 +59,14 @@ Not spec-traced — these assert a standing quality bar, not an `SC-N`. Known-be
 | <source capability> | TC-NNN, TC-NNN | <one-line summary of what the capability's scenarios assert> |
 
 Scenarios aggregated from registered capabilities at the `qa-generation` phase, grouped by their provenance tag (the registry row's name). Registry order is cosmetic. Omit this whole section when no capability contributed.
+
+**Capability scenarios skipped — no runnable surface** (present only under no runnable surface when a capability contributed a runtime-requiring scenario — omit otherwise; replaces the table above):
+
+| Source capability | Contributed scenario | Reason |
+|---|---|---|
+| <source capability> | <contributed scenario title> | requires a runtime invocation; this task has no runnable surface |
+
+These contributions are recorded, not rendered: they carry no `TC-NNN` and no availability cell. A contributed check that needs no runtime invocation goes in "Verified by build / automation" instead, its Verification cell prefixed with the source-capability tag.
 
 ### Gaps
 
