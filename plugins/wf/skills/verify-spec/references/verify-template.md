@@ -73,6 +73,10 @@ an inline critic held appends `` — critic: not confirmed — inline, not indep
 `AGREE` keeps the confirmed form with ` (critic run inline)` after it), so a reader can tell a
 grounded confirmation from a fail-closed default at a glance.
 
+Every bullet here records the requirement `verify-spec` matched it to (`SKILL.md` §"The blocking set")
+by appending `` — anchors: R<n>`` after its evidence, so a reader can see which requirement the
+finding blocks on.
+
 Every finding bullet in this report — here, under `## Pre-existing`, and under
 `## Accepted warnings`, collapsed or not — is keyed by its fingerprint
 `path/to/file:<section>|<defect>` — never a bare `file:L` in its place — and names its
@@ -276,8 +280,10 @@ Informational only — does NOT affect the verdict.
   question Y".
 - Draw only from requirement `FAIL`/`PARTIAL` items, blocking-set members, and open
   questions — never from `## Pre-existing` or `## Accepted warnings` entries (advisory ones
-  included), which are recorded, not to-dos. With the blocking set empty, write
-  `- none — requirements met; remaining capability findings are advisory`.
+  included), which are recorded, not to-dos. Only when the blocking set is empty **and** no
+  open question remains, write `- none — requirements met`, adding
+  `; remaining capability findings are advisory` only when `## Accepted warnings` carries an
+  `advisory: not requirement-anchored` entry.
 ```
 
 ## Lens count
