@@ -16,9 +16,11 @@ Print, in this order:
 - **Verdict line:** `**Verdict:** <PASS | FAIL | PARTIAL>` — `<n>/<total>` requirements. Echo
   the report's own `**Verdict:**` value verbatim; it is computed from the blocking set, so a
   non-blocking finding listed below never contradicts a `PASS` here.
-- **Requirements-met line (conditional):** when the verdict is `PASS` and `## Accepted warnings`
-  carries any `advisory: not requirement-anchored` entry, one line —
-  `Requirements met — <A> remaining capability findings are advisory; no /wf:verify-fix needed.`
+- **Requirements-met line (conditional):** when the verdict is `PASS`, no requirement item is
+  `UNVERIFIABLE`, and `## Accepted warnings` carries any `advisory: not requirement-anchored`
+  entry, one line —
+  `Requirements met — <V> remaining capability findings are advisory; no /wf:verify-fix needed.`
+  `<V>` counts the `## Accepted warnings` entries tagged `advisory: not requirement-anchored`.
   Omit it otherwise. Never word an advisory finding as something to fix before shipping.
 - **Report pointer:** one line — `Report: <task-folder>/04_verify.md`.
 - **FAILs and PARTIALs:** one bullet each — short requirement name, one-line reason,
