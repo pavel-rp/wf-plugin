@@ -1,10 +1,10 @@
 # ado capability manifest
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** ado (registered in the downstream `_local/config.md` `## Capabilities` table)
-**Kind:** both (ships its own `/wf-ado:init` skill; also attaches one phase fragment and seven `slot` fills via the registry)
+**Kind:** both (ships its own `/wf-ado:init` skill; also attaches one phase fragment and nine `slot` fills via the registry)
 **Model:** claude-opus-5[1m]
 
 ---
@@ -38,6 +38,8 @@ token.
 | —     | slot               | `inline: fragments/implement-start.md` | implement.start replace |
 | —     | slot               | `inline: fragments/implement-milestone.md` | implement.milestone append |
 | —     | slot               | `inline: fragments/implement-finish.md` | implement.finish replace |
+| —     | slot               | `inline: fragments/research-publish.md` | research.publish replace |
+| —     | slot               | `inline: fragments/qa-gen-publish.md` | qa-gen.publish replace |
 
 `provider` is a **partitioned** kind — only the capability owning `surface: tracker` applies,
 and ado owns `tracker` only. The `phase: spec` cell is a **registration-only anchor**: a core
@@ -59,12 +61,29 @@ defaults and no tracker term surfaces at all (CLAUDE.md §2). All seven bind **o
 already defined in `fragments/tracker.ops.md` (`get`, `create_umbrella`, `create_child`, `update`,
 `post_comment`, `set_status`) — this contributes **no** tracker-contract extension.
 
-**Authored to parity, not live-tested.** The seven fills are structurally mirrored from the
-`linear` capability's fills and verified by fragment/contract review plus registry validation
-only — **no live Azure DevOps run has exercised them.** See `references/onboarding.md` for the
+Two further `replace` fills target the C045 **completion-publishing** points. `research.publish`
+publishes a finished research pass's `01_findings.md` and `02_verdict.md` together as **one
+standalone** `Research:` work item (every verdict, `Not practical` included — never a task child,
+an implementation task or a charter). `qa-gen.publish` publishes only `06_qa.md` as a `QA plan:`
+child of the task's existing umbrella — never `07_qa-report.md`. Unlike the single-shot artifact
+fills, both **refresh**: each persists a pending-create marker before external creation and
+replaces it with the returned item id immediately, before later operations. A failed marker write
+prevents create; a failed identity save retains the marker so retry fails closed. Every later
+pass with a completed identity `update`s that item instead of creating another. Outbound copies
+omit only model-attribution metadata; substantive content and local artifacts stay unchanged.
+They bind only existing `resolve_config`, `get`, `create_umbrella`, `create_child`, `update` and
+`set_status`. Both preflight tracker configuration before record mutation or publication;
+unconfigured state only warns and leaves the record unchanged. QA additionally refuses plans
+containing retained execution annotations on create and refresh, without editing local artifacts.
+
+**Authored to parity, not live-tested.** The seven conveyor fills are structurally mirrored from
+the `linear` capability's fills; the two completion fills are authored against the core
+`research`/`qa-gen` interface contracts. All nine are verified by fragment/contract review,
+registry validation and this capability's structural fixture suite (`fixtures/run.sh`) only —
+**no live Azure DevOps run has exercised them.** See `references/onboarding.md` for the
 residual-risk statement before relying on them in a production project.
 
-**Merge policies.** Six of the seven are `replace`. `implement.milestone` is the **single `append`**
+**Merge policies.** Eight of the nine are `replace`. `implement.milestone` is the **single `append`**
 point: `/wf:implement` reaches it once per checkpoint within one run, so contributions accumulate in
 registry order (personal override last) instead of superseding one another, and the running
 implementation log is built from many firings rather than one.
@@ -87,7 +106,7 @@ value. `tf` required no change.
 
 **Do not register `ado` and `linear` together** — both claim the `tracker` surface, and
 partitioned ownership must not overlap (registry validation fails, naming both). The two also
-claim the same seven `skill.point` slots with `replace`, which would be a second, independent
+claim the same conveyor `skill.point` slots with `replace`, which would be a second, independent
 partition-overlap error.
 
 Read-off detail, resolution/degradation semantics, the `skills:` block, config seeding, and

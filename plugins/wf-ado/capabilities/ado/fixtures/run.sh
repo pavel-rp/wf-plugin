@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+# ado capability — deterministic structural fixture suite (WF-1079).
+#
+# Discovered by CI's "Each capability's fixture suite" step
+# (plugins/*/capabilities/*/fixtures/run.sh). Agent-run, no network, no tracker.
+#
+# What it asserts — STRUCTURALLY. The two completion-publishing fills are prose a
+# host follows, not code, so nothing here observes a live Azure DevOps call or
+# counts real creates/updates. It pins which operation each path may name and in
+# what order, which is what keeps a retry duplicate-free:
+#   1. manifest rows <-> fill files for research.publish and qa-gen.publish;
+#   2. pending marker persisted before create; marker-write failure prevents
+#      create; pending retries fail closed; failure-atomic identity replacement
+#      immediately after create and before tag/status; refresh never creates;
+#   3. only tracker-contract operations are named; no AI-attribution strings;
+#      outbound-only model metadata filtering preserves substantive/local content;
+#      each slot body stays within 150 total lines (a conservative behavior-line bound)
+#      and carries contents when longer than 100 lines;
+#   4. research publishes one standalone item (create_umbrella, never
+#      create_child) for every verdict and creates no implementation task or
+#      charter; QA publishes only 06_qa.md under the task umbrella
+#      (create_child, never create_umbrella) and never publishes 07_qa-report.md.
+# A self-test then seeds one breakage per class into a temporary copy and
+# requires each to be caught.
+
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CAP_DIR="$(cd "$HERE/.." && pwd)"
+
+# Tracker-contract operations the fills may bind, plus the two resolver calls
+# every fill uses to reach the provider (not tracker operations themselves).
+ALLOWED_OPS="resolve_config get create_umbrella create_child update set_status resolve_provider resolve_content"
+
+fail() { echo "  FAIL: $*"; FAILS=$((FAILS + 1)); }
+
+has() { grep -qF -- "$2" "$1"; }
+
+first_line() { grep -nF -- "$2" "$1" | head -n 1 | cut -d: -f1; }
+
+check_fill() {
+  local f="$1" label="$2"
+  [ -f "$f" ] || { fail "$label: fill file missing ($f)"; return; }
+
+  local n
+  n="$(wc -l < "$f")"
+  [ "$n" -le 150 ] || fail "$label: $n lines exceeds the 150-line slot-body bound"
+  if [ "$n" -gt 100 ]; then
+    has "$f" '## Contents' || fail "$label: runtime body over 100 lines has no contents section"
+  fi
+
+  has "$f" '**Publication item:** <id>' || fail "$label: no publication-record identity line"
+  has "$f" 'Publish: published' || fail "$label: missing 'Publish: published' outcome"
+  has "$f" 'Publish: refreshed' || fail "$label: missing 'Publish: refreshed' outcome"
+  has "$f" 'Publish: failed' || fail "$label: missing 'Publish: failed' outcome"
+  has "$f" 'publication record unreadable' || fail "$label: unreadable record does not fail closed"
+  has "$f" '**Never create** on this path' || fail "$label: readable-record path does not forbid a create"
+  has "$f" '**Publication state:** pending' || fail "$label: pending-create marker missing"
+  has "$f" 'pending marker could not be persisted' || fail "$label: marker-write failure not reported"
+  has "$f" 'If writing or read-back fails, invoke no create' || fail "$label: marker-write failure permits a create"
+  has "$f" 'pending publication identity unresolved' || fail "$label: pending retry does not fail closed"
+  has "$f" 'Create the record exclusively' || fail "$label: pending marker can overwrite another attempt"
+  has "$f" 'Replacement must be failure-atomic' || fail "$label: failed replacement may destroy the guard"
+  has "$f" 'retain the pending marker and end with' || fail "$label: failed identity save loses the guard"
+
+  local config pending create rec tag st
+  config="$(first_line "$f" '`resolve_config()`')"
+  pending="$(first_line "$f" '**Before external create**')"
+  has "$f" 'Shared preflight — both routes' || fail "$label: configuration check not shared by create and refresh"
+  has "$f" 'Proceed only on `configured`' || fail "$label: unconfigured tracker can proceed"
+  has "$f" 'tracker configuration unavailable' || fail "$label: configuration failure is not reported"
+  has "$f" 'before record mutation or outbound create/update' || fail "$label: configuration guard too late"
+  has "$f" 'Leave `<publication-record>` unchanged and make no create/update' || fail "$label: configuration failure mutates publication state"
+  if [ -z "$config" ] || [ -z "$pending" ] || [ "$config" -ge "$pending" ]; then
+    fail "$label: tracker configuration must be checked before pending persistence"
+  fi
+  create="$(first_line "$f" '2. Invoke `create_')"
+  rec="$(first_line "$f" '**Immediately** after it returns an id')"
+  if [ -z "$pending" ] || [ -z "$create" ] || [ -z "$rec" ]; then
+    fail "$label: pending / create / immediate replacement steps not all present"
+  elif [ "$pending" -ge "$create" ] || [ "$create" -ge "$rec" ]; then
+    fail "$label: expected pending marker before create before identity replacement"
+  fi
+
+  has "$f" 'model-attribution metadata from the outbound copy' || fail "$label: outbound model metadata not filtered"
+  has "$f" 'outside fenced code blocks' || fail "$label: filter may remove substantive examples"
+  has "$f" '**Researched by:**' || fail "$label: research model metadata not named by the filter"
+  has "$f" '**Generated by:**' || fail "$label: QA model metadata not named by the filter"
+  has "$f" 'Preserve every other line' || fail "$label: filter does not preserve substantive content"
+  has "$f" 'filter on both create and refresh' || fail "$label: filter not applied on both paths"
+  tag="$(first_line "$f" 'tags: ["wf-artifact"]')"
+  st="$(first_line "$f" 'set_status(<id>')"
+  if [ -z "$rec" ] || [ -z "$tag" ] || [ -z "$st" ]; then
+    fail "$label: record-immediately / tag / status steps not all present"
+  elif [ "$rec" -ge "$tag" ] || [ "$rec" -ge "$st" ]; then
+    fail "$label: publication record is not written before tag and status"
+  fi
+
+  has "$f" 'update(<recorded-id>, title: <title>, description: <description>)' \
+    || fail "$label: refresh path does not update the recorded item"
+
+  local op
+  for op in $(grep -oE '`[a-z_]+\(' "$f" | tr -d '`(' | sort -u); do
+    case " $ALLOWED_OPS " in
+      *" $op "*) ;;
+      *) fail "$label: names non-contract operation '$op'" ;;
+    esac
+  done
+
+  if grep -qiE 'co-authored-by|generated with \[|🤖' "$f"; then
+    fail "$label: carries an AI-attribution string"
+  fi
+}
+
+check_cap() {
+  local cap="$1"
+  local manifest="$cap/manifest.md"
+  local rf="$cap/fragments/research-publish.md"
+  local qf="$cap/fragments/qa-gen-publish.md"
+  FAILS=0
+
+  has "$manifest" '`inline: fragments/research-publish.md` | research.publish replace |' \
+    || fail "manifest: no research.publish replace row naming fragments/research-publish.md"
+  has "$manifest" '`inline: fragments/qa-gen-publish.md` | qa-gen.publish replace |' \
+    || fail "manifest: no qa-gen.publish replace row naming fragments/qa-gen-publish.md"
+
+  check_fill "$rf" "research-publish"
+  check_fill "$qf" "qa-gen-publish"
+
+  if [ -f "$rf" ]; then
+    has "$rf" 'create_umbrella(<title>, <description>)' || fail "research-publish: does not create one standalone item"
+    has "$rf" 'create_child(' && fail "research-publish: names create_child — research must stay standalone"
+    has "$rf" 'Not practical' || fail "research-publish: does not state that Not practical verdicts publish"
+    has "$rf" 'full markdown body of `<findings>`' || fail "research-publish: findings not published verbatim"
+    has "$rf" 'full markdown body of `<verdict>`' || fail "research-publish: verdict not published verbatim"
+    has "$rf" 'creates no implementation task, seeds no charter, adopts no' \
+      || fail "research-publish: does not forbid implementation tasks and charters"
+    has "$rf" 'Never `create_umbrella` here' || fail "research-publish: refresh path does not forbid create_umbrella"
+  fi
+
+  if [ -f "$qf" ]; then
+    has "$qf" 'create_child(<umbrella-id>, <title>, <description>)' || fail "qa-gen-publish: does not create under the task umbrella"
+    has "$qf" 'create_umbrella(' && fail "qa-gen-publish: names create_umbrella — QA must not mint a task context"
+    has "$qf" 'full markdown body of `<qa-plan>`' || fail "qa-gen-publish: 06_qa.md not published verbatim"
+    has "$qf" 'never reads or publishes `07_qa-report.md`' || fail "qa-gen-publish: does not exclude 07_qa-report.md"
+    has "$qf" 'It never modifies `06_qa.md`' || fail "qa-gen-publish: does not protect 06_qa.md (receipt freshness)"
+    has "$qf" 'Never `create_child` here' || fail "qa-gen-publish: refresh path does not forbid create_child"
+    has "$qf" "from \`00_reqs.md\`'s title metadata/H1, else \`01_spec.md\`'s" || fail "qa-gen-publish: task-title source order missing"
+    has "$qf" "Never derive the task title from \`06_qa.md\`'s fixed QA-plan H1" || fail "qa-gen-publish: fixed QA heading can supply the title"
+    has "$qf" 'Plan guard — create and refresh' || fail "qa-gen-publish: annotation guard not shared by both routes"
+    has "$qf" 'including retained/appended sections' || fail "qa-gen-publish: old appended results can leak"
+    has "$qf" 'QA plan contains execution annotations' || fail "qa-gen-publish: annotations do not fail closed"
+    has "$qf" 'classification is uncertain' || fail "qa-gen-publish: uncertain annotations can publish"
+    has "$qf" 'expectations, empty placeholders and fenced examples are not results' || fail "qa-gen-publish: guard confuses definitions with results"
+    has "$qf" 'leave the plan, receipt and identity unchanged' || fail "qa-gen-publish: annotated-plan refusal mutates artifacts"
+    local guard pending
+    guard="$(first_line "$qf" 'Plan guard — create and refresh')"
+    pending="$(first_line "$qf" '**Before external create**')"
+    if [ -z "$guard" ] || [ -z "$pending" ] || [ "$guard" -ge "$pending" ]; then
+      fail "qa-gen-publish: annotation guard must precede pending persistence"
+    fi
+  fi
+
+  return "$FAILS"
+}
+
+echo "=== ado fixtures: structural checks on the shipped capability ==="
+check_cap "$CAP_DIR"
+real=$?
+if [ "$real" -ne 0 ]; then
+  echo "ado fixtures: $real structural failure(s) in the shipped capability." >&2
+  exit 1
+fi
+echo "  ok — shipped capability passes"
+
+echo "=== ado fixtures: self-test — each seeded breakage must be caught ==="
+ROOT="$(cd "$CAP_DIR/../../../.." && pwd)"
+SCRATCH="$ROOT/_local/scratch"
+mkdir -p "$SCRATCH" || exit 1
+tmp="$(mktemp -d "$SCRATCH/ado-publish-fixtures.XXXXXX")" || exit 1
+trap 'rm -rf "$tmp"' EXIT
+
+seed() {
+  rm -rf "$tmp/cap"
+  mkdir -p "$tmp/cap/fragments"
+  cp "$CAP_DIR/manifest.md" "$tmp/cap/manifest.md"
+  cp "$CAP_DIR/fragments/research-publish.md" "$CAP_DIR/fragments/qa-gen-publish.md" "$tmp/cap/fragments/"
+}
+
+expect_caught() {
+  local name="$1"
+  if check_cap "$tmp/cap" > /dev/null; then
+    echo "  FAIL: seeded breakage '$name' was NOT caught" >&2
+    SELF_FAILS=$((SELF_FAILS + 1))
+  else
+    echo "  ok — caught: $name"
+  fi
+}
+
+SELF_FAILS=0
+
+seed; sed -i '/research\.publish replace/d' "$tmp/cap/manifest.md"
+expect_caught "manifest row removed"
+
+seed; sed -i '/\*\*Immediately\*\* after it returns an id/d' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "record no longer written immediately after create"
+
+seed; sed -i 's/Never `create_child` here/Fall back to `create_child(<umbrella-id>)` here/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "refresh path falls back to a create"
+
+seed; sed -i 's/once\*\* — the contract operation/once** under the task via `create_child(<task>)` — the contract operation/' "$tmp/cap/fragments/research-publish.md"
+expect_caught "research published as a task child"
+
+seed; sed -i 's/^- \*\*title\*\* — `QA plan:/- read `list_children(<umbrella-id>)` first.\n- **title** — `QA plan:/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "non-contract operation named"
+
+seed; sed -i 's/never reads or publishes `07_qa-report.md`/also publishes `07_qa-report.md`/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "QA run report published"
+
+seed; sed -i 's/publication record unreadable/record ignored/' "$tmp/cap/fragments/research-publish.md"
+expect_caught "unreadable record no longer fails closed"
+
+seed; sed -i '/\*\*Before external create\*\*/d' "$tmp/cap/fragments/research-publish.md"
+expect_caught "pending marker no longer precedes external create"
+
+seed; sed -i 's/pending publication identity unresolved/pending record ignored/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "pending retry no longer fails closed"
+
+seed; sed -i 's/Replacement must be failure-atomic/Replacement may truncate/' "$tmp/cap/fragments/research-publish.md"
+expect_caught "identity replacement can destroy pending marker"
+
+seed; sed -i 's/model-attribution metadata from the outbound copy/all metadata retained in outbound copy/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "outbound model metadata filter removed"
+
+seed
+lines="$(wc -l < "$tmp/cap/fragments/qa-gen-publish.md")"
+while [ "$lines" -lt 151 ]; do
+  printf '\n' >> "$tmp/cap/fragments/qa-gen-publish.md"
+  lines=$((lines + 1))
+done
+expect_caught "slot body exceeds 150 lines"
+
+seed; sed -i '/^## Contents$/d' "$tmp/cap/fragments/research-publish.md"
+expect_caught "runtime body over 100 lines has no contents"
+
+seed; sed -i 's/resolve_config()/get()/g' "$tmp/cap/fragments/research-publish.md"
+expect_caught "tracker configuration operation no longer checked"
+
+seed; sed -i 's/Proceed only on `configured`/Proceed even when unconfigured/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "unconfigured tracker can proceed"
+
+seed; sed -i 's/QA plan contains execution annotations/QA plan accepted with annotations/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "execution annotations no longer fail closed"
+
+seed; sed -i 's/including retained\/appended sections/only the newest section/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "retained appended results no longer checked"
+
+seed; sed -i 's/from `00_reqs.md`/from `06_qa.md`/' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "QA title comes from the fixed plan heading"
+
+seed; sed -i '/Never derive the task title from/d' "$tmp/cap/fragments/qa-gen-publish.md"
+expect_caught "QA title exclusion removed"
+
+if [ "$SELF_FAILS" -ne 0 ]; then
+  echo "ado fixtures: $SELF_FAILS seeded breakage(s) escaped the checks." >&2
+  exit 1
+fi
+
+echo "ado fixtures: all checks passed."
+exit 0
