@@ -40,7 +40,12 @@ export const SNAPSHOT_SCHEMA_VERSION = 4;
  *  to. Where the plugin inventory is unavailable, nothing else invalidates a cached
  *  snapshot across the upgrade, so it would stay fresh and keep serving the
  *  superseded root — the exact state that rule exists to fix. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.6.1" } as const;
+/*  0.7.0 (WF-586): the snapshot's input set gained the committed `.wf/settings/`
+ *  project settings tier (`settings-project-override`). A snapshot built by an
+ *  earlier generator never scanned that directory, so the per-query check — which
+ *  re-reads only recorded paths — would keep it fresh across the upgrade, and a
+ *  committed override would never join refresh diagnostics or fingerprint tracking. */
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.7.0" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */
@@ -72,6 +77,10 @@ export interface SourceFingerprint {
     | "slot-project-override"
     /** A per-skill `_local/profiles/<skill>.settings.json` override (WF-329). */
     | "settings-override"
+    /** A committed `.wf/settings/<skill>.settings.json` project settings override
+     *  (WF-586) — hashed, never stored, so a committed setting invalidates the
+     *  snapshot exactly as a personal settings override does. */
+    | "settings-project-override"
     /** The composed constitution record `_local/constitution.md` (WF-334) —
      *  hashed, never stored, so a project-clause edit (or a re-composed capability
      *  article set) invalidates the snapshot and the SessionStart hook serves the

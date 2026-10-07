@@ -35,6 +35,13 @@ export const SETTINGS_STORAGE_DIR = "_local/profiles";
  *  two never collide in the shared `_local/profiles/` folder. */
 export const SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
 
+/** The COMMITTED project settings tier (WF-586) — `.wf/settings/<skill>.settings.json`,
+ *  the settings analogue of the committed `.wf/slots/` tier (WF-443). A project
+ *  commits it so the whole team shares the value on checkout; it ranks strictly
+ *  BELOW the personal `_local/profiles/` override (personal > project > declared
+ *  default, per key). The resolver only READS it — no skill writes it. */
+export const PROJECT_SETTINGS_DIR = ".wf/settings";
+
 /** The gitignored storage directory for capability profiles. The SAME folder as
  *  `SETTINGS_STORAGE_DIR`, named separately because the two are different artifact
  *  classes that merely share a home — a reader of one should not have to know the
@@ -66,6 +73,11 @@ export function isSkillSlug(s: string | undefined): s is string {
 /** The workspace-relative override path for a skill's settings. */
 export function settingsOverrideRelPath(skill: string): string {
   return `${SETTINGS_STORAGE_DIR}/${skill}${SETTINGS_OVERRIDE_SUFFIX}`;
+}
+
+/** The workspace-relative committed project override path for a skill's settings. */
+export function projectSettingsOverrideRelPath(skill: string): string {
+  return `${PROJECT_SETTINGS_DIR}/${skill}${SETTINGS_OVERRIDE_SUFFIX}`;
 }
 
 /** Extract the skill slug from a settings override filename, or `null` when the
@@ -166,25 +178,35 @@ export interface SettingsMerge {
  * declared default). Any override key the declaration does not carry is collected
  * into `undeclared` — never merged into `values` — so the caller rejects it
  * loudly rather than silently accepting an unknown key.
+ *
+ * The optional `projectOverride` is the committed `.wf/settings/` tier (WF-586):
+ * it applies BELOW the personal override, so per key the precedence is personal
+ * > project > declared default. Undeclared keys are collected from both tiers.
+ * Omitting it leaves the merge exactly as before.
  */
 export function mergeSettings(
   declared: SettingsDeclaration,
   override: Record<string, unknown> | null,
+  projectOverride: Record<string, unknown> | null = null,
 ): SettingsMerge {
+  const has = (o: Record<string, unknown> | null, key: string): o is Record<string, unknown> =>
+    o !== null && Object.prototype.hasOwnProperty.call(o, key);
   const values: Record<string, unknown> = {};
   for (const [key, def] of declared) {
-    values[key] = override && Object.prototype.hasOwnProperty.call(override, key)
+    values[key] = has(override, key)
       ? override[key]
-      : def;
+      : has(projectOverride, key)
+        ? projectOverride[key]
+        : def;
   }
-  const undeclared: string[] = [];
-  if (override) {
-    for (const key of Object.keys(override)) {
-      if (!declared.has(key)) undeclared.push(key);
+  const undeclared = new Set<string>();
+  for (const tier of [override, projectOverride]) {
+    if (!tier) continue;
+    for (const key of Object.keys(tier)) {
+      if (!declared.has(key)) undeclared.add(key);
     }
   }
-  undeclared.sort();
-  return { values, undeclared };
+  return { values, undeclared: [...undeclared].sort() };
 }
 
 /** A located skill interface — the root it was found under + its declared keys. */

@@ -94,6 +94,9 @@ const FILE_SOURCE_KINDS: ReadonlySet<SourceFingerprint["kind"]> = new Set([
   // query exactly as a personal override does.
   "slot-project-override",
   "settings-override",
+  // WF-586: the committed `.wf/settings/` project settings override, re-read the
+  // same way as its personal counterpart.
+  "settings-project-override",
   // WF-334: the composed constitution record joins the re-read set — editing a
   // project clause (or re-composing capability articles into it) invalidates the
   // snapshot on the next query, keeping the SessionStart constitution payload
